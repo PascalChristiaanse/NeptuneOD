@@ -1,0 +1,13 @@
+name: NeptuneOD
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - pytest
+  - ruff
+  - pip
+
+  - pip:
+      - -e .

@@ -25,10 +25,18 @@ jobs:
           restore-keys: |
             conda-env-${{ runner.os }}-
 
-      - name: Setup Miniconda
+      - name: Setup Miniconda (cache miss)
+        if: steps.cache-conda.outputs.cache-hit != 'true'
         uses: conda-incubator/setup-miniconda@v3
         with:
-          environment-file: ${{ steps.cache-conda.outputs.cache-hit != 'true' && 'environment.yml' || '' }}
+          environment-file: environment.yml
+          activate-environment: NeptuneOD
+          auto-activate-base: false
+
+      - name: Setup Miniconda (cache hit)
+        if: steps.cache-conda.outputs.cache-hit == 'true'
+        uses: conda-incubator/setup-miniconda@v3
+        with:
           activate-environment: NeptuneOD
           auto-activate-base: false
 
@@ -73,10 +81,18 @@ jobs:
           restore-keys: |
             conda-env-${{ runner.os }}-
 
-      - name: Setup Miniconda
+      - name: Setup Miniconda (cache miss)
+        if: steps.cache-conda.outputs.cache-hit != 'true'
         uses: conda-incubator/setup-miniconda@v3
         with:
-          environment-file: ${{ steps.cache-conda.outputs.cache-hit != 'true' && 'environment.yml' || '' }}
+          environment-file: environment.yml
+          activate-environment: NeptuneOD
+          auto-activate-base: false
+
+      - name: Setup Miniconda (cache hit)
+        if: steps.cache-conda.outputs.cache-hit == 'true'
+        uses: conda-incubator/setup-miniconda@v3
+        with:
           activate-environment: NeptuneOD
           auto-activate-base: false
 

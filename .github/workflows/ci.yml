@@ -7,40 +7,74 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  ruff:
+    name: Ruff
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
-      - name: Cache conda
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/miniconda3/pkgs
-            ~/miniconda3/envs
-          key: conda-${{ runner.os }}-${{ hashFiles('environment.yml') }}
-          restore-keys: |
-            conda-${{ runner.os }}-
-              
+
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
           environment-file: environment.yml
           activate-environment: NeptuneOD
           auto-activate-base: false
-          use-only-tar-bz2: true
+          cache: true
+          cache-environment: true
 
-      - name: Lint (Ruff)
+      - name: Upgrade packaging tools
+        shell: bash -l {0}
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package
+        shell: bash -l {0}
+        run: |
+          pip install -e .
+
+      - name: Ruff lint
         shell: bash -l {0}
         run: |
           ruff check .
 
-      - name: Format check (Ruff)
+      - name: Ruff format
         shell: bash -l {0}
         run: |
-          ruff format --check .
+          ruff format .
+
+      - name: Commit formatting changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto-format with ruff"
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment.yml
+          activate-environment: NeptuneOD
+          auto-activate-base: false
+          cache: true
+          cache-environment: true
+
+      - name: Upgrade packaging tools
+        shell: bash -l {0}
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package
+        shell: bash -l {0}
+        run: |
+          pip install -e .
 
       - name: Run tests
         shell: bash -l {0}

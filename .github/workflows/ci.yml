@@ -16,14 +16,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache conda environment
+        uses: actions/cache@v4
+        with:
+          path: ~/miniconda3/envs/NeptuneOD
+          key: conda-env-${{ runner.os }}-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            conda-env-${{ runner.os }}-
+
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
           environment-file: environment.yml
           activate-environment: NeptuneOD
           auto-activate-base: false
-          cache: true
-          cache-environment: true
 
       - name: Upgrade packaging tools
         shell: bash -l {0}
@@ -57,14 +63,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache conda environment
+        uses: actions/cache@v4
+        with:
+          path: ~/miniconda3/envs/NeptuneOD
+          key: conda-env-${{ runner.os }}-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            conda-env-${{ runner.os }}-
+
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
           environment-file: environment.yml
           activate-environment: NeptuneOD
           auto-activate-base: false
-          cache: true
-          cache-environment: true
 
       - name: Upgrade packaging tools
         shell: bash -l {0}

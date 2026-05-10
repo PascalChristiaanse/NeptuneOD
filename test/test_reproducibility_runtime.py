@@ -59,11 +59,7 @@ def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(
         runtime.HydraConfig,
         "get",
-        staticmethod(
-            lambda: SimpleNamespace(
-                runtime=SimpleNamespace(output_dir=str(tmp_path))
-            )
-        ),
+        staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
     )
 
     cfg = OmegaConf.create({"seed": 7, "foo": "bar"})

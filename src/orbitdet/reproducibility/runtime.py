@@ -24,13 +24,10 @@ _CONTEXT: RuntimeContext | None = None
 
 
 def get_git_commit() -> str:
-    return (
-        subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            text=True,
-        )
-        .strip()
-    )
+    return subprocess.check_output(
+        ["git", "rev-parse", "--short", "HEAD"],
+        text=True,
+    ).strip()
 
 
 def git_is_dirty() -> bool:
@@ -99,9 +96,7 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
 
     git_commit = get_git_commit()
 
-    output_dir = Path(
-        HydraConfig.get().runtime.output_dir
-    )
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
 
     seed = int(cfg.seed)
 

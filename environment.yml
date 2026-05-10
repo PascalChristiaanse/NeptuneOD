@@ -11,7 +11,7 @@ dependencies:
   - pytest
   - ruff
 
-  #Tudatpy requirements
+  # Tudatpy requirements
   - tudatpy
   - matplotlib # =3.9.2 Maybe this breaks stuff
   - scipy
@@ -23,6 +23,9 @@ dependencies:
   - tabulate
   - colorama
   - numpy # <2.0.0 Maybe this breaks some stuff?
+
+  # orbitdet requirements
+  - hydra-core
 
   - pip:
     # Tudatpy requirements

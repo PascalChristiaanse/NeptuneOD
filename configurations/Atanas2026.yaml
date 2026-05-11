@@ -1,0 +1,89 @@
+defaults: []
+
+seed: 42
+
+# Hydra settings
+hydra:
+    run:
+        dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+
+    job:
+        chdir: false
+
+# Time settings
+start_date: 2024-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+    pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+    gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+    nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+    #  nep105: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
+    naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "ECLIPJ2000"
+
+# Environment settings
+
+bodies_to_propagate:
+    Triton:
+        initial_state: null
+        central_body: "Neptune"
+bodies_to_create:
+    Neptune:
+        gravity: "Jacobson2009"
+        rotation_model: "IAU2015"
+    Triton:
+        gravity: "central"
+        ephemeris:
+            type: "interpolated_spice"
+            interpolator_cadance: 480 # 60*8
+    Sun:
+        gravity: "central"
+    Jupiter:
+        gravity: "central"
+    Saturn:
+        gravity: "central"
+    Uranus:
+        gravity: "central"
+    Mercury:
+        gravity: "central"
+    Venus:
+        gravity: "central"
+    Earth:
+        gravity: "central"
+    # Mars:
+    #     gravity: "central"
+
+# Integrator settings
+integrator:
+    type: "RKF78"
+    fixed_step_size: 3600
+
+# Observation settings
+observations:
+    simulated: true
+    type:
+        - "relative_position"
+    noise:
+        relative_position: 1000 # m
+    cadence: 10800 # s
+
+# Estimation settings
+estimation:
+    max_iterations: 5
+    parameters_to_estimate:
+        - "initial_state"
+        - "iau_rotation_model_pole"
+
+# logging settings
+logging:
+    level: "INFO"
+    tudatpy_logging_level: "WARNING"
+    muted_loggers:
+        - "matplotlib"
+        - "orbitdet.data.kernel"

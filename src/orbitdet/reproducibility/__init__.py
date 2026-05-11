@@ -2,6 +2,7 @@
 
 from orbitdet.reproducibility.hydra import register_resolvers
 from orbitdet.reproducibility.runtime import (
+    RuntimeContext,
     enforce_initialization,
     get_context,
     initialize,
@@ -17,4 +18,5 @@ __all__ = [
     "get_context",
     "require_initialized",
     "enforce_initialization",
+    "RuntimeContext",
 ]

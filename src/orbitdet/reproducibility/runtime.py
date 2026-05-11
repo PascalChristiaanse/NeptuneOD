@@ -1,5 +1,6 @@
 # src/orbitdet/reproducibility/runtime.py
 
+import logging
 import random
 import subprocess
 from dataclasses import dataclass
@@ -21,6 +22,21 @@ class RuntimeContext:
 
 
 _CONTEXT: RuntimeContext | None = None
+
+
+def setup_logging(cfg: DictConfig):
+    if OmegaConf.select(cfg, "logging") is None:
+        return
+
+    logging.basicConfig(
+        level=cfg.logging.level,
+        format="[%(asctime)s] %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    logging.getLogger("tudatpy").setLevel(cfg.logging.tudatpy_logging_level)
+
+    for name in cfg.logging.muted_loggers:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def get_git_commit() -> str:
@@ -87,6 +103,7 @@ def set_random_seed(seed: int) -> None:
 
 
 def initialize(cfg: DictConfig) -> RuntimeContext:
+
     global _CONTEXT
 
     if _CONTEXT is not None:
@@ -119,6 +136,10 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
         seed=seed,
         test_mode=False,
     )
+
+    setup_logging(cfg)
+
+    OmegaConf.set_readonly(cfg, True)
 
     return _CONTEXT
 

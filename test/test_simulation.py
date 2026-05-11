@@ -1,11 +1,9 @@
 """Tests for the simulation module."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import environment_setup as env_setup
 from tudatpy.dynamics import propagation_setup as prop_setup
@@ -698,7 +696,7 @@ class TestAddNeptune:
         mock_acceleration_settings = MagicMock()
         mock_integrator_settings = MagicMock()
 
-        result = get_propagator_settings(
+        result = get_propagator_settings(  # noqa: F841
             basic_config,
             mock_runtime_context,
             mock_acceleration_settings,
@@ -736,7 +734,7 @@ class TestAddNeptune:
         mock_integrator_settings = MagicMock()
 
         with patch("orbitdet.simulation.propagation.logger"):
-            result = get_propagator_settings(
+            result = get_propagator_settings(  # noqa: F841
                 config,
                 mock_runtime_context,
                 mock_acceleration_settings,
@@ -765,7 +763,8 @@ class TestAddNeptune:
             [],
         )
 
-        call_kwargs = mock_translational.call_args[1]
+        call_kwargs = mock_translational.call_args[1]  # noqa: F841
+
         # Verify translational called with correct parameters
         assert mock_translational.called
 

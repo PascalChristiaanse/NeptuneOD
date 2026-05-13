@@ -2,7 +2,7 @@ name: NeptuneOD
 
 channels:
   - conda-forge
-
+  - tudat-team
 dependencies:
   - python=3.12
   - pip>=23.3          # Ensure pip supports 
@@ -11,5 +11,26 @@ dependencies:
   - pytest
   - ruff
 
+  # Tudatpy requirements
+  - tudatpy
+  - matplotlib # =3.9.2 Maybe this breaks stuff
+  - scipy
+  - pandas
+  - astropy
+  - tqdm      
+  - astropy-healpix  
+  - spiceypy # for automatic data downloader and kernel converter
+  - tabulate
+  - colorama
+  - numpy # <2.0.0 Maybe this breaks some stuff?
+
+  # orbitdet requirements
+  - hydra-core
+
   - pip:
-      - -e .
+    # Tudatpy requirements
+    - astroquery>=0.4.8.dev9306
+    - git+https://github.com/NASA-PDS/PyTrk234.git
+    
+    # Install orbitdet program
+    - -e .

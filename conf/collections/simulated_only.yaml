@@ -1,0 +1,9 @@
+# @package _global_
+# Example observation collection: Simulated observations only
+# This uses synthetic observations generated from ephemeris data
+# Useful for testing and hybrid real/simulated scenarios
+
+defaults:
+  - /datasets/simulated_example@datasets.simulated
+
+name: "Simulated observations collection"

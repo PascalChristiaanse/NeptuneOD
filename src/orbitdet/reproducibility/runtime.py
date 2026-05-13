@@ -2,7 +2,9 @@
 
 import logging
 import random
+import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
@@ -64,10 +66,34 @@ def assert_clean_repo() -> None:
 
 
 def save_conda_environment(output_dir: Path) -> None:
-    environment = subprocess.check_output(
-        ["conda", "env", "export"],
-        text=True,
-    )
+    """Export conda environment to YAML file, with fallback if conda is not in PATH."""
+    conda_path = shutil.which("conda")
+
+    try:
+        if conda_path:
+            # Use the found conda executable directly
+            environment = subprocess.check_output(
+                [conda_path, "env", "export"],
+                text=True,
+            )
+        else:
+            # Try using shell=True to access conda through bash initialization
+            environment = subprocess.check_output(
+                "conda env export",
+                shell=True,
+                text=True,
+            )
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
+        # If conda is still not available, create a minimal environment file from sys.prefix
+        logging.warning(
+            f"Failed to export conda environment: {e}. "
+            "Creating minimal environment file from Python metadata."
+        )
+        environment = (
+            f"# Conda environment export failed. Using Python metadata from: {sys.prefix}\n"
+        )
+        environment += f"# Python version: {sys.version}\n"
+        environment += "# Install from environment.yml in the repository root.\n"
 
     with open(output_dir / "conda_environment.yaml", "w") as f:
         f.write(environment)

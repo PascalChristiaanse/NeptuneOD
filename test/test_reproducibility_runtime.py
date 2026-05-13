@@ -53,7 +53,7 @@ def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):
             return ""
         if cmd == ["git", "rev-parse", "--short", "HEAD"]:
             return "abc123\n"
-        if cmd == ["conda", "env", "export"]:
+        if len(cmd) == 3 and cmd[1:] == ["env", "export"] and cmd[0].endswith("conda"):
             return "name: NeptuneOD\n"
         raise AssertionError(f"Unexpected command: {cmd}")
 

@@ -56,7 +56,6 @@ def main(cfg: DictConfig):
 
     logger.info("Generating observations from collection...")
 
-
     observations, observation_models = create_observation_collection(cfg, bodies)
 
     # observations, observation_models = generate_observations(cfg, ctx, bodies)

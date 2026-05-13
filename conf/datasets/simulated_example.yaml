@@ -1,0 +1,14 @@
+# Example simulated observation dataset
+# Usage: Reference this in a collection config with: - simulated_example
+
+name: "Synthetic observations from ephemeris"
+type: simulated
+file: null
+target: Triton
+observer: Neptune
+start_date_observation_period: "2025-01-01T12:00:00"
+end_date_observation_period: "2025-12-31T12:00:00"
+cadence: 8640.0 # Observation cadence in seconds
+observable_type: relative_cartesian_position
+noise_sigma: 1000 # Standard deviation in meters
+

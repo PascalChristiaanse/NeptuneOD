@@ -7,7 +7,8 @@ from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import estimation_analysis as est_an
 
 from orbitdet.data import KernelManager
-from orbitdet.estimation import generate_observations, get_estimatable_parameters
+from orbitdet.estimation import get_estimatable_parameters
+from orbitdet.observations import create_observation_collection
 from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
 from orbitdet.simulation import (
     get_dynamical_model,
@@ -21,12 +22,11 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(
     version_base=None,
-    config_path="../configurations",
-    config_name="Atanas2026",
+    config_path="../conf",
+    config_name="experiments/atanas2026_simulated",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
-
     ctx: RuntimeContext = initialize(cfg)
 
     # Inject start and end epochs into the runtime context
@@ -54,8 +54,12 @@ def main(cfg: DictConfig):
     prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=dep_vars)
     logger.info("Propagator settings created successfully.")
 
-    logger.info("Generating observations...")
-    observations, observation_models = generate_observations(cfg, ctx, bodies)
+    logger.info("Generating observations from collection...")
+
+
+    observations, observation_models = create_observation_collection(cfg, bodies)
+
+    # observations, observation_models = generate_observations(cfg, ctx, bodies)
     logger.info("Observations generated successfully.")
 
     logger.info("Simulation setup complete. Ready for propagation and estimation.")

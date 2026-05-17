@@ -4,7 +4,6 @@ import yaml
 
 from orbitdet.data.nsdb import NSDBManager
 
-
 SAMPLE_HTML = """
 <html>
   <head><title>incorrect-title</title></head>
@@ -57,7 +56,7 @@ Format.
 
 def test_parse_nsdb_sample():
     mgr = NSDBManager()
-  parsed = mgr._parse_contents_metadata(SAMPLE_HTML, "nm0001")
+    parsed = mgr._parse_contents_metadata(SAMPLE_HTML, "nm0001")
 
     assert parsed["identifier"] == "nm0001"
     assert "format_columns" in parsed
@@ -84,7 +83,7 @@ def test_parse_nsdb_sample():
     assert "comments" in parsed and "no information" in parsed["comments"]
 
 
-  def test_generate_hydra_configs_adds_resolved_file_path(tmp_path: Path):
+def test_generate_hydra_configs_adds_resolved_file_path(tmp_path: Path):
     mgr = NSDBManager()
     parsed = mgr._parse_contents_metadata(SAMPLE_HTML, "nm0001")
     data_file = tmp_path / "data" / "nm0001.txt"

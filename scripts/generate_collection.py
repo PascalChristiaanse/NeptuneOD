@@ -4,7 +4,8 @@ This script ingests a dataset_instruction and generates:
 - A collection configuration
 - A set of dataset configurations, one per observation set
 
-This collection set can then be used with the observations module to create tudatpy ObservationCollections
+This collection set can then be used with the observations module to create
+tudatpy ObservationCollections
 """
 
 import logging
@@ -70,9 +71,11 @@ def main(cfg: DictConfig):
 
         lines = ["# @package _global_"]
         lines.append("defaults:")
-        
+
         for name in cfg.datasets.keys():
-            lines.append(f"  - /{cfg.config_folder.replace("conf/", "")}/{name}.yaml@datasets.{name}")
+            lines.append(
+                f"  - /{cfg.config_folder.replace('conf/', '')}/{name}.yaml@datasets.{name}"
+            )
         lines.append("")
         lines.append('name: "NSDB Triton Data"')
 

@@ -100,10 +100,18 @@ class NSDBManager:
 
         # Split into lines and collect section blocks by heading
         lines = [ln.rstrip() for ln in text.replace("\r", "").split("\n")]
-        sections: dict[str, list[str]] = {"contents": [], "informations": [], "reference": [], "comments": [], "format": []}
+        sections: dict[str, list[str]] = {
+            "contents": [],
+            "informations": [],
+            "reference": [],
+            "comments": [],
+            "format": [],
+        }
         current: str | None = None
 
-        heading_re = re.compile(r"^(contents|informations|reference|comments|format)\.?$", re.IGNORECASE)
+        heading_re = re.compile(
+            r"^(contents|informations|reference|comments|format)\.?$", re.IGNORECASE
+        )
         for raw in lines:
             ln = raw.strip()
             if not ln:
@@ -120,13 +128,13 @@ class NSDBManager:
 
         # Parse format section into mapping index->label
         fmt_map: dict[str, str] = {}
-        for l in sections["format"]:
-            match = re.match(r"^(\d+)\.\s*(.+)$", l)
+        for line in sections["format"]:
+            match = re.match(r"^(\d+)\.\s*(.+)$", line)
             if match:
                 fmt_map[match.group(1)] = re.sub(r"\s+", " ", match.group(2)).strip()
         result["format_columns"] = fmt_map
 
-        # Parse contents and informations and merge into root. Merge order: contents then informations (informations override).
+        # Parse contents and informations and merge into root.
         try:
             contents_text = "\n".join(sections["contents"]) if sections["contents"] else ""
             if contents_text:
@@ -140,7 +148,9 @@ class NSDBManager:
             pass
 
         try:
-            informations_text = "\n".join(sections["informations"]) if sections["informations"] else ""
+            informations_text = (
+                "\n".join(sections["informations"]) if sections["informations"] else ""
+            )
             if informations_text:
                 parsed_infos = self._parse_informations(informations_text)
                 for k, v in parsed_infos.items():

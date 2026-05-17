@@ -1,5 +1,4 @@
 # @package _global_
-
 defaults:
   - /datasets/generated/nm0001.yaml@datasets.nm0001
   - /datasets/generated/nm0002.yaml@datasets.nm0002

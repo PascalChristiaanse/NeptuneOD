@@ -68,7 +68,9 @@ def main(cfg: DictConfig):
         coll_folder = repo_root / "conf" / "collections"
         coll_folder.mkdir(parents=True, exist_ok=True)
 
-        lines = ["defaults:"]
+        lines = ["# @package _global_"]
+        lines.append("defaults:")
+        
         for name in cfg.datasets.keys():
             lines.append(f"  - /{cfg.config_folder.replace("conf/", "")}/{name}.yaml@datasets.{name}")
         lines.append("")

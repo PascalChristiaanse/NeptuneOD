@@ -1,3 +1,4 @@
 from .kernel import KernelManager
+from .nsdb import NSDBManager
 
-__all__ = ["KernelManager"]
+__all__ = ["KernelManager", "NSDBManager"]

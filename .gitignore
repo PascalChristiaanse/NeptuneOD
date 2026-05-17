@@ -3,6 +3,7 @@
 results
 data/kernels
 data/raw
+conf/datasets/generated
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

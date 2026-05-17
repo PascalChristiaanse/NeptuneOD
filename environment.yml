@@ -26,6 +26,7 @@ dependencies:
 
   # orbitdet requirements
   - hydra-core
+  - beautifulsoup4
 
   - pip:
     # Tudatpy requirements

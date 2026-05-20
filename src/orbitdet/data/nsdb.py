@@ -167,6 +167,11 @@ class NSDBManager:
         if sections["comments"]:
             result["comments"] = "\n".join(sections["comments"]).strip()
 
+        original_type = result.get("type")
+        receptor = result.get("receptor")
+        if original_type and receptor:
+            result["type"] = f"{original_type}_{receptor}_nsdb"
+
         return result
 
     def _parse_contents(self, contents: str) -> dict[str, Any]:

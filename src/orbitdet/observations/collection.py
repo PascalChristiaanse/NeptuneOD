@@ -56,7 +56,7 @@ def create_observation_collection(
     for idx, (set_name, dataset_cfg) in enumerate(datasets.items()):
         try:
             logger.debug(f"Creating dataset {set_name} ({idx + 1}/{len(datasets)})")
-            dataset, model_settings = create_observation_dataset(dataset_cfg, system_of_bodies)
+            dataset, model_settings = create_observation_dataset(cfg, dataset_cfg, system_of_bodies)
             observation_sets.append(dataset)
             model_setting.append(model_settings)
             logger.debug(f"Successfully created dataset {set_name} ({idx + 1}/{len(datasets)})")

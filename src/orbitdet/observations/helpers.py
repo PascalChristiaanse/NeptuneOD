@@ -1,7 +1,9 @@
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig
 from tudatpy.astro import element_conversion
 from tudatpy.astro import time_representation as time_rep
 from tudatpy.dynamics import environment as env
@@ -73,6 +75,7 @@ OBSERVATORY_INFO_FILE = "data/Observatories.txt"  # https://www.projectpluto.com
 
 
 def _observatory_info(
+    cfg: DictConfig,
     observatory_code: int,
 ) -> tuple[float, float, float]:  # Positive to north and east
     """Retrieve the station position from observatories.txt
@@ -87,8 +90,11 @@ def _observatory_info(
         observatory_code = "0" + observatory_code
     elif len(observatory_code) == 1:  # Making sure 098 and 98 are the same
         observatory_code = "00" + observatory_code
+
+    observatories_file = Path(cfg.data_folder) / 'observatories.txt'
+
     with open(
-        OBSERVATORY_INFO_FILE, "r"
+        observatories_file, "r"
     ) as file:  # https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
         lines = file.readlines()
         for line in lines[1:]:  # Ignore the first line
@@ -101,7 +107,9 @@ def _observatory_info(
         print("No matching Observatory found")
 
 
-def add_observatory_to_SOB(system_of_bodies, observatory_code: int):
+def add_observatory_to_SOB(
+    cfg: DictConfig, system_of_bodies: env.SystemOfBodies, observatory_code: int
+):
     """Add the observatory as a ground station to the system of bodies.
 
     Args:
@@ -125,7 +133,7 @@ def add_observatory_to_SOB(system_of_bodies, observatory_code: int):
 
     # Define the position of the observatory on Earth
     observatory_longitude, observatory_latitude, observatory_altitude = _observatory_info(
-        observatory_code
+        cfg, observatory_code
     )
 
     env_setup.add_ground_station(

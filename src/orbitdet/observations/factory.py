@@ -10,7 +10,7 @@ from .registry import get_factory
 logger = logging.getLogger(__name__)
 
 
-def create_observation_dataset(cfg: DictConfig, system_of_bodies: env.SystemOfBodies) -> tuple:
+def create_observation_dataset(cfg: DictConfig, dataset_cfg: DictConfig, system_of_bodies: env.SystemOfBodies) -> tuple:
     """Create an observation dataset from configuration.
 
     This is the central dispatcher that:
@@ -33,7 +33,7 @@ def create_observation_dataset(cfg: DictConfig, system_of_bodies: env.SystemOfBo
         dataset = create_observation_dataset(cfg)
     """
     # Extract type from config
-    dataset_type = OmegaConf.select(cfg, "type")
+    dataset_type = OmegaConf.select(dataset_cfg, "type")
     if not dataset_type:
         raise ValueError("Dataset config must have a 'type' field")
 
@@ -44,7 +44,7 @@ def create_observation_dataset(cfg: DictConfig, system_of_bodies: env.SystemOfBo
         factory = get_factory(dataset_type)
 
         # Invoke the factory
-        dataset, model_settings = factory(cfg, system_of_bodies)
+        dataset, model_settings = factory(cfg, dataset_cfg, system_of_bodies)
 
         logger.debug(f"Successfully created observation dataset of type '{dataset_type}'")
         return dataset, model_settings

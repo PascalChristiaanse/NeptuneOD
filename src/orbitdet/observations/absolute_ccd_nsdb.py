@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @register_dataset_factory("absolute_CCD_nsdb")
 def create_absolute_ccd_dataset(
-    cfg: DictConfig, system_of_bodies: env.SystemOfBodies
+    cfg: DictConfig, dataset_cfg: DictConfig, system_of_bodies: env.SystemOfBodies
 ) -> tuple[obs.ObservationCollection, obs_model_setup.model_settings.ObservationModelSettings]:
     """Create a dataset from absolute CCD observations.
 
@@ -30,13 +30,13 @@ def create_absolute_ccd_dataset(
         Tuple of (ObservationCollection, ObservationModelSettings) for the simulated dataset.
 
     """
-    logger.info(f"""Creating absolute CCD observation dataset: {cfg.identifier}.""")
+    logger.info(f"""Creating absolute CCD observation dataset: {dataset_cfg.identifier}.""")
 
-    data_file = pd.read_csv(cfg.file, sep=r"\s+", header=None, comment="#", engine="python")
+    data_file = pd.read_csv(dataset_cfg.file, sep=r"\s+", header=None, comment="#", engine="python")
     # Set DataFrame column names from cfg.format mapping (index -> name).
     # Ensure the mapping is applied deterministically by sorting keys numerically
     # when possible, and overlaying names into the default positional columns.
-    fmt = dict(cfg.format_columns)
+    fmt = dict(dataset_cfg.format_columns)
     col_names = list(data_file.columns)
 
     def _keyfunc(k):
@@ -64,11 +64,11 @@ def create_absolute_ccd_dataset(
     set_iso_time_column(data_file)
 
     # Ensure observatory exists in the system of bodies
-    add_observatory_to_SOB(system_of_bodies, str(cfg.observatory.code))
+    add_observatory_to_SOB(cfg, system_of_bodies, str(dataset_cfg.observatory.code))
 
     # Convert times to seconds since J2000 epoch TDB for Tudat using station position
     convert_time_to_seconds_since_j2000_TDB(
-        data_file, str(cfg.observatory.code), system_of_bodies, cfg.time_scale
+        data_file, str(dataset_cfg.observatory.code), system_of_bodies, dataset_cfg.time_scale
     )
 
     # extract data for observation set
@@ -79,21 +79,21 @@ def create_absolute_ccd_dataset(
         np.deg2rad(row[[ra_column, dec_column]].to_numpy(dtype=float)).reshape(2, 1)
         for _, row in valid_rows.iterrows()
     ]
-    
-    
+
     # Fail if file contains multiple satellites, not implemented yet
-    if len(list(cfg.satellites.keys())) > 1:
+    if len(list(dataset_cfg.satellites.keys())) > 1:
         raise NotImplementedError("Multiple satellites in one NSDB file not supported yet.")
 
     # Setup link ends
     link_ends = dict()
-    target = list(cfg.satellites.keys())[0]
+    target = list(dataset_cfg.satellites.keys())[0]
     link_ends[obs_model_setup.links.transmitter] = obs_model_setup.links.body_origin_link_end_id(
         target
     )
-    link_ends[obs_model_setup.links.receiver] = obs_model_setup.links.body_reference_point_link_end_id(
-        "Earth",
-        str(cfg.observatory.code)
+    link_ends[obs_model_setup.links.receiver] = (
+        obs_model_setup.links.body_reference_point_link_end_id(
+            "Earth", str(dataset_cfg.observatory.code)
+        )
     )
     link_definition = obs_model_setup.links.LinkDefinition(link_ends)
     observation_model = obs_model_setup.model_settings.angular_position(link_definition)

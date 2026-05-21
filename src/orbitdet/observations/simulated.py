@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @register_dataset_factory("simulated")
 def create_simulated_dataset(
-    cfg: DictConfig, system_of_bodies: env.SystemOfBodies
+    cfg: DictConfig, dataset_cfg: DictConfig, system_of_bodies: env.SystemOfBodies
 ) -> tuple[obs.ObservationCollection, obs_model_setup.model_settings.ObservationModelSettings]:
     """Create a simulated observation dataset.
 
@@ -45,36 +45,36 @@ def create_simulated_dataset(
         dataset = create_simulated_dataset(cfg)
     """
     logger.info(
-        f"""Creating simulated observation dataset with cadence={cfg.cadence} """
-        f"""for {cfg.target} w.r.t. {cfg.observer}."""
+        f"""Creating simulated observation dataset with cadence={dataset_cfg.cadence} """
+        f"""for {dataset_cfg.target} w.r.t. {dataset_cfg.observer}."""
     )
 
-    start_epoch = iso_string_to_epoch(cfg.start_date_observation_period)
-    end_epoch = iso_string_to_epoch(cfg.end_date_observation_period)
+    start_epoch = iso_string_to_epoch(dataset_cfg.start_date_observation_period)
+    end_epoch = iso_string_to_epoch(dataset_cfg.end_date_observation_period)
 
     observation_times = np.linspace(
         start_epoch,
         end_epoch,
-        int(np.ceil((end_epoch - start_epoch) / cfg.cadence)) + 1,
+        int(np.ceil((end_epoch - start_epoch) / dataset_cfg.cadence)) + 1,
     )
 
     logger.info(
         f"""Generating observations at {len(observation_times)} epochs """
-        f"""from {cfg.start_date_observation_period}"""
-        f"""to {cfg.end_date_observation_period} with cadence {cfg.cadence} seconds."""
+        f"""from {dataset_cfg.start_date_observation_period}"""
+        f"""to {dataset_cfg.end_date_observation_period} with cadence {dataset_cfg.cadence} seconds."""
     )
 
     # Setup link ends
     link_ends = dict()
     link_ends[obs_model_setup.links.observed_body] = obs_model_setup.links.body_origin_link_end_id(
-        cfg.target
+        dataset_cfg.target
     )
     link_ends[obs_model_setup.links.observer] = obs_model_setup.links.body_origin_link_end_id(
-        cfg.observer
+        dataset_cfg.observer
     )
     link_definition = obs_model_setup.links.LinkDefinition(link_ends)
 
-    match cfg.observable_type:
+    match dataset_cfg.observable_type:
         case "relative_cartesian_position":
             # Create observation model
             observation_model = obs_model_setup.model_settings.relative_cartesian_position(
@@ -91,7 +91,7 @@ def create_simulated_dataset(
             )
             obs_setup.random_noise.add_gaussian_noise_to_observable(
                 [single_setting],
-                cfg.noise_sigma,
+                dataset_cfg.noise_sigma,
                 obs_model_setup.model_settings.relative_position_observable_type,
             )
     # Create observation simulators

@@ -51,4 +51,4 @@ def create_observation_dataset(cfg: DictConfig, dataset_cfg: DictConfig, system_
         
     except ValueError as e:
         logger.error(f"Failed to find factory for dataset type '{dataset_type}'. Error: {e}")
-        return None, None
+        raise

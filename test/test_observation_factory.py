@@ -110,26 +110,28 @@ class TestCentralFactory:
         factory_calls = []
 
         @register_dataset_factory("test_dispatch")
-        def factory(cfg, system):
-            factory_calls.append((cfg.type, system))
+        def factory(cfg, dataset_cfg, system):
+            factory_calls.append((dataset_cfg.type, system))
             return "dataset", "settings"
 
-        cfg = OmegaConf.create({"type": "test_dispatch", "file": "test.csv", "weight": 1.0})
+        dataset_cfg = OmegaConf.create({"type": "test_dispatch", "file": "test.csv", "weight": 1.0})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
 
-        assert create_observation_dataset(cfg, system_of_bodies) == ("dataset", "settings")
+        assert create_observation_dataset(cfg, dataset_cfg, system_of_bodies) == ("dataset", "settings")
         assert factory_calls == [("test_dispatch", system_of_bodies)]
 
     def test_missing_type_field_raises_error(self):
-        cfg = OmegaConf.create({"file": "test.csv", "weight": 1.0})
-
+        dataset_cfg = OmegaConf.create({"file": "test.csv", "weight": 1.0})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
+        
         with pytest.raises(ValueError, match="must have a 'type' field"):
-            create_observation_dataset(cfg, SimpleNamespace())
+            create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
 
     def test_unknown_type_raises_error(self):
-        cfg = OmegaConf.create({"type": "unknown_modality_xyz", "file": "test.csv"})
-
+        dataset_cfg = OmegaConf.create({"type": "unknown_modality_xyz", "file": "test.csv"})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
         with pytest.raises(ValueError, match="No factory registered"):
-            create_observation_dataset(cfg, SimpleNamespace())
+            create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
 
 
 class TestCollectionBuilder:
@@ -146,22 +148,22 @@ class TestCollectionBuilder:
 
         created = []
 
-        def fake_create_observation_dataset(dataset_cfg, system):
+        def fake_create_observation_dataset(cfg, dataset_cfg, system):
             created.append((dataset_cfg.type, system))
             return f"dataset:{dataset_cfg.type}", f"settings:{dataset_cfg.type}"
 
-        merge_mock = MagicMock(return_value="merged-collection")
+        collection_mock = MagicMock(return_value="observation-collection")
 
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
         )
-        monkeypatch.setattr(collection_module.obs, "merge_observation_collections", merge_mock)
+        monkeypatch.setattr(collection_module.obs, "ObservationCollection", collection_mock)
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result == ("merged-collection", ["settings:alpha", "settings:beta"])
+        assert result == ("observation-collection", ["settings:alpha", "settings:beta"])
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
-        merge_mock.assert_called_once_with(["dataset:alpha", "dataset:beta"])
+        collection_mock.assert_called_once_with(["dataset:alpha", "dataset:beta"])
 
     def test_collection_missing_datasets_key_raises_error(self):
         collection_cfg = OmegaConf.create({"name": "test"})

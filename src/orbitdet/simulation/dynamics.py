@@ -1,9 +1,12 @@
+import logging
+
 from omegaconf import DictConfig
 from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import propagation_setup as prop_setup
 
 from orbitdet.reproducibility.runtime import RuntimeContext
 
+logger = logging.getLogger(__name__)
 
 def get_dynamical_model(
     cfg: DictConfig, ctx: RuntimeContext, bodies: env.SystemOfBodies
@@ -37,6 +40,7 @@ def get_dynamical_model(
                             f"""Gravity model 'Jacobson2009' is only defined for Neptune, 
                             but {affected_body} is set to use it"""
                         )
+                    logger.warning("Fix gravity")
                     accelerations.setdefault(affected_body, {})[perturbing_body] = [
                         prop_setup.acceleration.point_mass_gravity(),
                         prop_setup.acceleration.spherical_harmonic_gravity(4, 0),

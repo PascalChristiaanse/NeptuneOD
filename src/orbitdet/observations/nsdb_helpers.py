@@ -138,8 +138,8 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         6. Minute of right ascension (alpha, m)
         7. Second of right ascension (alpha, s)
         8. Degree of declination (delta, deg)
-        9. Minute of declination (delta, '  )
-        10. Second of declination (delta, '' )
+        9. Minute of declination (delta, arcmin)
+        10. Second of declination (delta, arcsec)
         ---
 
     """

@@ -82,7 +82,7 @@ def convert_time_to_seconds_since_j2000_TDB(
     return pd.Series(seconds_since_j2000_TDB)
 
 
-OBSERVATORY_INFO_FILE = "data/Observatories.txt"  # https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
+OBSERVATORY_INFO_FILE = "observatories.txt"  # https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
 
 
 def _observatory_info(
@@ -99,11 +99,9 @@ def _observatory_info(
     """
     observatory_code = normalize_observatory_code(observatory_code)
 
-    observatories_file = Path(cfg.data_folder) / "observatories.txt"
+    observatories_file = Path(cfg.data_folder) / OBSERVATORY_INFO_FILE
 
-    with open(
-        observatories_file
-    ) as file:  # https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
+    with open(observatories_file) as file:
         lines = file.readlines()
         for line in lines[1:]:  # Ignore the first line
             columns = line.split()

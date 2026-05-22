@@ -50,7 +50,10 @@ def test_initialize_blocks_dirty_repository(tmp_path, monkeypatch):
         raise AssertionError(f"Unexpected command: {cmd}")
 
     def raise_dirty():
-        raise RuntimeError("Repository has uncommitted changes. Commit or stash changes before running experiments.")
+        raise RuntimeError(
+            """Repository has uncommitted changes. Commit """
+            """or stash changes before running experiments."""
+        )
 
     monkeypatch.setattr(runtime.subprocess, "check_output", fake_check_output)
     monkeypatch.setattr(runtime, "assert_clean_repo", raise_dirty)

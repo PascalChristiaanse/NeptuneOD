@@ -1,3 +1,5 @@
+import contextlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -10,8 +12,10 @@ from orbitdet.reproducibility import runtime
 
 @pytest.fixture(autouse=True)
 def reset_runtime_context():
+    runtime._stop_native_fd_capture()
     runtime._CONTEXT = None
     yield
+    runtime._stop_native_fd_capture()
     runtime._CONTEXT = None
 
 
@@ -75,6 +79,38 @@ def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):
     assert (tmp_path / "conda_environment.yaml").exists()
 
 
+def test_save_conda_environment_uses_quiet_fallback_when_conda_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: None)
+    check_output = MagicMock(side_effect=AssertionError("should not call subprocess"))
+    monkeypatch.setattr(runtime.subprocess, "check_output", check_output)
+
+    runtime.save_conda_environment(tmp_path)
+
+    check_output.assert_not_called()
+    content = (tmp_path / "conda_environment.yaml").read_text()
+    assert "conda was not found in PATH" in content
+
+
+def test_initialize_starts_native_fd_capture(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime, "get_git_commit", MagicMock(return_value="abc123"))
+    monkeypatch.setattr(runtime, "save_conda_environment", MagicMock())
+    monkeypatch.setattr(runtime, "setup_logging", MagicMock())
+    start_capture = MagicMock()
+    monkeypatch.setattr(runtime, "_start_native_fd_capture", start_capture)
+    monkeypatch.setattr(
+        runtime.HydraConfig,
+        "get",
+        staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
+    )
+
+    cfg = OmegaConf.create({"seed": 11})
+
+    ctx = runtime.initialize(cfg)
+
+    assert ctx.seed == 11
+    start_capture.assert_called_once()
+
+
 def test_setup_logging_configures_root_and_muted_loggers(monkeypatch):
     basic_config = MagicMock()
     logger_map = {}
@@ -114,6 +150,64 @@ def test_setup_logging_configures_root_and_muted_loggers(monkeypatch):
     logger_map["tudatpy"].setLevel.assert_called_once_with("WARNING")
     logger_map["matplotlib"].setLevel.assert_called_once_with(fake_logging.WARNING)
     logger_map["orbitdet.data.kernel"].setLevel.assert_called_once_with(fake_logging.WARNING)
+
+
+def test_fd_capture_forwards_lines_and_restores_fd():
+    logger = MagicMock()
+    mirror_read_fd, mirror_write_fd = os.pipe()
+    target_fd = os.dup(mirror_write_fd)
+
+    try:
+        capture = runtime.FdCapture(target_fd, logger, runtime.logging.INFO)
+        capture.start()
+
+        os.write(target_fd, b"first line\nsecond line\n")
+
+        capture.stop()
+        os.close(target_fd)
+        os.close(mirror_write_fd)
+
+        mirrored = os.read(mirror_read_fd, 4096).decode().replace("\r\n", "\n")
+
+        logger.log.assert_any_call(runtime.logging.INFO, "first line")
+        logger.log.assert_any_call(runtime.logging.INFO, "second line")
+        assert mirrored == "first line\nsecond line\n"
+    finally:
+        os.close(mirror_read_fd)
+        with contextlib.suppress(OSError):
+            os.close(mirror_write_fd)
+        with contextlib.suppress(OSError):
+            os.close(target_fd)
+
+
+def test_fd_capture_ignores_python_formatted_log_lines():
+    logger = MagicMock()
+    mirror_read_fd, mirror_write_fd = os.pipe()
+    target_fd = os.dup(mirror_write_fd)
+
+    try:
+        capture = runtime.FdCapture(target_fd, logger, runtime.logging.INFO)
+        capture.start()
+
+        os.write(
+            target_fd,
+            b"[2026-05-21 15:57:18,581][orbitdet.reproducibility.runtime][INFO] - already logged\n",
+        )
+
+        capture.stop()
+        os.close(target_fd)
+        os.close(mirror_write_fd)
+
+        mirrored = os.read(mirror_read_fd, 4096).decode()
+
+        logger.log.assert_not_called()
+        assert "already logged" in mirrored
+    finally:
+        os.close(mirror_read_fd)
+        with contextlib.suppress(OSError):
+            os.close(mirror_write_fd)
+        with contextlib.suppress(OSError):
+            os.close(target_fd)
 
 
 def test_initialize_returns_existing_context_without_reinitializing(monkeypatch):

@@ -90,8 +90,52 @@ class KernelManager:
         )
         for kernel in self._cfg.kernels.keys():
             path = Path(self._cfg.kernel_folder + "/" + kernel)
+            loaded_kernels = self.get_current_kernels()[0]
+            if kernel in loaded_kernels:
+                logger.warning(f"Kernel {kernel} already loaded, skipping")
+                continue
+            loaded_files = self.get_current_kernels()[1]
+            if str(path.resolve()) in loaded_files:
+                logger.error(f"Kernel {kernel} already loaded from {path}!")
+                raise RuntimeError(f"Kernel {kernel} already loaded from {path}!")
+
             if not path.exists():
                 raise FileNotFoundError(f"Required kernel {kernel} not found at {path}")
             logger.info(f"Loading kernel {kernel} from {path}")
             spice.load_kernel(str(path.resolve()))
-            spiceypy.furnsh(str(path.resolve()))
+            # spiceypy.furnsh(str(path.resolve())) spice and spiceypy share the same kernel pool,
+            # so loading with one library makes the kernels available to the other
+            # self.log_current_kernel_pool()
+
+    def log_current_kernel_pool(self):
+        logger.info("Current loaded kernels:")
+
+        # Log ALL loaded kernels sorted by type
+        kernel_count = spiceypy.ktotal("ALL")
+        kernel_types = set()
+        for i in range(kernel_count):
+            kernel_type = spiceypy.kdata(i, "ALL")[0]
+            # Collect unique kernel types based on extension
+            ktype = kernel_type.split(".")[-1].upper()  # Get extension and convert to uppercase
+            kernel_types.add(ktype)
+
+        for kernel_type in sorted(kernel_types):
+            logger.info(f"  {kernel_type} kernels:")
+            for i in range(kernel_count):
+                kernel_path, _, _, _ = spiceypy.kdata(i, "ALL")
+                ktype_i = kernel_path.split(".")[-1].upper()
+                kernel_name = kernel_path.split("/")[-1]  # Get just the filename
+                if ktype_i == kernel_type:
+                    logger.info(f"    {kernel_name} ({kernel_path})")
+
+    def get_current_kernels(self) -> tuple[set[str], set[str]]:
+        """Get the set of currently loaded kernels and files in the kernel folder"""
+        kernel_count = spiceypy.ktotal("ALL")
+        kernels = set()
+        kernel_files = set()
+        for i in range(kernel_count):
+            kernel_path, _, _, _ = spiceypy.kdata(i, "ALL")
+            kernel_name = kernel_path.split("/")[-1]  # Get just the filename
+            kernels.add(kernel_name)
+            kernel_files.add(kernel_path)
+        return kernels, kernel_files

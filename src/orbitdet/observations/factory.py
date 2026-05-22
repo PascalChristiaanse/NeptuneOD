@@ -10,7 +10,9 @@ from .registry import get_factory
 logger = logging.getLogger(__name__)
 
 
-def create_observation_dataset(cfg: DictConfig, dataset_cfg: DictConfig, system_of_bodies: env.SystemOfBodies) -> tuple:
+def create_observation_dataset(
+    cfg: DictConfig, dataset_cfg: DictConfig, system_of_bodies: env.SystemOfBodies
+) -> tuple:
     """Create an observation dataset from configuration.
 
     This is the central dispatcher that:
@@ -48,7 +50,7 @@ def create_observation_dataset(cfg: DictConfig, dataset_cfg: DictConfig, system_
 
         logger.debug(f"Successfully created observation dataset of type '{dataset_type}'")
         return dataset, model_settings
-        
+
     except ValueError as e:
         logger.error(f"Failed to find factory for dataset type '{dataset_type}'. Error: {e}")
         raise

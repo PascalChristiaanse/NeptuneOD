@@ -91,10 +91,10 @@ def _observatory_info(
     elif len(observatory_code) == 1:  # Making sure 098 and 98 are the same
         observatory_code = "00" + observatory_code
 
-    observatories_file = Path(cfg.data_folder) / 'observatories.txt'
+    observatories_file = Path(cfg.data_folder) / "observatories.txt"
 
     with open(
-        observatories_file, "r"
+        observatories_file
     ) as file:  # https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
         lines = file.readlines()
         for line in lines[1:]:  # Ignore the first line

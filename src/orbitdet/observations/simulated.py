@@ -61,7 +61,8 @@ def create_simulated_dataset(
     logger.info(
         f"""Generating observations at {len(observation_times)} epochs """
         f"""from {dataset_cfg.start_date_observation_period}"""
-        f"""to {dataset_cfg.end_date_observation_period} with cadence {dataset_cfg.cadence} seconds."""
+        f"""to {dataset_cfg.end_date_observation_period} with """
+        f"""cadence {dataset_cfg.cadence} seconds."""
     )
 
     # Setup link ends

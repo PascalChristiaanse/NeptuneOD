@@ -117,13 +117,16 @@ class TestCentralFactory:
         dataset_cfg = OmegaConf.create({"type": "test_dispatch", "file": "test.csv", "weight": 1.0})
         cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
 
-        assert create_observation_dataset(cfg, dataset_cfg, system_of_bodies) == ("dataset", "settings")
+        assert create_observation_dataset(cfg, dataset_cfg, system_of_bodies) == (
+            "dataset",
+            "settings",
+        )
         assert factory_calls == [("test_dispatch", system_of_bodies)]
 
     def test_missing_type_field_raises_error(self):
         dataset_cfg = OmegaConf.create({"file": "test.csv", "weight": 1.0})
         cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
-        
+
         with pytest.raises(ValueError, match="must have a 'type' field"):
             create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
 

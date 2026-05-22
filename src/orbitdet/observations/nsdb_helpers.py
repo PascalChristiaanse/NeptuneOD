@@ -291,11 +291,7 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         dec_second_column = _find_column(dataframe, "declination", "second")
 
     # If we have component columns for RA, convert to decimal degrees
-    if (
-        ra_hour_column is not None
-        or ra_minute_column is not None
-        or ra_second_column is not None
-    ):
+    if ra_hour_column is not None or ra_minute_column is not None or ra_second_column is not None:
         ra_hours = _numeric_series(dataframe, ra_hour_column)
         ra_minutes = _numeric_series(dataframe, ra_minute_column)
         ra_seconds = _numeric_series(dataframe, ra_second_column)
@@ -320,9 +316,7 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         # The sign of declination comes from the degree component
         sign = np.sign(dec_degrees).replace(0, 1)
         dec_decimal = sign * (
-            np.abs(dec_degrees)
-            + np.abs(dec_minutes) / 60.0
-            + np.abs(dec_seconds) / 3600.0
+            np.abs(dec_degrees) + np.abs(dec_minutes) / 60.0 + np.abs(dec_seconds) / 3600.0
         )
         dec_column = "dec"
         dataframe[dec_column] = dec_decimal

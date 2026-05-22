@@ -31,9 +31,7 @@ class RuntimeContext:
 
 _CONTEXT: RuntimeContext | None = None
 _NATIVE_FD_CAPTURES: tuple["FdCapture", "FdCapture"] | None = None
-_PYTHON_LOG_LINE_PATTERN = re.compile(
-    r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\]"
-)
+_PYTHON_LOG_LINE_PATTERN = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\]")
 
 
 class FdCapture:
@@ -60,7 +58,7 @@ class FdCapture:
         """Read from the captured fd and log each line."""
         assert self._read_fd is not None
         assert self._original_fd is not None
-        
+
         encoding = getattr(sys.stderr, "encoding", None) or "utf-8"
         buffer = b""
 
@@ -100,7 +98,7 @@ class FdCapture:
 
             self._original_fd = os.dup(self._fd)
             read_fd, write_fd = os.pipe()
-            
+
             self._read_fd = read_fd
             os.dup2(write_fd, self._fd)
             os.close(write_fd)

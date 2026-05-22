@@ -8,6 +8,7 @@ from orbitdet.reproducibility.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
+
 def get_dynamical_model(
     cfg: DictConfig, ctx: RuntimeContext, bodies: env.SystemOfBodies
 ) -> dict[str, dict[str, list[prop_setup.acceleration.AccelerationSettings]]]:

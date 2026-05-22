@@ -10,10 +10,11 @@ from orbitdet.reproducibility.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
+
 def get_environment(cfg: DictConfig, ctx: RuntimeContext) -> env.SystemOfBodies:
     """Factory function to create Environment instance based on configuration."""
     logger.warning("Earth shape not set yet, introduces some slight error")
-    
+
     body_settings = env_setup.get_default_body_settings(
         list(cfg.bodies_to_create.keys()),
         cfg.global_frame_origin,

@@ -79,9 +79,7 @@ def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):
     assert (tmp_path / "conda_environment.yaml").exists()
 
 
-def test_save_conda_environment_uses_quiet_fallback_when_conda_missing(
-    tmp_path, monkeypatch
-):
+def test_save_conda_environment_uses_quiet_fallback_when_conda_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime.shutil, "which", lambda name: None)
     check_output = MagicMock(side_effect=AssertionError("should not call subprocess"))
     monkeypatch.setattr(runtime.subprocess, "check_output", check_output)

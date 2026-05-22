@@ -110,26 +110,31 @@ class TestCentralFactory:
         factory_calls = []
 
         @register_dataset_factory("test_dispatch")
-        def factory(cfg, system):
-            factory_calls.append((cfg.type, system))
+        def factory(cfg, dataset_cfg, system):
+            factory_calls.append((dataset_cfg.type, system))
             return "dataset", "settings"
 
-        cfg = OmegaConf.create({"type": "test_dispatch", "file": "test.csv", "weight": 1.0})
+        dataset_cfg = OmegaConf.create({"type": "test_dispatch", "file": "test.csv", "weight": 1.0})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
 
-        assert create_observation_dataset(cfg, system_of_bodies) == ("dataset", "settings")
+        assert create_observation_dataset(cfg, dataset_cfg, system_of_bodies) == (
+            "dataset",
+            "settings",
+        )
         assert factory_calls == [("test_dispatch", system_of_bodies)]
 
     def test_missing_type_field_raises_error(self):
-        cfg = OmegaConf.create({"file": "test.csv", "weight": 1.0})
+        dataset_cfg = OmegaConf.create({"file": "test.csv", "weight": 1.0})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
 
         with pytest.raises(ValueError, match="must have a 'type' field"):
-            create_observation_dataset(cfg, SimpleNamespace())
+            create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
 
     def test_unknown_type_raises_error(self):
-        cfg = OmegaConf.create({"type": "unknown_modality_xyz", "file": "test.csv"})
-
+        dataset_cfg = OmegaConf.create({"type": "unknown_modality_xyz", "file": "test.csv"})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
         with pytest.raises(ValueError, match="No factory registered"):
-            create_observation_dataset(cfg, SimpleNamespace())
+            create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
 
 
 class TestCollectionBuilder:
@@ -146,11 +151,11 @@ class TestCollectionBuilder:
 
         created = []
 
-        def fake_create_observation_dataset(dataset_cfg, system):
+        def fake_create_observation_dataset(cfg, dataset_cfg, system):
             created.append((dataset_cfg.type, system))
             return f"dataset:{dataset_cfg.type}", f"settings:{dataset_cfg.type}"
 
-        merge_mock = MagicMock(return_value="merged-collection")
+        merge_mock = MagicMock(return_value="observation-collection")
 
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
@@ -159,7 +164,7 @@ class TestCollectionBuilder:
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result == ("merged-collection", ["settings:alpha", "settings:beta"])
+        assert result == ("observation-collection", ["settings:alpha", "settings:beta"])
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
         merge_mock.assert_called_once_with(["dataset:alpha", "dataset:beta"])
 
@@ -168,6 +173,39 @@ class TestCollectionBuilder:
 
         with pytest.raises(ValueError, match="must have a 'datasets' list"):
             create_observation_collection(collection_cfg, SimpleNamespace())
+
+    def test_collection_keeps_dataset_and_settings_alignment_when_filtering(self, monkeypatch):
+        system_of_bodies = SimpleNamespace()
+        collection_cfg = OmegaConf.create(
+            {
+                "datasets": {
+                    "first": {"type": "alpha", "file": "data1.csv", "weight": 1.0},
+                    "second": {"type": "beta", "file": "data2.csv", "weight": 0.8},
+                    "third": {"type": "gamma", "file": "data3.csv", "weight": 0.7},
+                }
+            }
+        )
+
+        created = [
+            ("dataset:alpha", "settings:alpha"),
+            (None, "settings:beta"),
+            ("dataset:gamma", None),
+        ]
+
+        def fake_create_observation_dataset(cfg, dataset_cfg, system):
+            return created.pop(0)
+
+        merge_mock = MagicMock(return_value="observation-collection")
+
+        monkeypatch.setattr(
+            collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(collection_module.obs, "merge_observation_collections", merge_mock)
+
+        result = create_observation_collection(collection_cfg, system_of_bodies)
+
+        assert result == ("observation-collection", ["settings:alpha"])
+        merge_mock.assert_called_once_with(["dataset:alpha"])
 
     def test_collection_not_dictconfig_raises_error(self):
         with pytest.raises(TypeError, match="Expected DictConfig"):

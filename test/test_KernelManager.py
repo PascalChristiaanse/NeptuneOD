@@ -58,6 +58,7 @@ class TestKernelManager:
                 "pck00010.tpc": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc",
                 "naif0012.tls": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
             },
+            data_folder=str(tmp_path),
         )
 
         km = KernelManager(cfg)
@@ -76,6 +77,22 @@ class TestKernelManager:
             str(tmp_path),
         )
         assert mock_fetch.call_count == 2
+
+    def test_init_allows_missing_optional_data_configuration(self, tmp_path: Path) -> None:
+        cfg = SimpleNamespace(kernel_folder=str(tmp_path), kernels={})
+
+        km = KernelManager(cfg)
+
+        assert km._cfg is cfg
+
+    def test_download_all_data_files_noops_without_optional_data_configuration(self) -> None:
+        km = KernelManager.__new__(KernelManager)
+        km._cfg = SimpleNamespace()
+
+        with patch.object(km, "_fetch") as mock_fetch:
+            km.download_all_data_files()
+
+        mock_fetch.assert_not_called()
 
     def test_downloads_kernel_by_streaming_chunks_when_content_is_empty(
         self, tmp_path: Path

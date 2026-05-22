@@ -22,6 +22,18 @@ class KernelManager:
 
         if not Path(self._cfg.kernel_folder).exists():
             raise FileNotFoundError(f"Kernel path {self._cfg.kernel_folder} does not exist")
+        data_folder = getattr(self._cfg, "data_folder", None)
+        if data_folder is not None and not Path(data_folder).exists():
+            raise FileNotFoundError(f"Data path {data_folder} does not exist")
+
+    def download_all_data_files(self):
+        data_files = getattr(self._cfg, "data_files", None)
+        data_folder = getattr(self._cfg, "data_folder", None)
+        if not data_files or not data_folder:
+            return
+
+        for file, url in self._cfg.data_files.items():
+            self._fetch(url, file, self._cfg.data_folder)
 
     def download_all_kernels(self):
         for kernel, url in self._cfg.kernels.items():

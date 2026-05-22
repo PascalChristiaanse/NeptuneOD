@@ -3,6 +3,7 @@ name: NeptuneOD
 channels:
   - conda-forge
   - tudat-team
+  - tudat-team/label/dev
 dependencies:
   - python=3.12
   - pip>=23.3          # Ensure pip supports 
@@ -12,7 +13,7 @@ dependencies:
   - ruff
 
   # Tudatpy requirements
-  - tudatpy
+  - tudatpy=1.0.0.dev53
   - matplotlib # =3.9.2 Maybe this breaks stuff
   - scipy
   - pandas

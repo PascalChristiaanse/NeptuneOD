@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def create_observation_collection(
     cfg: DictConfig, system_of_bodies: env.SystemOfBodies
-) -> list[Any]:
+) -> tuple[obs.ObservationCollection, list[Any]]:
     """Build an observation collection from multiple dataset configs.
 
     Iterates through dataset configurations in a collection, dispatches each through
@@ -56,7 +56,7 @@ def create_observation_collection(
     for idx, (set_name, dataset_cfg) in enumerate(datasets.items()):
         try:
             logger.debug(f"Creating dataset {set_name} ({idx + 1}/{len(datasets)})")
-            dataset, model_settings = create_observation_dataset(dataset_cfg, system_of_bodies)
+            dataset, model_settings = create_observation_dataset(cfg, dataset_cfg, system_of_bodies)
             observation_sets.append(dataset)
             model_setting.append(model_settings)
             logger.debug(f"Successfully created dataset {set_name} ({idx + 1}/{len(datasets)})")
@@ -66,6 +66,14 @@ def create_observation_collection(
             )
             raise
 
+    paired_sets = [
+        (dataset, settings)
+        for dataset, settings in zip(observation_sets, model_setting)
+        if dataset is not None and settings is not None
+    ]
+    observation_sets = [dataset for dataset, _ in paired_sets]
+    model_setting = [settings for _, settings in paired_sets]
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
     observation_collection = obs.merge_observation_collections(observation_sets)
+
     return observation_collection, model_setting

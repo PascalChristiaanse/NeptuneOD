@@ -174,6 +174,39 @@ class TestCollectionBuilder:
         with pytest.raises(ValueError, match="must have a 'datasets' list"):
             create_observation_collection(collection_cfg, SimpleNamespace())
 
+    def test_collection_keeps_dataset_and_settings_alignment_when_filtering(self, monkeypatch):
+        system_of_bodies = SimpleNamespace()
+        collection_cfg = OmegaConf.create(
+            {
+                "datasets": {
+                    "first": {"type": "alpha", "file": "data1.csv", "weight": 1.0},
+                    "second": {"type": "beta", "file": "data2.csv", "weight": 0.8},
+                    "third": {"type": "gamma", "file": "data3.csv", "weight": 0.7},
+                }
+            }
+        )
+
+        created = [
+            ("dataset:alpha", "settings:alpha"),
+            (None, "settings:beta"),
+            ("dataset:gamma", None),
+        ]
+
+        def fake_create_observation_dataset(cfg, dataset_cfg, system):
+            return created.pop(0)
+
+        collection_mock = MagicMock(return_value="observation-collection")
+
+        monkeypatch.setattr(
+            collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(collection_module.obs, "ObservationCollection", collection_mock)
+
+        result = create_observation_collection(collection_cfg, system_of_bodies)
+
+        assert result == ("observation-collection", ["settings:alpha"])
+        collection_mock.assert_called_once_with(["dataset:alpha"])
+
     def test_collection_not_dictconfig_raises_error(self):
         with pytest.raises(TypeError, match="Expected DictConfig"):
             create_observation_collection({"datasets": []}, SimpleNamespace())

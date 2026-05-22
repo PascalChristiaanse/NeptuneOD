@@ -14,9 +14,13 @@ logger = logging.getLogger(__name__)
 ISO_TIME_COLUMN = "iso_time"
 
 
+def normalize_observatory_code(observatory_code: int | str) -> str:
+    return str(observatory_code).strip().zfill(3)
+
+
 def convert_time_to_seconds_since_j2000_TDB(
     dataframe: pd.DataFrame,
-    observatory_code: int,
+    observatory_code: int | str,
     system_of_bodies: env.SystemOfBodies,
     timescale: str,
 ) -> pd.Series:
@@ -36,9 +40,13 @@ def convert_time_to_seconds_since_j2000_TDB(
 
     # Convert iso string to epoch using time_rep.iso_string_to_epoch
     iso_times = dataframe[ISO_TIME_COLUMN].tolist()
-    epochs = [time_rep.iso_string_to_epoch(iso_time) for iso_time in iso_times]
+    epochs = [
+        np.nan if pd.isna(iso_time) else time_rep.iso_string_to_epoch(iso_time)
+        for iso_time in iso_times
+    ]
     # Get observatory position
-    observatory = system_of_bodies.get_body("Earth").get_ground_station(observatory_code)
+    station_name = normalize_observatory_code(observatory_code)
+    observatory = system_of_bodies.get_body("Earth").get_ground_station(station_name)
     obs_position = observatory.station_state.cartesian_position_at_reference_epoch
 
     # Reuse TudatPy's default time scale converter instance for each conversion.
@@ -58,6 +66,9 @@ def convert_time_to_seconds_since_j2000_TDB(
 
     seconds_since_j2000_TDB = []
     for epoch in epochs:
+        if pd.isna(epoch):
+            seconds_since_j2000_TDB.append(np.nan)
+            continue
         # Convert input epoch to TDB
         epoch_tdb = tsc.convert_time(
             tudat_timescale,
@@ -76,7 +87,7 @@ OBSERVATORY_INFO_FILE = "data/Observatories.txt"  # https://www.projectpluto.com
 
 def _observatory_info(
     cfg: DictConfig,
-    observatory_code: int,
+    observatory_code: int | str,
 ) -> tuple[float, float, float]:  # Positive to north and east
     """Retrieve the station position from observatories.txt
 
@@ -86,10 +97,7 @@ def _observatory_info(
     Returns:
         tuple: longitude, latitude, and altitude of the observatory
     """
-    if len(observatory_code) == 2:  # Making sure 098 and 98 are the same
-        observatory_code = "0" + observatory_code
-    elif len(observatory_code) == 1:  # Making sure 098 and 98 are the same
-        observatory_code = "00" + observatory_code
+    observatory_code = normalize_observatory_code(observatory_code)
 
     observatories_file = Path(cfg.data_folder) / "observatories.txt"
 
@@ -104,11 +112,11 @@ def _observatory_info(
                 latitude = float(columns[3])
                 altitude = float(columns[4])
                 return np.deg2rad(longitude), np.deg2rad(latitude), altitude
-        print("No matching Observatory found")
+        raise ValueError(f"No matching observatory found for code {observatory_code}")
 
 
 def add_observatory_to_SOB(
-    cfg: DictConfig, system_of_bodies: env.SystemOfBodies, observatory_code: int
+    cfg: DictConfig, system_of_bodies: env.SystemOfBodies, observatory_code: int | str
 ):
     """Add the observatory as a ground station to the system of bodies.
 
@@ -120,14 +128,16 @@ def add_observatory_to_SOB(
         None. The system_of_bodies is modified in place.
     """
 
+    station_name = normalize_observatory_code(observatory_code)
+
     # Test if ground station already exists
     try:
-        system_of_bodies.get_body("Earth").get_ground_station(str(observatory_code))
+        system_of_bodies.get_body("Earth").get_ground_station(station_name)
     except RuntimeError:
         pass
     else:
         logger.info(
-            f"Ground station with code {observatory_code} already exists in the system of bodies."
+            f"Ground station with code {station_name} already exists in the system of bodies."
         )
         return
 
@@ -138,7 +148,7 @@ def add_observatory_to_SOB(
 
     env_setup.add_ground_station(
         system_of_bodies.get_body("Earth"),
-        observatory_code,
+        station_name,
         [observatory_altitude, observatory_latitude, observatory_longitude],
         element_conversion.geodetic_position_type,
     )

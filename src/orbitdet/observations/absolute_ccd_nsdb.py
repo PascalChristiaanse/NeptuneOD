@@ -1,4 +1,4 @@
-"""Simulated observation dataset factory."""
+"""Absolute CCD NSDB observation dataset factory."""
 
 import logging
 
@@ -9,7 +9,11 @@ import tudatpy.estimation.observable_models_setup as obs_model_setup
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig
 
-from .helpers import add_observatory_to_SOB, convert_time_to_seconds_since_j2000_TDB
+from .helpers import (
+    add_observatory_to_SOB,
+    convert_time_to_seconds_since_j2000_TDB,
+    normalize_observatory_code,
+)
 from .nsdb_helpers import set_iso_time_column, set_ra_dec_columns
 from .registry import register_dataset_factory
 
@@ -27,7 +31,7 @@ def create_absolute_ccd_dataset(
         system_of_bodies: The environment containing the bodies for which to create the dataset.
 
     Returns:
-        Tuple of (ObservationCollection, ObservationModelSettings) for the simulated dataset.
+        Tuple of (ObservationCollection, ObservationModelSettings) for the absolute CCD dataset.
 
     """
     logger.info(f"""Creating absolute CCD observation dataset: {dataset_cfg.identifier}.""")
@@ -63,12 +67,14 @@ def create_absolute_ccd_dataset(
     data_file.columns = col_names
     set_iso_time_column(data_file)
 
+    station_name = normalize_observatory_code(dataset_cfg.observatory.code)
+
     # Ensure observatory exists in the system of bodies
-    add_observatory_to_SOB(cfg, system_of_bodies, str(dataset_cfg.observatory.code))
+    add_observatory_to_SOB(cfg, system_of_bodies, station_name)
 
     # Convert times to seconds since J2000 epoch TDB for Tudat using station position
     convert_time_to_seconds_since_j2000_TDB(
-        data_file, str(dataset_cfg.observatory.code), system_of_bodies, dataset_cfg.time_scale
+        data_file, station_name, system_of_bodies, dataset_cfg.time_scale
     )
 
     # extract data for observation set
@@ -92,7 +98,7 @@ def create_absolute_ccd_dataset(
     )
     link_ends[obs_model_setup.links.receiver] = (
         obs_model_setup.links.body_reference_point_link_end_id(
-            "Earth", str(dataset_cfg.observatory.code)
+            "Earth", station_name
         )
     )
     link_definition = obs_model_setup.links.LinkDefinition(link_ends)

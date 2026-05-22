@@ -41,16 +41,14 @@ def create_observation_dataset(
 
     logger.debug(f"Creating observation dataset of type '{dataset_type}'")
 
-    # Get the factory for this type
     try:
         factory = get_factory(dataset_type)
-
-        # Invoke the factory
-        dataset, model_settings = factory(cfg, dataset_cfg, system_of_bodies)
-
-        logger.debug(f"Successfully created observation dataset of type '{dataset_type}'")
-        return dataset, model_settings
-
     except ValueError as e:
         logger.error(f"Failed to find factory for dataset type '{dataset_type}'. Error: {e}")
         raise
+
+    # Invoke the factory
+    dataset, model_settings = factory(cfg, dataset_cfg, system_of_bodies)
+
+    logger.debug(f"Successfully created observation dataset of type '{dataset_type}'")
+    return dataset, model_settings

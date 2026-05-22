@@ -66,10 +66,13 @@ def create_observation_collection(
             )
             raise
 
-    # filter out None entries from model_setting
-    model_setting = [m for m in model_setting if m is not None]
-    # filter out None entries from observation_sets
-    observation_sets = [s for s in observation_sets if s is not None]
+    paired_sets = [
+        (dataset, settings)
+        for dataset, settings in zip(observation_sets, model_setting)
+        if dataset is not None and settings is not None
+    ]
+    observation_sets = [dataset for dataset, _ in paired_sets]
+    model_setting = [settings for _, settings in paired_sets]
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
     observation_collection = obs.ObservationCollection(observation_sets)
     # observation_collection = obs.merge_observation_collections(observation_sets)

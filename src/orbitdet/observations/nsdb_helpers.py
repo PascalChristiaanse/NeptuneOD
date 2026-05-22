@@ -50,7 +50,7 @@ def _to_iso_string(timestamp: object) -> str | pd._libs.missing.NAType:
     return pd.Timestamp(timestamp).isoformat()
 
 
-def set_iso_time_column(dataframe: pd.DataFrame) -> pd.Series:
+def set_iso_time_column(dataframe: pd.DataFrame) -> str:
     """
     Infer the observation time columns and add an ISO-8601 timestamp column in place.
 

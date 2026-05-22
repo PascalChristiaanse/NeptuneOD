@@ -1,7 +1,6 @@
 # src/orbitdet/reproducibility/runtime.py
 
 import atexit
-import ctypes
 import errno
 import logging
 import os

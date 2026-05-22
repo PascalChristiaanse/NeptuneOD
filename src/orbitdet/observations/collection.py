@@ -75,5 +75,4 @@ def create_observation_collection(
     model_setting = [settings for _, settings in paired_sets]
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
     observation_collection = obs.ObservationCollection(observation_sets)
-    # observation_collection = obs.merge_observation_collections(observation_sets)
     return observation_collection, model_setting

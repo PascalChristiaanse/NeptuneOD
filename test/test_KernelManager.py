@@ -149,15 +149,18 @@ class TestKernelManager:
             kernels={
                 kernel_name: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
             },
-            data_folder=str(tmp_path),
         )
 
         with (
             patch("orbitdet.data.kernel.spice.load_standard_kernels") as mock_load_standard,
             patch("orbitdet.data.kernel.spice.load_kernel") as mock_load_kernel,
+            patch("orbitdet.data.kernel.spiceypy.furnsh") as mock_furnsh,
+            patch("orbitdet.data.kernel.spiceypy.ktotal", return_value=0),
+            patch("orbitdet.data.kernel.spiceypy.kdata"),
         ):
             km.furnish()
 
         mock_load_standard.assert_called_once()
         expected_path = str(kernel_path.resolve())
         mock_load_kernel.assert_called_once_with(expected_path)
+        mock_furnsh.assert_called_once_with(expected_path)

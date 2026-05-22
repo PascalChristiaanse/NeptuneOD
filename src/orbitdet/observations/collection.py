@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def create_observation_collection(
     cfg: DictConfig, system_of_bodies: env.SystemOfBodies
-) -> list[Any]:
+) -> tuple[obs.ObservationCollection, list[Any]]:
     """Build an observation collection from multiple dataset configs.
 
     Iterates through dataset configurations in a collection, dispatches each through

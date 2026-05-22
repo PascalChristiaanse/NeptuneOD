@@ -155,18 +155,18 @@ class TestCollectionBuilder:
             created.append((dataset_cfg.type, system))
             return f"dataset:{dataset_cfg.type}", f"settings:{dataset_cfg.type}"
 
-        collection_mock = MagicMock(return_value="observation-collection")
+        merge_mock = MagicMock(return_value="observation-collection")
 
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
         )
-        monkeypatch.setattr(collection_module.obs, "ObservationCollection", collection_mock)
+        monkeypatch.setattr(collection_module.obs, "merge_observation_collections", merge_mock)
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
         assert result == ("observation-collection", ["settings:alpha", "settings:beta"])
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
-        collection_mock.assert_called_once_with(["dataset:alpha", "dataset:beta"])
+        merge_mock.assert_called_once_with(["dataset:alpha", "dataset:beta"])
 
     def test_collection_missing_datasets_key_raises_error(self):
         collection_cfg = OmegaConf.create({"name": "test"})
@@ -195,17 +195,17 @@ class TestCollectionBuilder:
         def fake_create_observation_dataset(cfg, dataset_cfg, system):
             return created.pop(0)
 
-        collection_mock = MagicMock(return_value="observation-collection")
+        merge_mock = MagicMock(return_value="observation-collection")
 
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
         )
-        monkeypatch.setattr(collection_module.obs, "ObservationCollection", collection_mock)
+        monkeypatch.setattr(collection_module.obs, "merge_observation_collections", merge_mock)
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
         assert result == ("observation-collection", ["settings:alpha"])
-        collection_mock.assert_called_once_with(["dataset:alpha"])
+        merge_mock.assert_called_once_with(["dataset:alpha"])
 
     def test_collection_not_dictconfig_raises_error(self):
         with pytest.raises(TypeError, match="Expected DictConfig"):

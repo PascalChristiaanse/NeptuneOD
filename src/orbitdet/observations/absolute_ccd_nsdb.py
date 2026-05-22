@@ -97,9 +97,7 @@ def create_absolute_ccd_dataset(
         target
     )
     link_ends[obs_model_setup.links.receiver] = (
-        obs_model_setup.links.body_reference_point_link_end_id(
-            "Earth", station_name
-        )
+        obs_model_setup.links.body_reference_point_link_end_id("Earth", station_name)
     )
     link_definition = obs_model_setup.links.LinkDefinition(link_ends)
     observation_model = obs_model_setup.model_settings.angular_position(link_definition)

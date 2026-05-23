@@ -22,7 +22,7 @@ def plot_residuals(
         observation_collection.get_single_observation_sets(observation_parsers)
     )
 
-    fig, axs = plt.subplots(2, 1, figsize=(8.27*2, 8.27*2 / 2))  # A4 aspect ratio half page
+    fig, axs = plt.subplots(2, 1, figsize=(8.27 * 2, 8.27 * 2 / 2))  # A4 aspect ratio half page
     colors = plt.get_cmap("tab20")
     for set_index, obs_set in enumerate(observation_sets):
         observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
@@ -42,8 +42,7 @@ def plot_residuals(
             marker=".",
             s=30,
             label=(
-                f"{info['name']} - {info['region']} - RMS: "
-                f"{np.std(residuals[:, 0]) * 1e6:.2f} µas"
+                f"{info['name']} - {info['region']} - RMS: {np.std(residuals[:, 0]) * 1e6:.2f} µas"
             ),
             color=color,
         )
@@ -54,8 +53,7 @@ def plot_residuals(
             marker=".",
             s=30,
             label=(
-                f"{info['name']} - {info['region']} - RMS: "
-                f"{np.std(residuals[:, 1]) * 1e6:.2f} µas"
+                f"{info['name']} - {info['region']} - RMS: {np.std(residuals[:, 1]) * 1e6:.2f} µas"
             ),
             color=color,
         )

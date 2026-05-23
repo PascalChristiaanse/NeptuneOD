@@ -59,18 +59,19 @@ def main(cfg: DictConfig):
 
     fig, ax = plot_residuals(cfg, observations)
     logger.info("Pre-fit residuals plotted successfully.")
-        
+
     # Save the figure to the output directory
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     fig_path = output_dir / "prefit_residuals.pdf"
     fig.savefig(fig_path)
     logger.info(f"Pre-fit residuals plot saved to {fig_path}")
-    
+
     # show the plot
     fig.show()
-    
+
     import matplotlib.pyplot as plt
+
     plt.show()
 
 

@@ -92,7 +92,7 @@ def get_observatory_info(cfg: DictConfig, observatory_code: int | str) -> dict:
     Args:
         observatory_code (int): observatory code
     Returns:
-        dict: A dictionary containing the observatory information, including longitude, latitude, 
+        dict: A dictionary containing the observatory information, including longitude, latitude,
         and altitude.
     """
     observatory_code = normalize_observatory_code(observatory_code)

@@ -1,9 +1,12 @@
+import logging
 import re
 
 import numpy as np
 import pandas as pd
 
 ISO_TIME_COLUMN = "iso_time"
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_column_name(column_name: object) -> str:
@@ -123,210 +126,92 @@ def set_iso_time_column(dataframe: pd.DataFrame) -> str:
 
 
 def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
-    """Infer the right ascension and declination columns in the dataframe.
+    """Infer RA/Dec component columns and convert them into decimal-degree columns.
 
-    Args:
-        dataframe: The DataFrame containing the observation data, with columns named according to
-        the format mapping.
-
-    Returns:
-        A tuple of (ra_column_name, dec_column_name) for the right ascension
-        and declination columns.
-
-    Examples:
-        5. Hour   of right ascension (alpha, h)
-        6. Minute of right ascension (alpha, m)
-        7. Second of right ascension (alpha, s)
-        8. Degree of declination (delta, deg)
-        9. Minute of declination (delta, arcmin)
-        10. Second of declination (delta, arcsec)
-        ---
-
+    The dataframe is scanned for column names containing any RA labels (ra, right ascension,
+    alpha) and Dec labels (dec, declination, delta), then matched to hour/minute/second or
+    degree/minute/second components. The converted values are written to new `ra` and `dec`
+    columns.
     """
-    ra_excludes = ["declination", "delta"]
-    dec_excludes = ["ra", "right", "ascension", "alpha"]
-    ra_component_excludes = [
-        "hour of",
-        "minute of",
-        "second of",
-        "observation time",
-        "utc",
+
+    ra_hour_column = None
+    ra_minute_column = None
+    ra_second_column = None
+    dec_degree_column = None
+    dec_minute_column = None
+    dec_second_column = None
+
+    for column_name in dataframe.columns:
+        normalized = _normalize_column_name(column_name)
+
+        has_ra_label = (
+            re.search(r"\bra\b", normalized)
+            or "right ascension" in normalized
+            or re.search(r"\balpha\b", normalized)
+        )
+        has_dec_label = (
+            re.search(r"\bdec\b", normalized)
+            or re.search(r"\bdeclination\b", normalized)
+            or re.search(r"\bdelta\b", normalized)
+        )
+
+        if has_ra_label:
+            if ra_hour_column is None and re.search(r"\bhour\b", normalized):
+                ra_hour_column = str(column_name)
+            elif ra_minute_column is None and re.search(r"\bminute\b", normalized):
+                ra_minute_column = str(column_name)
+            elif ra_second_column is None and re.search(r"\bsecond\b", normalized):
+                ra_second_column = str(column_name)
+
+        if has_dec_label:
+            if dec_degree_column is None and re.search(r"\bdegree\b|\bdeg\b", normalized):
+                dec_degree_column = str(column_name)
+            elif dec_minute_column is None and re.search(r"\bminute\b", normalized):
+                dec_minute_column = str(column_name)
+            elif dec_second_column is None and re.search(r"\bsecond\b", normalized):
+                dec_second_column = str(column_name)
+
+    missing_ra = [
+        part
+        for part, column_name in (
+            ("hour", ra_hour_column),
+            ("minute", ra_minute_column),
+            ("second", ra_second_column),
+        )
+        if column_name is None
+    ]
+    missing_dec = [
+        part
+        for part, column_name in (
+            ("degree", dec_degree_column),
+            ("minute", dec_minute_column),
+            ("second", dec_second_column),
+        )
+        if column_name is None
     ]
 
-    # Try to find RA column already in decimal degrees
-    ra_column = _find_column(dataframe, "ra")
-    if ra_column is None:
-        ra_column = _find_column(dataframe, "alpha")
-    if ra_column is None:
-        ra_column = _find_column(dataframe, "right", "ascension")
+    if missing_ra or missing_dec:
+        message = (
+            "Could not infer right ascension and declination component columns from the dataframe."
+        )
+        if missing_ra:
+            message += f" Missing RA components: {', '.join(missing_ra)}."
+        if missing_dec:
+            message += f" Missing Dec components: {', '.join(missing_dec)}."
+        logger.error(message)
+        raise RuntimeError(message)
 
-    # Try to find Dec column already in decimal degrees
-    dec_column = _find_column(dataframe, "dec")
-    if dec_column is None:
-        dec_column = _find_column(dataframe, "delta")
-    if dec_column is None:
-        dec_column = _find_column(dataframe, "declination")
+    ra_hours = _numeric_series(dataframe, ra_hour_column)
+    ra_minutes = _numeric_series(dataframe, ra_minute_column)
+    ra_seconds = _numeric_series(dataframe, ra_second_column)
+    dataframe["ra"] = (ra_hours + ra_minutes / 60.0 + ra_seconds / 3600.0) * 15.0
 
-    # If we found both in decimal degrees, return them
-    if ra_column is not None and dec_column is not None:
-        return (ra_column, dec_column)
-
-    # Avoid matching time hour/minute/second columns when looking for RA components
-    time_excludes = ra_component_excludes
-
-    # Try to find component columns for RA (hour, minute, second)
-    ra_hour_column = _find_column(
-        dataframe,
-        "ra",
-        "hour",
-        excludes=time_excludes + ra_excludes,
+    dec_degrees = _numeric_series(dataframe, dec_degree_column)
+    dec_minutes = _numeric_series(dataframe, dec_minute_column)
+    dec_seconds = _numeric_series(dataframe, dec_second_column)
+    sign = np.sign(dec_degrees).replace(0, 1)
+    dataframe["dec"] = sign * (
+        np.abs(dec_degrees) + np.abs(dec_minutes) / 60.0 + np.abs(dec_seconds) / 3600.0
     )
-    if ra_hour_column is None:
-        ra_hour_column = _find_column(
-            dataframe,
-            "alpha",
-            "hour",
-            excludes=time_excludes + ra_excludes,
-        )
-    if ra_hour_column is None:
-        ra_hour_column = _find_column(
-            dataframe,
-            "right",
-            "ascension",
-            "hour",
-            excludes=time_excludes,
-        )
 
-    ra_minute_column = _find_column(
-        dataframe,
-        "ra",
-        "minute",
-        excludes=time_excludes + ra_excludes,
-    )
-    if ra_minute_column is None:
-        ra_minute_column = _find_column(
-            dataframe,
-            "alpha",
-            "minute",
-            excludes=time_excludes + ra_excludes,
-        )
-    if ra_minute_column is None:
-        ra_minute_column = _find_column(
-            dataframe,
-            "right",
-            "ascension",
-            "minute",
-            excludes=time_excludes,
-        )
-
-    ra_second_column = _find_column(
-        dataframe,
-        "ra",
-        "second",
-        excludes=time_excludes + ra_excludes,
-    )
-    if ra_second_column is None:
-        ra_second_column = _find_column(
-            dataframe,
-            "alpha",
-            "second",
-            excludes=time_excludes + ra_excludes,
-        )
-    if ra_second_column is None:
-        ra_second_column = _find_column(
-            dataframe,
-            "right",
-            "ascension",
-            "second",
-            excludes=time_excludes,
-        )
-
-    # Try to find component columns for Dec (degree, minute, second)
-    dec_degree_column = _find_column(
-        dataframe,
-        "dec",
-        "degree",
-        excludes=dec_excludes,
-    )
-    if dec_degree_column is None:
-        dec_degree_column = _find_column(
-            dataframe,
-            "delta",
-            "degree",
-            excludes=dec_excludes,
-        )
-    if dec_degree_column is None:
-        dec_degree_column = _find_column(dataframe, "declination", "degree")
-
-    dec_minute_column = _find_column(
-        dataframe,
-        "dec",
-        "minute",
-        excludes=dec_excludes,
-    )
-    if dec_minute_column is None:
-        dec_minute_column = _find_column(
-            dataframe,
-            "delta",
-            "minute",
-            excludes=dec_excludes,
-        )
-    if dec_minute_column is None:
-        dec_minute_column = _find_column(dataframe, "declination", "minute")
-
-    dec_second_column = _find_column(
-        dataframe,
-        "dec",
-        "second",
-        excludes=dec_excludes,
-    )
-    if dec_second_column is None:
-        dec_second_column = _find_column(
-            dataframe,
-            "delta",
-            "second",
-            excludes=dec_excludes,
-        )
-    if dec_second_column is None:
-        dec_second_column = _find_column(dataframe, "declination", "second")
-
-    # If we have component columns for RA, convert to decimal degrees
-    if ra_hour_column is not None or ra_minute_column is not None or ra_second_column is not None:
-        ra_hours = _numeric_series(dataframe, ra_hour_column)
-        ra_minutes = _numeric_series(dataframe, ra_minute_column)
-        ra_seconds = _numeric_series(dataframe, ra_second_column)
-
-        # Convert from hours, minutes, seconds to decimal degrees
-        # RA is in hours (0-24), so convert to degrees (0-360) by multiplying by 15
-        ra_decimal = (ra_hours + ra_minutes / 60.0 + ra_seconds / 3600.0) * 15.0
-        ra_column = "ra"
-        dataframe[ra_column] = ra_decimal
-
-    # If we have component columns for Dec, convert to decimal degrees
-    if (
-        dec_degree_column is not None
-        or dec_minute_column is not None
-        or dec_second_column is not None
-    ):
-        dec_degrees = _numeric_series(dataframe, dec_degree_column)
-        dec_minutes = _numeric_series(dataframe, dec_minute_column)
-        dec_seconds = _numeric_series(dataframe, dec_second_column)
-
-        # Handle sign for declination (minutes and seconds should be positive)
-        # The sign of declination comes from the degree component
-        sign = np.sign(dec_degrees).replace(0, 1)
-        dec_decimal = sign * (
-            np.abs(dec_degrees) + np.abs(dec_minutes) / 60.0 + np.abs(dec_seconds) / 3600.0
-        )
-        dec_column = "dec"
-        dataframe[dec_column] = dec_decimal
-
-    if ra_column is None or dec_column is None:
-        raise ValueError(
-            "Could not infer right ascension and/or declination columns. "
-            "Expected RA/Alpha/Right Ascension and Dec/Delta/Declination columns "
-            "either in decimal degrees or as hour/minute/second and "
-            "degree/minute/second."
-        )
-
-    return (ra_column, dec_column)
+    return ("ra", "dec")

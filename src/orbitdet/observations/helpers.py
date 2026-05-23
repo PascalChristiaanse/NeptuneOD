@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -85,7 +86,58 @@ def convert_time_to_seconds_since_j2000_TDB(
 OBSERVATORY_INFO_FILE = "observatories.txt"  # https://www.projectpluto.com/obsc.htm, https://www.projectpluto.com/mpc_stat.txt
 
 
-def _observatory_info(
+def get_observatory_info(cfg: DictConfig, observatory_code: int | str) -> dict:
+    """Retrieve the station information from observatories.txt
+
+    Args:
+        observatory_code (int): observatory code
+    Returns:
+        dict: A dictionary containing the observatory information, including longitude, latitude, 
+        and altitude.
+    """
+    observatory_code = normalize_observatory_code(observatory_code)
+
+    observatories_file = Path(cfg.data_folder) / OBSERVATORY_INFO_FILE
+
+    with open(observatories_file) as file:
+        records: list[dict[str, object]] = []
+        for line in file:
+            line = line.strip()
+            if not line or line.startswith("Pl "):
+                continue
+
+            parts = line.split(maxsplit=7)
+            if len(parts) < 8:
+                continue
+
+            region = ""
+            name = parts[7]
+            region_and_name = re.split(r"\s{2,}", parts[7], maxsplit=1)
+            if len(region_and_name) == 2:
+                region, name = region_and_name
+
+            records.append(
+                {
+                    "pl": parts[0],
+                    "code": parts[1],
+                    "longitude": float(parts[2]),
+                    "latitude": float(parts[3]),
+                    "altitude": float(parts[4]),
+                    "rho_cos": float(parts[5]),
+                    "rho_sin_phi": float(parts[6]),
+                    "region": region,
+                    "name": name,
+                }
+            )
+
+        frame = pd.DataFrame.from_records(records)
+        observatory_info = frame[frame["code"].astype(str).str.zfill(3) == observatory_code]
+        if observatory_info.empty:
+            raise ValueError(f"No matching observatory found for code {observatory_code}")
+        return observatory_info.iloc[0].to_dict()
+
+
+def get_observatory_location(
     cfg: DictConfig,
     observatory_code: int | str,
 ) -> tuple[float, float, float]:  # Positive to north and east
@@ -140,7 +192,7 @@ def add_observatory_to_SOB(
         return
 
     # Define the position of the observatory on Earth
-    observatory_longitude, observatory_latitude, observatory_altitude = _observatory_info(
+    observatory_longitude, observatory_latitude, observatory_altitude = get_observatory_location(
         cfg, observatory_code
     )
 

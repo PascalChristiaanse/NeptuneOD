@@ -1,0 +1,77 @@
+# @package _global_
+# Example experiment: Atanas2026 with simulated observations only
+# Uses the new observation collection architecture with Hydra defaults composition
+
+defaults:
+  - /collections/atanas_triton_generated # Compose NSDB observation collection
+  - _self_ # Apply experiment config fields after collections
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 1990-12-30T12:00:00
+end_date: 2026-1-2T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+
+# Data files settings
+data_folder: "data/other"
+data_files: 
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "ECLIPJ2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+bodies_to_create:
+  Neptune:
+    gravity: "Jacobson2009"
+    rotation_model: "IAU2015"
+  Triton:
+    gravity: "central"
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+  Sun:
+    gravity: "central"
+  Jupiter:
+    gravity: "central"
+  Saturn:
+    gravity: "central"
+  Uranus:
+    gravity: "central"
+  Mercury:
+    gravity: "central"
+  Venus:
+    gravity: "central"
+  Earth:
+    gravity: "central"
+  Mars:
+    gravity: "central"
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"
+    # - "orbitdet.data.kernel"

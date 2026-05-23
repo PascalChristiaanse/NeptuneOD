@@ -8,6 +8,7 @@ from .configs import (
     SimulatedObservationConfig,
 )
 from .factory import create_observation_dataset
+from .helpers import get_observatory_info
 from .registry import get_factory, list_registered_types, register_dataset_factory
 
 __all__ = [
@@ -24,4 +25,6 @@ __all__ = [
     # Factory modules (implicitly imported for registration)
     "simulated",
     "absolute_ccd_nsdb",
+    # Helper functions
+    "get_observatory_info",
 ]

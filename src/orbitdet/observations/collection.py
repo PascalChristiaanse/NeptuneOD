@@ -66,7 +66,7 @@ def create_observation_collection(
             )
             raise
 
-    # Sort ObservationCollections and SingleObservationSets into separate lists to merge 
+    # Sort ObservationCollections and SingleObservationSets into separate lists to merge
     # separately, then combine
     observation_collections = [
         s for s in observation_sets if isinstance(s, obs.ObservationCollection)
@@ -83,7 +83,5 @@ def create_observation_collection(
     )
 
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
-    # observation_collection = obs.merge_observation_collections(observation_sets)
-    # observation_collection = obs.ObservationCollection(observation_sets)
 
     return total_collection, model_setting

@@ -157,8 +157,15 @@ class TestCollectionBuilder:
 
         merge_mock = MagicMock(return_value="observation-collection")
 
+        class FakeObservationCollection:
+            def __init__(self, observation_sets):
+                self.observation_sets = observation_sets
+
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(
+            collection_module.obs, "ObservationCollection", FakeObservationCollection
         )
         monkeypatch.setattr(collection_module.obs, "merge_observation_collections", merge_mock)
 
@@ -166,7 +173,11 @@ class TestCollectionBuilder:
 
         assert result == ("observation-collection", ["settings:alpha", "settings:beta"])
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
-        merge_mock.assert_called_once_with(["dataset:alpha", "dataset:beta"])
+        merge_mock.assert_called_once()
+        merged_collections = merge_mock.call_args.args[0]
+        assert len(merged_collections) == 1
+        assert isinstance(merged_collections[0], FakeObservationCollection)
+        assert merged_collections[0].observation_sets == ["dataset:alpha", "dataset:beta"]
 
     def test_collection_missing_datasets_key_raises_error(self):
         collection_cfg = OmegaConf.create({"name": "test"})
@@ -174,7 +185,7 @@ class TestCollectionBuilder:
         with pytest.raises(ValueError, match="must have a 'datasets' list"):
             create_observation_collection(collection_cfg, SimpleNamespace())
 
-    def test_collection_keeps_dataset_and_settings_alignment_when_filtering(self, monkeypatch):
+    def test_collection_keeps_dataset_and_settings_alignment(self, monkeypatch):
         system_of_bodies = SimpleNamespace()
         collection_cfg = OmegaConf.create(
             {
@@ -197,15 +208,26 @@ class TestCollectionBuilder:
 
         merge_mock = MagicMock(return_value="observation-collection")
 
+        class FakeObservationCollection:
+            def __init__(self, observation_sets):
+                self.observation_sets = observation_sets
+
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(
+            collection_module.obs, "ObservationCollection", FakeObservationCollection
         )
         monkeypatch.setattr(collection_module.obs, "merge_observation_collections", merge_mock)
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result == ("observation-collection", ["settings:alpha"])
-        merge_mock.assert_called_once_with(["dataset:alpha"])
+        assert result == ("observation-collection", ["settings:alpha", "settings:beta", None])
+        merge_mock.assert_called_once()
+        merged_collections = merge_mock.call_args.args[0]
+        assert len(merged_collections) == 1
+        assert isinstance(merged_collections[0], FakeObservationCollection)
+        assert merged_collections[0].observation_sets == ["dataset:alpha", None, "dataset:gamma"]
 
     def test_collection_not_dictconfig_raises_error(self):
         with pytest.raises(TypeError, match="Expected DictConfig"):

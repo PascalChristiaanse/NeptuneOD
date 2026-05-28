@@ -5,6 +5,7 @@ from orbitdet.observations.nsdb_helpers import (
     ISO_TIME_COLUMN,
     set_iso_time_column,
     set_ra_dec_columns,
+    set_relative_position_columns,
 )
 
 
@@ -59,3 +60,28 @@ def test_set_ra_dec_columns_raises_when_components_are_missing(caplog):
             set_ra_dec_columns(dataframe)
 
     assert any("Could not infer right ascension" in record.message for record in caplog.records)
+
+
+def test_set_relative_position_columns_from_nsdb_style_components():
+    dataframe = pd.DataFrame(
+        {
+            "Delta alpha, sec of time": [5],
+            "Delta delta, arcsec": [12],
+        }
+    )
+
+    x_column, y_column = set_relative_position_columns(dataframe)
+
+    assert (x_column, y_column) == ("relative_position_x", "relative_position_y")
+    assert dataframe[x_column].iloc[0] == pytest.approx(5 * 3.141592653589793 / 43200.0)
+    assert dataframe[y_column].iloc[0] == pytest.approx(12 * 3.141592653589793 / 648000.0)
+
+
+def test_set_relative_position_columns_from_xy_arcsec_components():
+    dataframe = pd.DataFrame({"X, arcsec": [30], "Y, arcsec": [-15]})
+
+    x_column, y_column = set_relative_position_columns(dataframe)
+
+    assert (x_column, y_column) == ("relative_position_x", "relative_position_y")
+    assert dataframe[x_column].iloc[0] == pytest.approx(30 * 3.141592653589793 / 648000.0)
+    assert dataframe[y_column].iloc[0] == pytest.approx(-15 * 3.141592653589793 / 648000.0)

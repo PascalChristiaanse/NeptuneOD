@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import hydra
+import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
@@ -67,12 +68,13 @@ def main(cfg: DictConfig):
     fig.savefig(fig_path)
     logger.info(f"Pre-fit residuals plot saved to {fig_path}")
 
-    # show the plot
-    fig.show()
+    backend = plt.get_backend().lower()
+    if "agg" in backend or "inline" in backend:
+        logger.info("Skipping interactive display because matplotlib backend is %s.", backend)
+    else:
+        plt.show(block=True)
 
-    import matplotlib.pyplot as plt
-
-    plt.show()
+    logger.info("Pre-fit residuals script completed.")
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ data_files:
 
 # Frame settings
 global_frame_origin: "SSB"
-global_frame_orientation: "ECLIPJ2000"
+global_frame_orientation: "J2000"
 
 # Environment settings
 bodies_to_propagate:

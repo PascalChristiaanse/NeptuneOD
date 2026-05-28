@@ -23,6 +23,7 @@ def _rms_arcsec(values_arcsec: np.ndarray) -> float | None:
 
     return float(np.sqrt(np.mean(np.square(finite_values))))
 
+
 def plot_residuals(
     cfg: DictConfig,
     observation_collection: obs.ObservationCollection,

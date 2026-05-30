@@ -43,6 +43,22 @@ def _find_column(
     return None
 
 
+def _find_column_substring(
+    dataframe: pd.DataFrame, *needles: str, excludes: list[str] | None = None
+) -> str | None:
+    excludes = excludes or []
+    for column_name in dataframe.columns:
+        normalized = _normalize_column_name(column_name)
+
+        if any(ex in normalized for ex in excludes):
+            continue
+
+        if all(needle in normalized for needle in needles):
+            return str(column_name)
+
+    return None
+
+
 def _numeric_series(dataframe: pd.DataFrame, column_name: str | None) -> pd.Series:
     if column_name is None:
         return pd.Series(0.0, index=dataframe.index, dtype="float64")
@@ -148,29 +164,23 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         ---
 
     """
-    ra_excludes = ["declination", "delta"]
-    dec_excludes = ["ra", "right", "ascension", "alpha"]
-    ra_component_excludes = [
-        "hour of",
-        "minute of",
-        "second of",
-        "observation time",
-        "utc",
-    ]
+    ra_excludes = ["declination", "delta", "hour", "minute", "second"]
+    dec_excludes = ["ra", "right", "ascension", "alpha", "hour", "minute", "second"]
+    ra_component_excludes = ["observation time", "utc"]
 
     # Try to find RA column already in decimal degrees
-    ra_column = _find_column(dataframe, "ra")
+    ra_column = _find_column(dataframe, "ra", excludes=ra_excludes)
     if ra_column is None:
-        ra_column = _find_column(dataframe, "alpha")
+        ra_column = _find_column(dataframe, "alpha", excludes=ra_excludes)
     if ra_column is None:
-        ra_column = _find_column(dataframe, "right", "ascension")
+        ra_column = _find_column(dataframe, "right", "ascension", excludes=ra_excludes)
 
     # Try to find Dec column already in decimal degrees
-    dec_column = _find_column(dataframe, "dec")
+    dec_column = _find_column(dataframe, "dec", excludes=dec_excludes)
     if dec_column is None:
-        dec_column = _find_column(dataframe, "delta")
+        dec_column = _find_column(dataframe, "delta", excludes=dec_excludes)
     if dec_column is None:
-        dec_column = _find_column(dataframe, "declination")
+        dec_column = _find_column(dataframe, "declination", excludes=dec_excludes)
 
     # If we found both in decimal degrees, return them
     if ra_column is not None and dec_column is not None:
@@ -180,21 +190,21 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
     time_excludes = ra_component_excludes
 
     # Try to find component columns for RA (hour, minute, second)
-    ra_hour_column = _find_column(
+    ra_hour_column = _find_column_substring(
         dataframe,
         "ra",
         "hour",
         excludes=time_excludes + ra_excludes,
     )
     if ra_hour_column is None:
-        ra_hour_column = _find_column(
+        ra_hour_column = _find_column_substring(
             dataframe,
             "alpha",
             "hour",
             excludes=time_excludes + ra_excludes,
         )
     if ra_hour_column is None:
-        ra_hour_column = _find_column(
+        ra_hour_column = _find_column_substring(
             dataframe,
             "right",
             "ascension",
@@ -202,21 +212,21 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
             excludes=time_excludes,
         )
 
-    ra_minute_column = _find_column(
+    ra_minute_column = _find_column_substring(
         dataframe,
         "ra",
         "minute",
         excludes=time_excludes + ra_excludes,
     )
     if ra_minute_column is None:
-        ra_minute_column = _find_column(
+        ra_minute_column = _find_column_substring(
             dataframe,
             "alpha",
             "minute",
             excludes=time_excludes + ra_excludes,
         )
     if ra_minute_column is None:
-        ra_minute_column = _find_column(
+        ra_minute_column = _find_column_substring(
             dataframe,
             "right",
             "ascension",
@@ -224,21 +234,21 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
             excludes=time_excludes,
         )
 
-    ra_second_column = _find_column(
+    ra_second_column = _find_column_substring(
         dataframe,
         "ra",
         "second",
         excludes=time_excludes + ra_excludes,
     )
     if ra_second_column is None:
-        ra_second_column = _find_column(
+        ra_second_column = _find_column_substring(
             dataframe,
             "alpha",
             "second",
             excludes=time_excludes + ra_excludes,
         )
     if ra_second_column is None:
-        ra_second_column = _find_column(
+        ra_second_column = _find_column_substring(
             dataframe,
             "right",
             "ascension",
@@ -247,53 +257,53 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         )
 
     # Try to find component columns for Dec (degree, minute, second)
-    dec_degree_column = _find_column(
+    dec_degree_column = _find_column_substring(
         dataframe,
         "dec",
         "degree",
         excludes=dec_excludes,
     )
     if dec_degree_column is None:
-        dec_degree_column = _find_column(
+        dec_degree_column = _find_column_substring(
             dataframe,
             "delta",
             "degree",
             excludes=dec_excludes,
         )
     if dec_degree_column is None:
-        dec_degree_column = _find_column(dataframe, "declination", "degree")
+        dec_degree_column = _find_column_substring(dataframe, "declination", "degree")
 
-    dec_minute_column = _find_column(
+    dec_minute_column = _find_column_substring(
         dataframe,
         "dec",
         "minute",
         excludes=dec_excludes,
     )
     if dec_minute_column is None:
-        dec_minute_column = _find_column(
+        dec_minute_column = _find_column_substring(
             dataframe,
             "delta",
             "minute",
             excludes=dec_excludes,
         )
     if dec_minute_column is None:
-        dec_minute_column = _find_column(dataframe, "declination", "minute")
+        dec_minute_column = _find_column_substring(dataframe, "declination", "minute")
 
-    dec_second_column = _find_column(
+    dec_second_column = _find_column_substring(
         dataframe,
         "dec",
         "second",
         excludes=dec_excludes,
     )
     if dec_second_column is None:
-        dec_second_column = _find_column(
+        dec_second_column = _find_column_substring(
             dataframe,
             "delta",
             "second",
             excludes=dec_excludes,
         )
     if dec_second_column is None:
-        dec_second_column = _find_column(dataframe, "declination", "second")
+        dec_second_column = _find_column_substring(dataframe, "declination", "second")
 
     # If we have component columns for RA, convert to decimal degrees
     if ra_hour_column is not None or ra_minute_column is not None or ra_second_column is not None:
@@ -327,7 +337,13 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         dataframe[dec_column] = dec_decimal
 
     if ra_column is None or dec_column is None:
-        raise ValueError(
+        logger.error(
+            "Could not infer right ascension and/or declination columns. "
+            "Expected RA/Alpha/Right Ascension and Dec/Delta/Declination columns "
+            "either in decimal degrees or as hour/minute/second and "
+            "degree/minute/second."
+        )
+        raise RuntimeError(
             "Could not infer right ascension and/or declination columns. "
             "Expected RA/Alpha/Right Ascension and Dec/Delta/Declination columns "
             "either in decimal degrees or as hour/minute/second and "

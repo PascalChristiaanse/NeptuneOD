@@ -17,6 +17,7 @@ dependencies:
   - matplotlib # =3.9.2 Maybe this breaks stuff
   - scipy
   - pandas
+  - openpyxl
   - astropy
   - tqdm      
   - astropy-healpix  

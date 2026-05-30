@@ -3,6 +3,7 @@
 results
 data/kernels
 data/raw
+data/other
 conf/datasets/generated
 
 # Byte-compiled / optimized / DLL files

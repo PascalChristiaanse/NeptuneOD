@@ -36,7 +36,7 @@ def basic_config():
     return OmegaConf.create(
         {
             "global_frame_origin": "Neptune",
-            "global_frame_orientation": "ECLIPJ2000",
+            "global_frame_orientation": "J2000",
             "bodies_to_create": {
                 "Neptune": {
                     "gravity": "central",
@@ -70,7 +70,7 @@ def jacobson_config():
     return OmegaConf.create(
         {
             "global_frame_origin": "Neptune",
-            "global_frame_orientation": "ECLIPJ2000",
+            "global_frame_orientation": "J2000",
             "bodies_to_create": {
                 "Neptune": {
                     "gravity": "Jacobson2009",
@@ -457,7 +457,7 @@ class TestAddNeptune:
                         "rotation_model": "spice",
                     },
                 },
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -481,7 +481,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -511,7 +511,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
                 "start_epoch": 1234567890.0,
             }
         )
@@ -540,7 +540,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -570,7 +570,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -600,7 +600,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -627,7 +627,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -652,7 +652,7 @@ class TestAddNeptune:
                     },
                 },
                 "global_frame_origin": "Neptune",
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
             }
         )
 
@@ -719,7 +719,7 @@ class TestAddNeptune:
         # Create config with undefined initial state
         config = OmegaConf.create(
             {
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
                 "bodies_to_propagate": {
                     "Triton": {
                         "central_body": "Neptune",
@@ -778,7 +778,7 @@ class TestAddNeptune:
         """Test propagator with multiple bodies."""
         config = OmegaConf.create(
             {
-                "global_frame_orientation": "ECLIPJ2000",
+                "global_frame_orientation": "J2000",
                 "bodies_to_propagate": {
                     "Triton": {
                         "central_body": "Neptune",

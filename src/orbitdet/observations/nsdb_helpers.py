@@ -1,9 +1,14 @@
+import logging
 import re
 
 import numpy as np
 import pandas as pd
 
 ISO_TIME_COLUMN = "iso_time"
+RELATIVE_POSITION_X_COLUMN = "relative_position_x"
+RELATIVE_POSITION_Y_COLUMN = "relative_position_y"
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_column_name(column_name: object) -> str:
@@ -329,4 +334,75 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
             "degree/minute/second."
         )
 
-    return (ra_column, dec_column)
+    return ("ra", "dec")
+
+
+def _relative_position_scale(column_name: str) -> float:
+    normalized = _normalize_column_name(column_name)
+
+    if "sec of time" in normalized or "seconds of time" in normalized:
+        return np.pi / 43200.0
+
+    if "arcsec" in normalized or "arc second" in normalized or "arcsecond" in normalized:
+        return np.pi / 648000.0
+
+    if "degree" in normalized or re.search(r"\bdeg\b", normalized):
+        return np.pi / 180.0
+
+    raise ValueError(f"Could not infer angular units from column '{column_name}'.")
+
+
+def _find_relative_position_x_column(dataframe: pd.DataFrame) -> str | None:
+    for column_name in dataframe.columns:
+        normalized = _normalize_column_name(column_name)
+        if (
+            "delta alpha" in normalized
+            or "right ascension" in normalized
+            or re.search(r"\balpha\b", normalized)
+            or re.search(r"\bx\b", normalized)
+        ):
+            return str(column_name)
+
+    return None
+
+
+def _find_relative_position_y_column(dataframe: pd.DataFrame) -> str | None:
+    for column_name in dataframe.columns:
+        normalized = _normalize_column_name(column_name)
+        if (
+            "delta delta" in normalized
+            or "declination" in normalized
+            or re.search(r"\bdec\b", normalized)
+            or re.search(r"\by\b", normalized)
+        ):
+            return str(column_name)
+
+    return None
+
+
+def set_relative_position_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
+    """Infer relative position component columns and convert them to radians.
+
+    The parser supports NSDB-style differential CCD files (delta alpha in seconds of time and
+    delta delta in arcseconds) as well as relative X/Y files stored in arcseconds.
+    """
+
+    x_column = _find_relative_position_x_column(dataframe)
+    y_column = _find_relative_position_y_column(dataframe)
+
+    if x_column is None or y_column is None:
+        message = (
+            "Could not infer relative position component columns from the dataframe. "
+            "Expected columns describing delta alpha / delta delta or X / Y offsets."
+        )
+        logger.error(message)
+        raise RuntimeError(message)
+
+    dataframe[RELATIVE_POSITION_X_COLUMN] = _numeric_series(
+        dataframe, x_column
+    ) * _relative_position_scale(x_column)
+    dataframe[RELATIVE_POSITION_Y_COLUMN] = _numeric_series(
+        dataframe, y_column
+    ) * _relative_position_scale(y_column)
+
+    return (RELATIVE_POSITION_X_COLUMN, RELATIVE_POSITION_Y_COLUMN)

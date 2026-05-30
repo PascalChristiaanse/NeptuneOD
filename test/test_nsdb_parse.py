@@ -68,7 +68,7 @@ def test_parse_nsdb_sample():
     assert parsed["planet"]["name"] == "Neptune"
 
     assert parsed.get("total_number") == 3
-    assert parsed.get("type") == "absolute_CCD_nsdb"
+    assert parsed.get("type") == "absolute_absolute_CCD_nsdb"
     assert parsed.get("dates", {}).get("start_year") == 2001
     assert parsed.get("dates", {}).get("end_year") == 2001
 

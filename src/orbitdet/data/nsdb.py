@@ -169,8 +169,9 @@ class NSDBManager:
 
         original_type = result.get("type")
         receptor = result.get("receptor")
+        coordinates = result.get("coordinates").replace(" ", "_")
         if original_type and receptor:
-            result["type"] = f"{original_type}_{receptor}_nsdb"
+            result["type"] = f"{original_type}_{coordinates}_{receptor}_nsdb"
 
         return result
 

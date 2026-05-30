@@ -5,6 +5,10 @@ import numpy as np
 import pandas as pd
 
 ISO_TIME_COLUMN = "iso_time"
+RELATIVE_POSITION_X_COLUMN = "relative_position_x"
+RELATIVE_POSITION_Y_COLUMN = "relative_position_y"
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 

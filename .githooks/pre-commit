@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+before_status=$(git status --porcelain)
+
+conda run -n NeptuneOD --no-capture-output ruff format .
+conda run -n NeptuneOD --no-capture-output ruff check . --fix
+
+after_status=$(git status --porcelain)
+
+if [[ "$after_status" != "$before_status" ]]; then
+  echo "Ruff updated files. Review and stage those changes before committing."
+  exit 1
+fi

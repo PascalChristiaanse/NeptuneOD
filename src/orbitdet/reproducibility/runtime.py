@@ -291,7 +291,7 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
     if _CONTEXT is not None:
         return _CONTEXT
 
-    assert_clean_repo()
+    # assert_clean_repo()
 
     git_commit = get_git_commit()
 

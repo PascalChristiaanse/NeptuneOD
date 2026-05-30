@@ -1,7 +1,7 @@
 """Observation dataset factory system with registry-based dispatch."""
 
 # Import all factory modules to trigger automatic registration
-from . import absolute_ccd_nsdb, simulated
+from . import absolute_ccd_nsdb, relative_ccd_nsdb, simulated
 from .collection import create_observation_collection
 from .configs import (
     ObservationDatasetConfig,
@@ -25,6 +25,7 @@ __all__ = [
     # Factory modules (implicitly imported for registration)
     "simulated",
     "absolute_ccd_nsdb",
+    "relative_ccd_nsdb",
     # Helper functions
     "get_observatory_info",
 ]

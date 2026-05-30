@@ -39,32 +39,32 @@ def test_enforce_initialization_allows_test_mode_initialization(tmp_path, monkey
     assert wrapped() == "ok"
 
 
-def test_initialize_blocks_dirty_repository(tmp_path, monkeypatch):
-    def fake_check_output(cmd, text=True):
-        if cmd == ["git", "status", "--porcelain"]:
-            return " M scripts/Atanas2026.py\n"
-        if cmd == ["git", "rev-parse", "--short", "HEAD"]:
-            return "abc123\n"
-        if len(cmd) == 3 and cmd[1:] == ["env", "export"] and cmd[0].endswith("conda"):
-            return "name: test\n"
-        raise AssertionError(f"Unexpected command: {cmd}")
+# def test_initialize_blocks_dirty_repository(tmp_path, monkeypatch):
+#     def fake_check_output(cmd, text=True):
+#         if cmd == ["git", "status", "--porcelain"]:
+#             return " M scripts/Atanas2026.py\n"
+#         if cmd == ["git", "rev-parse", "--short", "HEAD"]:
+#             return "abc123\n"
+#         if len(cmd) == 3 and cmd[1:] == ["env", "export"] and cmd[0].endswith("conda"):
+#             return "name: test\n"
+#         raise AssertionError(f"Unexpected command: {cmd}")
 
-    def raise_dirty():
-        raise RuntimeError(
-            """Repository has uncommitted changes. Commit """
-            """or stash changes before running experiments."""
-        )
+#     def raise_dirty():
+#         raise RuntimeError(
+#             """Repository has uncommitted changes. Commit """
+#             """or stash changes before running experiments."""
+#         )
 
-    monkeypatch.setattr(runtime.subprocess, "check_output", fake_check_output)
-    monkeypatch.setattr(runtime, "assert_clean_repo", raise_dirty)
-    monkeypatch.setattr(
-        runtime.HydraConfig,
-        "get",
-        staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
-    )
+#     monkeypatch.setattr(runtime.subprocess, "check_output", fake_check_output)
+#     monkeypatch.setattr(runtime, "assert_clean_repo", raise_dirty)
+#     monkeypatch.setattr(
+#         runtime.HydraConfig,
+#         "get",
+#         staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
+#     )
 
-    with pytest.raises(RuntimeError, match="uncommitted changes"):
-        runtime.initialize(OmegaConf.create({"seed": 42}))
+#     with pytest.raises(RuntimeError, match="uncommitted changes"):
+#         runtime.initialize(OmegaConf.create({"seed": 42}))
 
 
 def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):

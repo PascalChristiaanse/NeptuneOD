@@ -1,0 +1,99 @@
+# @package _global_
+
+defaults:
+  - /collections/voyager_collection # Compose NSDB observation collection
+  - _self_ # Apply experiment config fields after collections
+  - /figures/residuals
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 1989-3-30T12:00:00
+end_date: 1989-10-2T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  Voyager_2.m05016u.merged.bsp: "https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/Voyager_2.m05016u.merged.bsp"
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "J2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+bodies_to_create:
+  Neptune:
+    gravity: "Jacobson2009"
+    rotation_model:
+      type: "IAU2015"
+  Triton:
+    gravity: "central"
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+  Sun:
+    gravity: "central"
+  Jupiter:
+    gravity: "central"
+  Saturn:
+    gravity: "central"
+  Uranus:
+    gravity: "central"
+  Mercury:
+    gravity: "central"
+  Venus:
+    gravity: "central"
+  Earth:
+    gravity: "central"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
+    shape_model: "oblate_spherical_spice"
+  Mars:
+    gravity: "central"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+  Voyager 2:
+    ephemeris:
+      type: "tabulated_from_ancillary_file" # or tabulated from ancillary file
+  Voyager 2 spice:
+    ephemeris:
+      type: "direct_spice"
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600
+  # fixed_step_size: 120
+
+
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"
+    # - "orbitdet.data.kernel"

@@ -1,0 +1,22 @@
+residuals:
+  output_file: "residuals.pdf"
+  figure:
+    width: 16.54
+    height: 8.27
+  titles:
+    ra: "Right Ascension"
+    dec: "Declination"
+    suptitle: "Pre-Fit Residuals for Voyager 2's observations of {target_name}"
+  axes:
+    x_label: "Epoch"
+    y_label: "Residual [arcsec]"
+    hover_x_label: "Epoch"
+    hover_y_label: "Residual [arcsec]"
+  styling:
+    cmap: "tab10"
+    marker_size: 30
+  legend:
+    ncols: 2
+    bbox_to_anchor:
+      x: 0.5
+      y: -0.15

@@ -40,10 +40,13 @@ def basic_config():
             "bodies_to_create": {
                 "Neptune": {
                     "gravity": "central",
-                    "rotation_model": "spice",
+                    "rotation_model": {
+                        "type": "IAU2015",
+                    },
                 },
                 "Triton": {
                     "ephemeris": {
+                        "type": "interpolated_spice",
                         "interpolator_cadance": 300,
                     },
                 },
@@ -74,10 +77,13 @@ def jacobson_config():
             "bodies_to_create": {
                 "Neptune": {
                     "gravity": "Jacobson2009",
-                    "rotation_model": "spice",
+                    "rotation_model": {
+                        "type": "IAU2015",
+                    },
                 },
                 "Triton": {
                     "ephemeris": {
+                        "type": "interpolated_spice",
                         "interpolator_cadance": 300,
                     },
                 },

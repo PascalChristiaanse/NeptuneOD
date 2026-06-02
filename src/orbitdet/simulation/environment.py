@@ -6,39 +6,191 @@ from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import environment_setup as env_setup
 from tudatpy.interface import spice
 
+from orbitdet.data.voyager_data import build_voyager_tabulated_state_history
 from orbitdet.reproducibility.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_BODIES = {
+    "Sun",
+    "Mercury",
+    "Venus",
+    "Earth",
+    "Moon",
+    "Mars",
+    # Major Martian satellites
+    "Phobos",
+    "Deimos",
+    "Jupiter",
+    # Major Galilean satellites
+    "Io",
+    "Europa",
+    "Ganymede",
+    "Callisto",
+    "Saturn",
+    # Major Saturnian satellites
+    "Mimas",
+    "Enceladus",
+    "Tethys",
+    "Dione",
+    "Rhea",
+    "Titan",
+    "Iapetus",
+    "Uranus",
+    "Neptune",
+    "Triton",
+}
+
 
 def get_environment(cfg: DictConfig, ctx: RuntimeContext) -> env.SystemOfBodies:
     """Factory function to create Environment instance based on configuration."""
-    logger.warning("Earth shape not set yet, introduces some slight error")
 
     body_settings = env_setup.get_default_body_settings(
-        list(cfg.bodies_to_create.keys()),
+        set(cfg.bodies_to_create.keys()) & set(DEFAULT_BODIES),
         cfg.global_frame_origin,
         cfg.global_frame_orientation,
     )
 
-    body_settings.get("Triton").ephemeris_settings = env_setup.ephemeris.interpolated_spice(
-        ctx.start_epoch - 3000,
-        ctx.end_epoch + 3000,
-        cfg.bodies_to_create["Triton"].ephemeris.interpolator_cadance,
-        cfg.global_frame_origin,
-        cfg.global_frame_orientation,
-    )
+    # Add bodies not in default bodies but specified in config using an empty
+    # BodySettings as a starting point
+    for body_name in set(cfg.bodies_to_create.keys()) - DEFAULT_BODIES:
+        body_settings.add_empty_settings(body_name)
+
+    for body_name, settings in cfg.bodies_to_create.items():
+        if "ephemeris" in settings:
+            match settings.ephemeris.type:
+                case "direct_spice":
+                    if body_name == "Voyager 2 shifted":
+                        continue  # MAJOR HACK; requires manually setting ephemeris to equal
+                        #   Voyager 2's after creating SystemOfBodies
+                    if body_name == "Voyager 2 spice":
+                        body_settings.get(
+                            body_name
+                        ).ephemeris_settings = env_setup.ephemeris.direct_spice(
+                            cfg.global_frame_origin, cfg.global_frame_orientation, "Voyager 2"
+                        )
+                    else:
+                        body_settings.get(
+                            body_name
+                        ).ephemeris_settings = env_setup.ephemeris.direct_spice(
+                            cfg.global_frame_origin, cfg.global_frame_orientation
+                        )
+                case "interpolated_spice":
+                    if not hasattr(settings.ephemeris, "interpolator_cadance"):
+                        raise ValueError(
+                            f"""Interpolator cadence must be specified for interpolated_spice"""
+                            f"""ephemeris of {body_name}."""
+                        )
+                    body_settings.get(
+                        body_name
+                    ).ephemeris_settings = env_setup.ephemeris.interpolated_spice(
+                        ctx.start_epoch - 3000,
+                        ctx.end_epoch + 3000,
+                        settings.ephemeris.interpolator_cadance,
+                        cfg.global_frame_origin,
+                        cfg.global_frame_orientation,
+                    )
+                case "tabulated_from_ancillary_file":
+                    dataset_name = str(getattr(settings.ephemeris, "source_dataset", "voyager"))
+                    voyager_cfg = getattr(getattr(cfg, "datasets", None), dataset_name, None)
+                    if voyager_cfg is None:
+                        raise ValueError(
+                            f"Voyager dataset configuration '{dataset_name}' is required "
+                            ""
+                            f"""to build a tabulated ephemeris."""
+                        )
+                    state_history = build_voyager_tabulated_state_history(cfg, voyager_cfg)
+                    body_settings.get(body_name).ephemeris_settings = env_setup.ephemeris.tabulated(
+                        state_history,
+                        # 'Neptune',
+                        "Neptune Barycenter",
+                        cfg.global_frame_orientation,
+                    )
+                case _:
+                    raise ValueError(
+                        f"Unsupported ephemeris type for {body_name}: {settings.ephemeris.type}"
+                    )
+        if "rotation_model" in settings:
+            if body_name == "Neptune":
+                continue
+            match settings.rotation_model.type:
+                case "GCRS_to_ITRS":
+                    if not hasattr(settings.rotation_model, "nutation_model"):
+                        raise ValueError(
+                            f"""Nutation model must be specified for GCRS_to_ITRS rotation """
+                            f"""model of {body_name}."""
+                        )
+                    match settings.rotation_model.nutation_model:
+                        case "iau_2006":
+                            precession_nutation_theory = (
+                                env_setup.rotation_model.IAUConventions.iau_2006
+                            )
+                        case _:
+                            raise ValueError(
+                                f"Unsupported nutation model for {body_name}: "
+                                ""
+                                f"""{settings.rotation_model.nutation_model}"""
+                            )
+                    body_settings.get(
+                        body_name
+                    ).rotation_model_settings = env_setup.rotation_model.gcrs_to_itrs(
+                        precession_nutation_theory, cfg.global_frame_orientation
+                    )
+                case "IAU2015":
+                    if body_name != "Neptune":
+                        raise ValueError(
+                            f"IAU2015 rotation model currently only supported for Neptune, "
+                            ""
+                            f"""not {body_name}."""
+                        )
+                    pass
+                case "spice":
+                    logger.warning(
+                        f"""Skipping SPICE rotation model, assuming this has been set in """
+                        f"""get_default_body_settings for {body_name}."""
+                    )
+                case _:
+                    raise ValueError(
+                        f"""Unsupported rotation model type for {body_name}: """
+                        f"""{settings.rotation_model.type}"""
+                    )
+        if "shape_model" in settings:
+            match settings.shape_model:
+                case "oblate_spherical_spice":
+                    body_settings.get(
+                        body_name
+                    ).shape_settings = env_setup.shape.oblate_spherical_spice()
+                case _:
+                    raise ValueError(
+                        f"Unsupported shape model for {body_name}: {settings.shape_model}"
+                    )
+    # body_settings.get("Triton").ephemeris_settings = env_setup.ephemeris.interpolated_spice(
+    #     ctx.start_epoch - 3000,
+    #     ctx.end_epoch + 3000,
+    #     cfg.bodies_to_create["Triton"].ephemeris.interpolator_cadance,
+    #     cfg.global_frame_origin,
+    #     cfg.global_frame_orientation,
+    # )
 
     add_neptune(cfg, body_settings)
 
     # ----- Setup Rotation Model for Earth (for GCRS to ITRS transformation) -----
-    precession_nutation_theory = env_setup.rotation_model.IAUConventions.iau_2006
-    body_settings.get("Earth").rotation_model_settings = env_setup.rotation_model.gcrs_to_itrs(
-        precession_nutation_theory, cfg.global_frame_orientation
-    )
+    # precession_nutation_theory = env_setup.rotation_model.IAUConventions.iau_2006
+    # body_settings.get("Earth").rotation_model_settings = env_setup.rotation_model.gcrs_to_itrs(
+    #     precession_nutation_theory, cfg.global_frame_orientation
+    # )
 
+    # logger.warning("Earth shape not set yet, introduces some slight error")
+    # body_settings.get("Earth").shape_settings = env_setup.shape.oblate_spherical_spice()
+    logger.info("Earth rotation model and shape settings configured successfully. ")
+    logger.warning("CHECK SHAPE MODEL FOR WGS-84/OBSERVATORIES.TXT")
     # # Create system of selected bodies
     bodies = env_setup.create_system_of_bodies(body_settings)
+
+    # Set Voyager 2 shifted ephemeris equal to Voyager 2's ephemeris
+    if "Voyager 2 shifted" in cfg.bodies_to_create and "Voyager 2" in bodies.list_of_bodies():
+        bodies.get("Voyager 2 shifted").ephemeris = bodies.get("Voyager 2").ephemeris
+        logger.info("Voyager 2 shifted ephemeris set equal to Voyager 2's ephemeris successfully.")
 
     return bodies
 
@@ -90,7 +242,12 @@ def add_neptune(cfg: DictConfig, body_settings: env_setup.BodyListSettings) -> N
     original_frame = cfg.global_frame_orientation
     target_frame = "IAU_Neptune"
     target_frame_spice = "IAU_Neptune"  # is this correct?
-    match cfg.bodies_to_create["Neptune"].rotation_model:
+    rotation_model_cfg = cfg.bodies_to_create["Neptune"].rotation_model
+    rotation_model_type = (
+        rotation_model_cfg.type if hasattr(rotation_model_cfg, "type") else rotation_model_cfg
+    )
+
+    match rotation_model_type:
         case "simple_from_spice":
             body_settings.get(
                 "Neptune"

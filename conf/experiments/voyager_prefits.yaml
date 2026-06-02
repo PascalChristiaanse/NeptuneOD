@@ -4,6 +4,7 @@ defaults:
   - /collections/voyager_collection # Compose NSDB observation collection
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
+  - /figures/residuals_psd
 
 seed: 42
 

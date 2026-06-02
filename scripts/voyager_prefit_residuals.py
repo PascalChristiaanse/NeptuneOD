@@ -23,7 +23,7 @@ from orbitdet.simulation import (
     get_integrator_settings,
     get_propagator_settings,
 )
-from orbitdet.visualization import plot_residuals
+from orbitdet.visualization import plot_residuals, plot_residuals_psd
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -175,6 +175,7 @@ def main(cfg: DictConfig):
     logger.info("Pre-fit residuals computed successfully.")
 
     fig, ax = plot_residuals(cfg, observations)
+    fig, ax = plot_residuals_psd(cfg, observations, 30, cfg.figures.residuals_psd)
     # add line on y axis at date of voyager 2 closest approach to neptune,
     # which is 1989-8-25T16:00:00
     import datetime

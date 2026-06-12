@@ -272,7 +272,7 @@ def _configure_shape_model(
     if "shape_model" not in settings:
         return
 
-    shape_model_type = settings.shape_model
+    shape_model_type = settings.shape_model.type
     logger.info(f"Setting shape model for {body_name}: {shape_model_type}")
 
     match shape_model_type:

@@ -1,9 +1,7 @@
 # @package _global_
-# Example experiment: Atanas2026 with simulated observations only
-# Uses the new observation collection architecture with Hydra defaults composition
 
 defaults:
-  - /collections/atanas_triton_generated # Compose NSDB observation collection
+  - /collections/atanas_triton_generated_extended # Compose NSDB observation collection
   - _self_ # Apply experiment config fields after collections
 
 seed: 42
@@ -29,7 +27,7 @@ kernels:
 
 # Data files settings
 data_folder: "data/other"
-data_files: 
+data_files:
   observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
 
 # Frame settings
@@ -44,29 +42,27 @@ bodies_to_propagate:
 
 bodies_to_create:
   Neptune:
-    gravity: "Jacobson2009"
-    rotation_model: "IAU2015"
+    ephemeris:
+      type: "direct_spice"
   Triton:
     gravity: "central"
     ephemeris:
-      type: "interpolated_spice"
-      interpolator_cadance: 480
-  Sun:
-    gravity: "central"
-  Jupiter:
-    gravity: "central"
-  Saturn:
-    gravity: "central"
-  Uranus:
-    gravity: "central"
-  Mercury:
-    gravity: "central"
-  Venus:
-    gravity: "central"
+      type: "direct_spice"
+  Voyager 2:
+    ephemeris:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
   Earth:
-    gravity: "central"
-  Mars:
-    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+    shape_model:
+      type: "oblate_spherical_spice"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
 
 # Logging settings
 logging:

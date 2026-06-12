@@ -1,0 +1,29 @@
+identifier: voyager_triton
+
+defaults:
+  - jacobson1991_table_1_manual@data
+  - jacobson1991_table_3_manual@ancillary_files
+
+type: voyager
+dates:
+  start_year: 1988
+  end_year: 1989
+observatory:
+  code: -31
+  name: Voyager 2
+relative_to:
+  designation: absolute
+reference_frame: astrometric
+centre_of_frame: spacecraft
+epoch_of_equinox: B1950
+time_scale: TDB # Julian ephemeris date
+reduction: no information
+coordinates: absolute
+diff_refraction: no information
+receptor: Vidicon 800x800 CCD
+telescope: 200/1500mm f/3 f/8.5
+
+satellites:
+  Triton:
+    designation: N1-Triton
+merge_key: PICNO

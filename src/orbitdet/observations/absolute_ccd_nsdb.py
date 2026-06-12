@@ -9,6 +9,8 @@ import tudatpy.estimation.observable_models_setup as obs_model_setup
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig
 
+from orbitdet.transformations import convert_radec_frame
+
 from .helpers import (
     add_observatory_to_SOB,
     convert_time_to_seconds_since_j2000_TDB,
@@ -78,6 +80,14 @@ def create_absolute_ccd_dataset(
 
     # extract data for observation set
     ra_column, dec_column = set_ra_dec_columns(data_file)
+    data_file = convert_radec_frame(
+        data_file,
+        ra_column,
+        dec_column,
+        input_frame=dataset_cfg.epoch_of_equinox,
+        output_frame=cfg.global_frame_orientation,
+    )
+
     valid_rows = data_file[["epoch_TDB", ra_column, dec_column]].dropna()
     times = valid_rows["epoch_TDB"].tolist()
     data = [

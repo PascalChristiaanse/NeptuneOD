@@ -1,0 +1,55 @@
+
+residuals_psd:
+  method: "welch"
+  window_length_days: 30.0
+  window:
+    type: "hamming"
+  output_file: "residual_psd_may_aug_1989.pdf"
+  time_range:
+    start: "1989-05-01T00:00:00"
+    end: "1989-08-31T23:59:59"
+  x_lim:
+    min: 0.02
+    max: 1.5
+  figure:
+    width: 16.54
+    height: 8.27
+  titles:
+    ra: "Right Ascension PSD"
+    dec: "Declination PSD"
+    suptitle: "Residual PSD for {target_name}"
+  axes:
+    x_scale: "linear"
+    x_label: "Frequency [cycles/day]"
+    y_label: "Power density [arcsec²/day]"
+    hover_x_label: "Period [days/cycle]"
+    hover_y_label: "Power density"
+    period_label: "Period [days/cycle]"
+    period_ticks_days:
+      - 0.75
+      - 1.0
+      - 2.0
+      - 5.0
+      - 10.0
+      - 20.0
+      - 50.0
+      - 100.0
+    frequency_tick_subs:
+      - 1.0
+      - 2.0
+      - 5.0
+    frequency_minor_subs:
+      - 3.0
+      - 4.0
+      - 6.0
+      - 7.0
+      - 8.0
+      - 9.0
+  styling:
+    cmap: "tab20"
+    line_width: 1.2
+  legend:
+    ncols: 2
+    bbox_to_anchor:
+      x: 0.5
+      y: -0.15

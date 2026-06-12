@@ -40,10 +40,13 @@ def basic_config():
             "bodies_to_create": {
                 "Neptune": {
                     "gravity": "central",
-                    "rotation_model": "spice",
+                    "rotation_model": {
+                        "type": "IAU2015",
+                    },
                 },
                 "Triton": {
                     "ephemeris": {
+                        "type": "interpolated_spice",
                         "interpolator_cadance": 300,
                     },
                 },
@@ -74,10 +77,13 @@ def jacobson_config():
             "bodies_to_create": {
                 "Neptune": {
                     "gravity": "Jacobson2009",
-                    "rotation_model": "spice",
+                    "rotation_model": {
+                        "type": "IAU2015",
+                    },
                 },
                 "Triton": {
                     "ephemeris": {
+                        "type": "interpolated_spice",
                         "interpolator_cadance": 300,
                     },
                 },
@@ -192,23 +198,23 @@ class TestGetDynamicalModel:
 class TestGetEnvironment:
     """Tests for get_environment function."""
 
-    @patch("orbitdet.simulation.environment.add_neptune")
     @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
     @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
     def test_environment_creation_with_central_gravity(
         self,
         mock_get_defaults,
         mock_create_bodies,
-        mock_add_neptune,
         basic_config,
         mock_runtime_context,
     ):
         """Test successful environment creation with central gravity."""
         mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
         mock_body_settings.get = MagicMock(return_value=MagicMock())
+        mock_body_settings.add_empty_settings = MagicMock()
         mock_get_defaults.return_value = mock_body_settings
 
         mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_bodies.list_of_bodies = MagicMock(return_value=[])
         mock_create_bodies.return_value = mock_bodies
 
         result = get_environment(basic_config, mock_runtime_context)
@@ -217,187 +223,51 @@ class TestGetEnvironment:
         assert mock_get_defaults.called
         assert mock_create_bodies.called
 
-    @patch("orbitdet.simulation.environment.add_neptune")
+    @patch("orbitdet.simulation.environment.spice")
     @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
     @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
     def test_environment_creation_with_jacobson_gravity(
         self,
         mock_get_defaults,
         mock_create_bodies,
-        mock_add_neptune,
+        mock_spice,
         jacobson_config,
         mock_runtime_context,
     ):
         """Test environment creation with Jacobson2009 gravity model."""
+        mock_spice.get_body_gravitational_parameter.return_value = 6.836529e15
+        mock_spice.get_body_properties.return_value = [24764, 24764, 24341]
+
         mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
         mock_body_settings.get = MagicMock(return_value=MagicMock())
+        mock_body_settings.add_empty_settings = MagicMock()
         mock_get_defaults.return_value = mock_body_settings
 
         mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_bodies.list_of_bodies = MagicMock(return_value=[])
         mock_create_bodies.return_value = mock_bodies
 
         result = get_environment(jacobson_config, mock_runtime_context)
 
         assert result == mock_bodies
 
-    @patch("orbitdet.simulation.environment.add_neptune")
-    @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
-    @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
-    def test_environment_uses_correct_body_list(
-        self,
-        mock_get_defaults,
-        mock_create_bodies,
-        mock_add_neptune,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test that environment uses correct body list from config."""
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_body_settings.get = MagicMock(return_value=MagicMock())
-        mock_get_defaults.return_value = mock_body_settings
-
-        mock_bodies = MagicMock(spec=env.SystemOfBodies)
-        mock_create_bodies.return_value = mock_bodies
-
-        get_environment(basic_config, mock_runtime_context)
-
-        # Verify get_default_body_settings called with correct bodies
-        call_args = mock_get_defaults.call_args[0]
-        body_list = call_args[0]
-        assert set(body_list) == {"Neptune", "Triton"}
-
-    @patch("orbitdet.simulation.environment.add_neptune")
-    @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
-    @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
-    def test_environment_configures_triton_ephemeris(
-        self,
-        mock_get_defaults,
-        mock_create_bodies,
-        mock_add_neptune,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test that Triton ephemeris is configured with interpolated SPICE."""
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_triton_settings = MagicMock()
-        mock_earth_settings = MagicMock()
-
-        def get_body_side_effect(body_name):
-            if body_name == "Triton":
-                return mock_triton_settings
-            elif body_name == "Earth":
-                return mock_earth_settings
-            return MagicMock()
-
-        mock_body_settings.get = MagicMock(side_effect=get_body_side_effect)
-        mock_get_defaults.return_value = mock_body_settings
-
-        mock_bodies = MagicMock(spec=env.SystemOfBodies)
-        mock_create_bodies.return_value = mock_bodies
-
-        get_environment(basic_config, mock_runtime_context)
-
-        # Verify Triton ephemeris was set
-        assert mock_triton_settings.ephemeris_settings is not None
-
-    @patch("orbitdet.simulation.environment.add_neptune")
-    @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
-    @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
-    def test_environment_configures_earth_rotation_model(
-        self,
-        mock_get_defaults,
-        mock_create_bodies,
-        mock_add_neptune,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test that Earth rotation model (GCRS to ITRS) is configured."""
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_earth_settings = MagicMock()
-
-        def get_body_side_effect(body_name):
-            if body_name == "Earth":
-                return mock_earth_settings
-            return MagicMock()
-
-        mock_body_settings.get = MagicMock(side_effect=get_body_side_effect)
-        mock_get_defaults.return_value = mock_body_settings
-
-        mock_bodies = MagicMock(spec=env.SystemOfBodies)
-        mock_create_bodies.return_value = mock_bodies
-
-        get_environment(basic_config, mock_runtime_context)
-
-        # Verify Earth rotation model was set
-        assert mock_earth_settings.rotation_model_settings is not None
-
-    @patch("orbitdet.simulation.environment.add_neptune")
-    @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
-    @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
-    def test_environment_calls_add_neptune(
-        self,
-        mock_get_defaults,
-        mock_create_bodies,
-        mock_add_neptune,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test that add_neptune is called with correct arguments."""
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_body_settings.get = MagicMock(return_value=MagicMock())
-        mock_get_defaults.return_value = mock_body_settings
-
-        mock_bodies = MagicMock(spec=env.SystemOfBodies)
-        mock_create_bodies.return_value = mock_bodies
-
-        get_environment(basic_config, mock_runtime_context)
-
-        # Verify add_neptune was called with config and body_settings
-        mock_add_neptune.assert_called_once_with(basic_config, mock_body_settings)
-
-    @patch("orbitdet.simulation.environment.add_neptune")
-    @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
-    @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
-    def test_environment_calls_get_default_body_settings_with_correct_params(
-        self,
-        mock_get_defaults,
-        mock_create_bodies,
-        mock_add_neptune,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test that get_default_body_settings is called with correct frame parameters."""
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_body_settings.get = MagicMock(return_value=MagicMock())
-        mock_get_defaults.return_value = mock_body_settings
-
-        mock_bodies = MagicMock(spec=env.SystemOfBodies)
-        mock_create_bodies.return_value = mock_bodies
-
-        get_environment(basic_config, mock_runtime_context)
-
-        # Verify get_default_body_settings called with correct frame parameters
-        call_args = mock_get_defaults.call_args[0]
-        assert call_args[1] == basic_config.global_frame_origin
-        assert call_args[2] == basic_config.global_frame_orientation
-
-    @patch("orbitdet.simulation.environment.add_neptune")
     @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
     @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
     def test_environment_returns_created_system_of_bodies(
         self,
         mock_get_defaults,
         mock_create_bodies,
-        mock_add_neptune,
         basic_config,
         mock_runtime_context,
     ):
         """Test that get_environment returns the created system of bodies."""
         mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
         mock_body_settings.get = MagicMock(return_value=MagicMock())
+        mock_body_settings.add_empty_settings = MagicMock()
         mock_get_defaults.return_value = mock_body_settings
 
         mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_bodies.list_of_bodies = MagicMock(return_value=[])
         mock_create_bodies.return_value = mock_bodies
 
         result = get_environment(basic_config, mock_runtime_context)
@@ -407,282 +277,7 @@ class TestGetEnvironment:
         mock_create_bodies.assert_called_once_with(mock_body_settings)
 
 
-class TestAddNeptune:
-    """Tests for add_neptune function."""
-
-    def test_add_neptune_central_gravity_model(self, basic_config):
-        """Test add_neptune with central gravity model (no-op)."""
-        from orbitdet.simulation.environment import add_neptune
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        # Should not raise error with central gravity
-        add_neptune(basic_config, mock_body_settings)
-
-        # Verify Neptune body settings were accessed
-        mock_body_settings.get.assert_called_with("Neptune")
-
-    @patch("orbitdet.simulation.environment.spice")
-    def test_add_neptune_jacobson_gravity_model(self, mock_spice, jacobson_config):
-        """Test add_neptune with Jacobson2009 gravity model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        mock_spice.get_body_gravitational_parameter.return_value = 6.836529e15
-        mock_spice.get_body_properties.return_value = [24764, 24764, 24341]  # Neptune radii in km
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(jacobson_config, mock_body_settings)
-
-        # Verify SPICE calls
-        mock_spice.get_body_gravitational_parameter.assert_called_once_with("Neptune")
-        mock_spice.get_body_properties.assert_called_once_with("Neptune", "RADII", 3)
-
-        # Verify gravity field settings were set
-        assert mock_neptune_settings.gravity_field_settings is not None
-
-    def test_add_neptune_unsupported_gravity_model(self, basic_config):
-        """Test add_neptune raises error for unsupported gravity model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "UnsupportedModel",
-                        "rotation_model": "spice",
-                    },
-                },
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_body_settings.get = MagicMock(return_value=MagicMock())
-
-        with pytest.raises(ValueError, match="Unsupported gravity model"):
-            add_neptune(config, mock_body_settings)
-
-    @patch("orbitdet.simulation.environment.env_setup.rotation_model.spice")
-    def test_add_neptune_spice_rotation_model(self, mock_spice_rotation, basic_config):
-        """Test add_neptune with SPICE rotation model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "spice",
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(config, mock_body_settings)
-
-        # Verify rotation model settings were set
-        assert mock_neptune_settings.rotation_model_settings is not None
-        mock_spice_rotation.assert_called_once()
-
-    @patch("orbitdet.simulation.environment.env_setup.rotation_model.simple_from_spice")
-    def test_add_neptune_simple_from_spice_rotation_model(
-        self, mock_simple_from_spice, basic_config
-    ):
-        """Test add_neptune with simple_from_spice rotation model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "simple_from_spice",
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-                "start_epoch": 1234567890.0,
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(config, mock_body_settings)
-
-        # Verify rotation model settings were set
-        assert mock_neptune_settings.rotation_model_settings is not None
-        mock_simple_from_spice.assert_called_once()
-
-    @patch("orbitdet.simulation.environment.env_setup.rotation_model.iau_rotation_model")
-    def test_add_neptune_iau2015_rotation_model(self, mock_iau_rotation, basic_config):
-        """Test add_neptune with IAU2015 rotation model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "IAU2015",
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(config, mock_body_settings)
-
-        # Verify rotation model settings were set
-        assert mock_neptune_settings.rotation_model_settings is not None
-        mock_iau_rotation.assert_called_once()
-
-    @patch("orbitdet.simulation.environment.env_setup.rotation_model.iau_rotation_model")
-    def test_add_neptune_iau2015_with_custom_pole_values(self, mock_iau_rotation, basic_config):
-        """Test add_neptune with IAU2015 rotation model and custom pole values."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "IAU2015",
-                        "initial_Pole_Pos": [1.0, 2.0],
-                        "initial_Pole_lib_deg1": [0.5, 1.5],
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(config, mock_body_settings)
-
-        # Verify rotation model settings were set
-        assert mock_neptune_settings.rotation_model_settings is not None
-        mock_iau_rotation.assert_called_once()
-
-    @patch("orbitdet.simulation.environment.env_setup.rotation_model.iau_rotation_model")
-    def test_add_neptune_pole_model_jacobson2009_rotation_model(
-        self, mock_iau_rotation, basic_config
-    ):
-        """Test add_neptune with Pole_Model_Jacobson2009 rotation model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "Pole_Model_Jacobson2009",
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(config, mock_body_settings)
-
-        # Verify rotation model settings were set
-        assert mock_neptune_settings.rotation_model_settings is not None
-        mock_iau_rotation.assert_called_once()
-
-    def test_add_neptune_unsupported_rotation_model(self, basic_config):
-        """Test add_neptune with unsupported rotation model (silently skips)."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "UnsupportedRotationModel",
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        # Should not raise error - unsupported models are silently skipped
-        add_neptune(config, mock_body_settings)
-
-    @patch("orbitdet.simulation.environment.env_setup.ephemeris.direct_spice")
-    def test_add_neptune_sets_neptune_ephemeris(self, mock_direct_spice, basic_config):
-        """Test add_neptune sets Neptune ephemeris model."""
-        from orbitdet.simulation.environment import add_neptune
-
-        config = OmegaConf.create(
-            {
-                "bodies_to_create": {
-                    "Neptune": {
-                        "gravity": "central",
-                        "rotation_model": "spice",
-                    },
-                },
-                "global_frame_origin": "Neptune",
-                "global_frame_orientation": "J2000",
-            }
-        )
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(config, mock_body_settings)
-
-        # Verify ephemeris settings were set
-        assert mock_neptune_settings.ephemeris_settings is not None
-
-    @patch("orbitdet.simulation.environment.spice")
-    def test_add_neptune_jacobson_gravity_computes_coefficients(self, mock_spice, jacobson_config):
-        """Test add_neptune Jacobson model computes correct gravity coefficients."""
-        from orbitdet.simulation.environment import add_neptune
-
-        mock_spice.get_body_gravitational_parameter.return_value = 6.836529e15
-        mock_spice.get_body_properties.return_value = [24764, 24764, 24341]
-
-        mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
-        mock_neptune_settings = MagicMock()
-        mock_body_settings.get = MagicMock(return_value=mock_neptune_settings)
-
-        add_neptune(jacobson_config, mock_body_settings)
-
-        # Verify gravity field was configured (spherical harmonic)
-        call_kwargs = mock_neptune_settings.gravity_field_settings
-        assert call_kwargs is not None
-
+class TestGetPropagatorSettings:
     """Tests for get_propagator_settings function."""
 
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")

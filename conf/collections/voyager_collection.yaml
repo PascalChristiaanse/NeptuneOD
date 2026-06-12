@@ -1,0 +1,5 @@
+# @package _global_
+defaults:
+  - /datasets/voyager@datasets.voyager
+
+name: "NSDB Triton Data"

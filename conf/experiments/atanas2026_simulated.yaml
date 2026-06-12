@@ -40,7 +40,8 @@ bodies_to_propagate:
 bodies_to_create:
   Neptune:
     gravity: "Jacobson2009"
-    rotation_model: "IAU2015"
+    rotation_model:
+      type: "IAU2015"
   Triton:
     gravity: "central"
     ephemeris:

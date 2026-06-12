@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 
 from orbitdet.data.voyager_data import load_and_merge_voyager_tables
 from orbitdet.observations.registry import register_dataset_factory
+from orbitdet.transformations import convert_radec_frame
 
 from .nsdb_helpers import set_ra_dec_columns
 
@@ -35,10 +36,16 @@ def create_voyager_dataset(
     receiver_name = dataset_cfg.observatory.name
     receiver_link_end = obs_model_setup.links.body_origin_link_end_id(receiver_name)
 
+    # Convert RA/DEC columns to appropriate frame
     ra_column, dec_column = set_ra_dec_columns(merged_data)
-    # merged_data = convert_fk4_b1950_to_icrs_j2000(
-    #     merged_data, ra_column, dec_column, epoch_of_equinox=dataset_cfg.epoch_of_equinox
-    # )
+    merged_data = convert_radec_frame(
+        merged_data,
+        ra_column,
+        dec_column,
+        input_frame=dataset_cfg.epoch_of_equinox,
+        output_frame=cfg.global_frame_orientation,
+    )
+
     valid_rows = merged_data[["epoch_TDB", ra_column, dec_column]].dropna()
     times = valid_rows["epoch_TDB"].to_numpy()
 

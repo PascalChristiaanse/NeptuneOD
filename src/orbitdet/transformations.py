@@ -54,7 +54,91 @@ def convert_cartesian_frame(
     converted_data[x_column] = transformed_vectors[0]
     converted_data[y_column] = transformed_vectors[1]
     converted_data[z_column] = transformed_vectors[2]
+    return converted_data
 
+
+def convert_radec_frame(
+    data: pd.DataFrame,
+    ra_column: str,
+    dec_column: str,
+    input_frame: str,
+    output_frame: str,
+    time_column: str = None,
+    ra_wrap: bool = True,
+) -> pd.DataFrame:
+    """
+    Convert RA/DEC between reference frames using SPICE rotation matrices.
+
+    The method:
+        RA/DEC -> unit vector -> rotate -> RA/DEC
+
+    Args:
+        data (pd.DataFrame): input data containing RA/DEC (degrees).
+        ra_column (str): column name for right ascension (deg).
+        dec_column (str): column name for declination (deg).
+        input_frame (str): input reference frame name.
+        output_frame (str): output reference frame name.
+        time_column (str, optional): epoch column for time-dependent frames.
+        ra_wrap (bool): wrap RA into [0, 360). Default True.
+
+    Returns:
+        pd.DataFrame: copy of input data with transformed RA/DEC.
+    """
+
+    if input_frame == output_frame:
+        return data.copy()
+
+    if time_column is None:
+        epochs = pd.Series([0.0] * len(data))
+    else:
+        epochs = data[time_column]
+
+    def radec_to_vector(ra_deg, dec_deg):
+        ra = np.deg2rad(ra_deg)
+        dec = np.deg2rad(dec_deg)
+
+        x = np.cos(dec) * np.cos(ra)
+        y = np.cos(dec) * np.sin(ra)
+        z = np.sin(dec)
+        return np.array([x, y, z])
+
+    def vector_to_radec(v):
+        x, y, z = v
+        r = np.linalg.norm(v)
+        if r == 0:
+            return np.nan, np.nan
+
+        x, y, z = x / r, y / r, z / r
+
+        dec = np.arcsin(z)
+        ra = np.arctan2(y, x)
+
+        ra_deg = np.rad2deg(ra)
+        dec_deg = np.rad2deg(dec)
+
+        if ra_wrap:
+            ra_deg = ra_deg % 360.0
+
+        return ra_deg, dec_deg
+
+    def transform_row(row):
+        epoch = row[time_column] if time_column is not None else 0.0
+
+        rotation_matrix = spice.compute_rotation_matrix_between_frames(
+            input_frame, output_frame, epoch
+        )
+
+        vec = radec_to_vector(row[ra_column], row[dec_column])
+        vec_out = rotation_matrix @ vec
+        return vector_to_radec(vec_out)
+
+    transformed = data.apply(transform_row, axis=1, result_type="expand")
+
+    out = data.copy()
+    out[ra_column] = transformed[0]
+    out[dec_column] = transformed[1]
+
+    return out
 
 def convert_observation_to_apparent_direction(
     data: pd.DataFrame, ra_column: str, dec_column: str

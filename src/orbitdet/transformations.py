@@ -88,11 +88,6 @@ def convert_radec_frame(
     if input_frame == output_frame:
         return data.copy()
 
-    if time_column is None:
-        epochs = pd.Series([0.0] * len(data))
-    else:
-        epochs = data[time_column]
-
     def radec_to_vector(ra_deg, dec_deg):
         ra = np.deg2rad(ra_deg)
         dec = np.deg2rad(dec_deg)
@@ -139,6 +134,7 @@ def convert_radec_frame(
     out[dec_column] = transformed[1]
 
     return out
+
 
 def convert_observation_to_apparent_direction(
     data: pd.DataFrame, ra_column: str, dec_column: str

@@ -80,7 +80,7 @@ def create_absolute_ccd_dataset(
 
     # extract data for observation set
     ra_column, dec_column = set_ra_dec_columns(data_file)
-    merged_data = convert_radec_frame(
+    data_file = convert_radec_frame(
         data_file,
         ra_column,
         dec_column,

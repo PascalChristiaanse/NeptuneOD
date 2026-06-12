@@ -97,6 +97,17 @@ def plot_residuals(
     cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
     colors = plt.get_cmap(cmap)
     marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
+    marker_types = [
+        "o",
+        "s",
+        "D",
+        "^",
+        "v",
+        "<",
+        ">",
+        "P",
+        "X",
+    ]  # cycle through marker types if more sets than colors
     for set_index, obs_set in enumerate(observation_sets):
         observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
         if observatory_code == "":
@@ -110,6 +121,7 @@ def plot_residuals(
             info = get_observatory_info(cfg, observatory_code)
         target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
         color = colors(set_index % colors.N)
+        marker = marker_types[set_index % len(marker_types)]
 
         obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
         obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
@@ -128,21 +140,21 @@ def plot_residuals(
         axs[0].scatter(
             obs_times,
             ra_residuals_arcsec,
-            marker=".",
+            marker=marker,
             s=marker_size,
             label=f"{info['name']} - {info['region']} - RMS: {ra_rms_label}",
             color=color,
-            alpha=0.9,
+            alpha=0.5,
         )
         # DEC
         axs[1].scatter(
             obs_times,
             dec_residuals_arcsec,
-            marker=".",
+            marker=marker,
             s=marker_size,
             label=f"{info['name']} - {info['region']} - RMS: {dec_rms_label}",
             color=color,
-            alpha=0.9,
+            alpha=0.5,
         )
 
     # Titles and labels (configurable)

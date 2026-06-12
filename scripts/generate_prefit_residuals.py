@@ -1,7 +1,9 @@
 import logging
+import os
 from pathlib import Path
 
 import hydra
+import matplotlib
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
@@ -16,6 +18,22 @@ from orbitdet.simulation import (
     get_environment,
 )
 from orbitdet.visualization import plot_residuals
+
+display = os.environ.get("DISPLAY")
+is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
+
+matplotlib.rcParams["webagg.port"] = 8988
+matplotlib.rcParams["webagg.open_in_browser"] = False
+
+if os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_TTY") or is_headless_display:
+    matplotlib.use("WebAgg", force=True)
+elif display or os.environ.get("WAYLAND_DISPLAY"):
+    try:
+        matplotlib.use("QtAgg", force=True)
+    except Exception:
+        matplotlib.use("TkAgg", force=True)
+else:
+    matplotlib.use("WebAgg", force=True)
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +87,11 @@ def main(cfg: DictConfig):
     logger.info(f"Pre-fit residuals plot saved to {fig_path}")
 
     backend = plt.get_backend().lower()
-    if "agg" in backend or "inline" in backend:
+    if backend == "agg" or "inline" in backend:
         logger.info("Skipping interactive display because matplotlib backend is %s.", backend)
     else:
+        if backend == "webagg":
+            logger.info("Open the interactive plot at http://localhost:8988")
         plt.show(block=True)
 
     logger.info("Pre-fit residuals script completed.")

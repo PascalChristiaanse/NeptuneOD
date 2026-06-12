@@ -23,10 +23,15 @@ end_date: 1989-10-2T12:00:00
 kernel_folder: "data/kernels"
 kernels:
   pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
-  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
-  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
   naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
-  Voyager_2.m05016u.merged.bsp: "https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/Voyager_2.m05016u.merged.bsp"
+  # de118.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/a_old_versions/de118.bsp"
+  # de442.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de442.bsp"
+  # nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  nep097xl-801.bsp: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097xl-801.bsp # TRITON (801) w.r.t. NEPTUNE BARYCENTER (8)
+  nep105.bsp: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp # NEPTUNE BARYCENTER (8) w.r.t. SOLAR SYSTEM BARYCENTER (0)
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  # Voyager_2.m05016u.merged.bsp: "https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/Voyager_2.m05016u.merged.bsp"
+  # vgr2_nep097.bsp: https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/vgr2_nep097.bsp
 
 # Data files settings
 data_folder: "data/other"
@@ -34,62 +39,52 @@ data_files:
   observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
 
 # Frame settings
+# global_frame_origin: "Neptune Barycenter"
 global_frame_origin: "SSB"
-global_frame_orientation: "J2000"
+global_frame_orientation: "B1950"
 
 # Environment settings
 bodies_to_propagate:
   Triton:
     initial_state: null
-    central_body: "Neptune"
+    central_body: "SSB"
 
 bodies_to_create:
-  Neptune:
-    gravity: "Jacobson2009"
-    rotation_model:
-      type: "IAU2015"
-  Triton:
-    gravity: "central"
-    ephemeris:
-      type: "interpolated_spice"
-      interpolator_cadance: 480
-  Sun:
-    gravity: "central"
-  Jupiter:
-    gravity: "central"
-  Saturn:
-    gravity: "central"
-  Uranus:
-    gravity: "central"
-  Mercury:
-    gravity: "central"
-  Venus:
-    gravity: "central"
-  Earth:
-    gravity: "central"
-    rotation_model:
-      type: "GCRS_to_ITRS"
-      nutation_model: "iau_2006"
-    shape_model: "oblate_spherical_spice"
-  Mars:
-    gravity: "central"
+  # Neptune:
+  #   placeholder: true
+    # ephemeris:
+    #   type: "direct_spice"
+  #   placeholder: true
+  #   gravity: "Jacobson2009"
+  #   rotation_model:
+  #     type: "IAU2015"
   Neptune Barycenter:
+    placeholder: true
     ephemeris:
       type: "direct_spice"
   Voyager 2:
     ephemeris:
-      type: "tabulated_from_ancillary_file" # or tabulated from ancillary file
-  Voyager 2 spice:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file" # (Ephemeris matches paper)
+      # type: "direct_spice"
+  # Voyager 2 barycenter:
+  #   ephemeris:
+  #     relative_to: "Neptune Barycenter"
+  #     type: "tabulated_from_ancillary_file" # (Ephemeris matches paper)
+  # Voyager 2 spice:
+  #   ephemeris:
+  #     relative_to: "Neptune Barycenter"
+  #     type: "direct_spice"
+  Triton:
     ephemeris:
       type: "direct_spice"
+      relative_to: "SSB"
 
 # Integrator settings
 integrator:
   type: "RKF78"
   fixed_step_size: 3600
   # fixed_step_size: 120
-
-
 
 # Logging settings
 logging:

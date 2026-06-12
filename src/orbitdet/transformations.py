@@ -1,84 +1,85 @@
 import logging
 
+import numpy as np
 import pandas as pd
 from astropy import units as u
-from astropy.coordinates import FK4, ICRS, SkyCoord
-from astropy.time import Time
+from astropy.coordinates import ICRS, SkyCoord
+from tudatpy.interface import spice
 
 logger = logging.getLogger(__name__)
 
 
-def convert_fk4_b1950_to_icrs_j2000(
-    data: pd.DataFrame,
-    ra_column: str,
-    dec_column: str,
-    epoch_of_equinox,
-) -> pd.DataFrame:
-    if epoch_of_equinox is None:
-        return data
-
-    equinox_text = str(epoch_of_equinox).strip().upper()
-    if not equinox_text.startswith("B"):
-        return data
-
-    try:
-        equinox = Time(float(equinox_text[1:]), format="byear")
-    except ValueError as exc:
-        raise ValueError(
-            f"Could not parse epoch_of_equinox='{epoch_of_equinox}' as a Besselian year."
-        ) from exc
-
-    skycoord = SkyCoord(
-        ra=data[ra_column].to_numpy(dtype=float) * u.deg,
-        dec=data[dec_column].to_numpy(dtype=float) * u.deg,
-        frame=FK4(equinox=equinox),
-    ).transform_to(ICRS())
-
-    converted_data = data.copy()
-    converted_data[ra_column] = skycoord.ra.deg
-    converted_data[dec_column] = skycoord.dec.deg
-    logger.info(
-        "Converted Voyager coordinates from FK4/%s to ICRS/J2000 using epoch_of_equinox.",
-        equinox_text,
-    )
-    return converted_data
-
-
-def convert_fk4_b1950_cartesian_to_icrs_j2000(
+def convert_cartesian_frame(
     data: pd.DataFrame,
     x_column: str,
     y_column: str,
     z_column: str,
-    epoch_of_equinox,
+    input_frame: str,
+    output_frame: str,
+    time_column: str = None,
 ) -> pd.DataFrame:
-    if epoch_of_equinox is None:
+    """Rotate Cartesian coordinates from input_frame to output_frame using SPICE rotation matrices.
+
+    Args:
+        data (pd.DataFrame): input data containing Cartesian coordinates and optionally time. Modified in-place.
+        x_column (str): column name for x coordinate in data.
+        y_column (str): column name for y coordinate in data.
+        z_column (str): column name for z coordinate in data.
+        input_frame (str): identifier of the input reference frame (e.g. "B1950", "FK4", "J2000", "ICRS").
+        output_frame (str): identifier of the output reference frame (e.g. "B1950", "FK4", "J2000", "ICRS").
+        time_column (str, optional): . Defaults to None.
+
+    Returns:
+        pd.DataFrame: _description_
+    """
+    if input_frame == output_frame:
+        logger.info(f"Input and output frames are the same ({input_frame}), no conversion applied.")
         return data
+    if time_column is None:
+        time_column = pd.Series([0.0] * len(data))
 
-    equinox_text = str(epoch_of_equinox).strip().upper()
-    if not equinox_text.startswith("B"):
-        return data
+    def rotate_row(row):
+        epoch = row[time_column]
+        rotation_matrix = spice.compute_rotation_matrix_between_frames(
+            input_frame, output_frame, epoch
+        )
+        vector = np.array([row[x_column], row[y_column], row[z_column]])
+        transformed_vector = rotation_matrix @ vector
+        return transformed_vector
 
-    try:
-        equinox = Time(float(equinox_text[1:]), format="byear")
-    except ValueError as exc:
-        raise ValueError(
-            f"Could not parse epoch_of_equinox='{epoch_of_equinox}' as a Besselian year."
-        ) from exc
-
-    skycoord = SkyCoord(
-        x=data[x_column].to_numpy(dtype=float) * u.km,
-        y=data[y_column].to_numpy(dtype=float) * u.km,
-        z=data[z_column].to_numpy(dtype=float) * u.km,
-        frame=FK4(equinox=equinox),
-        representation_type="cartesian",
-    ).transform_to(ICRS())
-
+    transformed_vectors = data.apply(rotate_row, axis=1, result_type="expand")
     converted_data = data.copy()
-    converted_data[x_column] = skycoord.cartesian.x.to_value(u.km)
-    converted_data[y_column] = skycoord.cartesian.y.to_value(u.km)
-    converted_data[z_column] = skycoord.cartesian.z.to_value(u.km)
-    logger.info(
-        "Converted Voyager Cartesian coordinates from FK4/%s to ICRS/J2000 using epoch_of_equinox.",
-        equinox_text,
-    )
+    converted_data[x_column] = transformed_vectors[0]
+    converted_data[y_column] = transformed_vectors[1]
+    converted_data[z_column] = transformed_vectors[2]
+
+
+def convert_observation_to_apparent_direction(
+    data: pd.DataFrame, ra_column: str, dec_column: str
+) -> pd.DataFrame:
+    """Convert RA/DEC in degrees to unit Cartesian vectors representing the apparent direction to
+    the target. Introduces new columns "obs_x", "obs_y", "obs_z" in the data.
+
+    Args:
+        data (pd.DataFrame): input data containing RA and DEC columns. Modified in-place.
+        ra_column (str): column name for right ascension in degrees.
+        dec_column (str): column name for declination in degrees.
+
+    Returns:
+        pd.DataFrame: data with RA/DEC columns replaced by x/y/z unit vector columns.
+    """
+
+    def convert_row(row):
+        ra_rad = np.deg2rad(row[ra_column])
+        dec_rad = np.deg2rad(row[dec_column])
+        x = np.cos(dec_rad) * np.cos(ra_rad)
+        y = np.cos(dec_rad) * np.sin(ra_rad)
+        z = np.sin(dec_rad)
+        return np.array([x, y, z])
+
+    transformed_vectors = data.apply(convert_row, axis=1, result_type="expand")
+    converted_data = data.copy()
+    converted_data["obs_x"] = transformed_vectors[0]
+    converted_data["obs_y"] = transformed_vectors[1]
+    converted_data["obs_z"] = transformed_vectors[2]
     return converted_data

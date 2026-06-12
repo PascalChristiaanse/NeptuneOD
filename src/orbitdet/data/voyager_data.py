@@ -5,8 +5,10 @@ import pandas as pd
 from astropy import units as u
 from astropy.time import Time
 from omegaconf import DictConfig
+from tudatpy.astro import time_representation as time_repr
+from tudatpy.interface import spice
 
-from orbitdet.transformations import convert_fk4_b1950_cartesian_to_icrs_j2000
+from orbitdet.transformations import convert_cartesian_frame
 
 logger = logging.getLogger(__name__)
 
@@ -65,35 +67,15 @@ def merge_voyager_tables(
     return merged_data.drop(columns=["_merge"])
 
 
-def _jd_to_seconds_since_j2000_tdb(jd_values: np.ndarray) -> np.ndarray:
-    reference_epoch = Time("2000-01-01T12:00:00", scale="tdb")
-    times = Time(jd_values, format="jd", scale="tdb")
-    return (times - reference_epoch).to_value(u.s)
-
-
-def apply_voyager_time_offset_seconds(data: pd.DataFrame, time_offset_seconds) -> pd.DataFrame:
-    if time_offset_seconds is None:
-        return data
-
-    offset_seconds = float(time_offset_seconds)
-    if offset_seconds == 0.0:
-        return data
-
-    shifted_data = data.copy()
-    offset_days = offset_seconds / 86400.0
-    if "jd" in shifted_data.columns:
-        shifted_data["jd"] = shifted_data["jd"].astype(float) + offset_days
-    if "epoch_TDB" in shifted_data.columns:
-        shifted_data["epoch_TDB"] = shifted_data["epoch_TDB"].astype(float) + offset_seconds
-
-    logger.info("Applied Voyager time offset of %.3f seconds.", offset_seconds)
-    return shifted_data
-
-
 def build_voyager_tabulated_state_history(
     cfg: DictConfig,
     dataset_cfg: DictConfig,
 ) -> dict[float, np.ndarray]:
+    if cfg.global_frame_origin != "SSB" and cfg.global_frame_orientation != "Neptune Barycenter":
+        raise ValueError(
+            "Voyager tabulated ephemeris requires global frame to be Neptune Barycenter or SSB"
+        )
+
     merged_data = load_and_merge_voyager_tables(cfg, dataset_cfg)
 
     required_columns = ["jd", "x_km", "y_km", "z_km"]
@@ -104,28 +86,56 @@ def build_voyager_tabulated_state_history(
             + ", ".join(missing_columns)
         )
 
-    epoch_of_equinox = getattr(dataset_cfg, "epoch_of_equinox", None)
-    merged_data = convert_fk4_b1950_cartesian_to_icrs_j2000(
-        merged_data,
-        "x_km",
-        "y_km",
-        "z_km",
-        epoch_of_equinox,
-    )
-    merged_data = apply_voyager_time_offset_seconds(
-        merged_data, getattr(dataset_cfg, "time_offset_seconds", None)
-    )
+    # Correct for delta Tau if origin is SSB. Voyager ephemeris is in the modified
+    # Neptune-centric frame; the paper defines r'(t, tau(t)) = r(t) + [b(t) - b(t-tau(t))].
+    # Here, r is the spacecraft position in SSB, b is Neptune's position in SSB, and tau(t)
+    # is the light time as a function of observation epoch.
+    # t is the observation epoch, and r(t) is the tabulated ephemeris position.
+    if cfg.global_frame_origin == "SSB":
+        r_t_tau = merged_data[["x_km", "y_km", "z_km"]].to_numpy(dtype=float) * 1000.0
+        light_time_seconds = merged_data["t_sec"].to_numpy(dtype=float)
+        epochs = merged_data["epoch_TDB"].to_numpy(dtype=float)
+        b_t = []
+        b_t_tau = []
+        for epoch, light_time in zip(epochs, light_time_seconds):
+            b_t.append(
+                spice.get_body_cartesian_position_at_epoch(
+                    "Neptune Barycenter", "SSB", cfg.global_frame_orientation, "NONE", epoch
+                )
+            )
+            b_t_tau.append(
+                spice.get_body_cartesian_position_at_epoch(
+                    "Neptune Barycenter",
+                    "SSB",
+                    cfg.global_frame_orientation,
+                    "NONE",
+                    epoch - light_time,
+                )
+            )
+        b_t = np.asarray(b_t, dtype=float)
+        b_t_tau = np.asarray(b_t_tau, dtype=float)
+        r_t = r_t_tau - (b_t - b_t_tau)
+        merged_data["x_km"] = r_t[:, 0] / 1000.0
+        merged_data["y_km"] = r_t[:, 1] / 1000.0
+        merged_data["z_km"] = r_t[:, 2] / 1000.0
+        logger.info("Applied light time correction to Voyager tabulated ephemeris for SSB origin.")
 
-    # Filter all entries containing NaN in jd, x_km, y_km, or z_km, as these are
-    # required for the tabulated ephemeris
-    merged_data = merged_data.dropna(subset=["jd", "x_km", "y_km", "z_km"])
-
+    merged_data = merged_data.dropna(subset=["epoch_TDB", "jd", "x_km", "y_km", "z_km"])
     ordered_data = merged_data.sort_values("jd").drop_duplicates(subset="jd", keep="first")
-    time_seconds = _jd_to_seconds_since_j2000_tdb(ordered_data["jd"].to_numpy(dtype=float))
-    if time_seconds.size < 2:
-        raise ValueError(
-            "Need at least two Voyager ephemeris samples to create a tabulated ephemeris."
-        )
+    ordered_data = convert_cartesian_frame(
+        data=ordered_data,
+        x_column="x_km",
+        y_column="y_km",
+        z_column="z_km",
+        input_frame=dataset_cfg.epoch_of_equinox,
+        output_frame=cfg.global_frame_orientation,
+        time_column="epoch_TDB",
+    )
+    logger.info(
+        f"Converted Voyager tabulated ephemeris from {dataset_cfg.epoch_of_equinox} to {cfg.global_frame_orientation}."
+    )
+
+    time_seconds = ordered_data["epoch_TDB"].to_numpy(dtype=float)
 
     positions_km = ordered_data[["x_km", "y_km", "z_km"]].to_numpy(dtype=float)
     velocities_km_s = np.vstack(
@@ -168,8 +178,10 @@ def load_and_merge_voyager_tables(
     if "date_jed" in merged_data.columns and "jd" not in merged_data.columns:
         merged_data = merged_data.rename(columns={"date_jed": "jd"})
 
-    merged_data = apply_voyager_time_offset_seconds(
-        merged_data, getattr(dataset_cfg, "time_offset_seconds", None)
+    merged_data["epoch_TDB"] = merged_data["jd"].map(
+        lambda value: (
+            np.nan if pd.isna(value) else time_repr.julian_day_to_seconds_since_epoch(value)
+        )
     )
 
     return merged_data

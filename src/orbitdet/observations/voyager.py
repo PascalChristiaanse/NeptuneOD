@@ -1,18 +1,15 @@
 import logging
 
 import numpy as np
-import pandas as pd
 import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observable_models_setup as obs_model_setup
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig
-from tudatpy.astro.time_representation import iso_string_to_epoch
 
 from orbitdet.data.voyager_data import load_and_merge_voyager_tables
 from orbitdet.observations.registry import register_dataset_factory
-from orbitdet.transformations import convert_fk4_b1950_to_icrs_j2000
 
-from .nsdb_helpers import set_iso_time_column, set_ra_dec_columns
+from .nsdb_helpers import set_ra_dec_columns
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +32,15 @@ def create_voyager_dataset(
 
     merged_data = load_and_merge_voyager_tables(cfg, dataset_cfg)
 
-    if "date_jed" in merged_data.columns and "jd" not in merged_data.columns:
-        merged_data = merged_data.rename(columns={"date_jed": "jd"})
-
-    set_iso_time_column(merged_data)
-
-    receiver_name = "Voyager 2"
-
-    merged_data["epoch_TDB"] = merged_data["iso_time"].map(
-        lambda value: np.nan if pd.isna(value) else iso_string_to_epoch(value)
-    )
+    receiver_name = dataset_cfg.observatory.name
     receiver_link_end = obs_model_setup.links.body_origin_link_end_id(receiver_name)
 
     ra_column, dec_column = set_ra_dec_columns(merged_data)
-    merged_data = convert_fk4_b1950_to_icrs_j2000(
-        merged_data, ra_column, dec_column, epoch_of_equinox=dataset_cfg.epoch_of_equinox
-    )
+    # merged_data = convert_fk4_b1950_to_icrs_j2000(
+    #     merged_data, ra_column, dec_column, epoch_of_equinox=dataset_cfg.epoch_of_equinox
+    # )
     valid_rows = merged_data[["epoch_TDB", ra_column, dec_column]].dropna()
-    times = valid_rows["epoch_TDB"].tolist()
+    times = valid_rows["epoch_TDB"].to_numpy()
 
     if len(list(dataset_cfg.satellites.keys())) > 1:
         raise NotImplementedError("Multiple satellites in one Voyager file not supported yet.")

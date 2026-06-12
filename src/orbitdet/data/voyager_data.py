@@ -2,8 +2,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-from astropy import units as u
-from astropy.time import Time
 from omegaconf import DictConfig
 from tudatpy.astro import time_representation as time_repr
 from tudatpy.interface import spice
@@ -132,7 +130,8 @@ def build_voyager_tabulated_state_history(
         time_column="epoch_TDB",
     )
     logger.info(
-        f"Converted Voyager tabulated ephemeris from {dataset_cfg.epoch_of_equinox} to {cfg.global_frame_orientation}."
+        f"""Converted Voyager tabulated ephemeris from {dataset_cfg.epoch_of_equinox} """
+        f"""to {cfg.global_frame_orientation}."""
     )
 
     time_seconds = ordered_data["epoch_TDB"].to_numpy(dtype=float)

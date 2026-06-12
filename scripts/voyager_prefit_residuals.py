@@ -64,7 +64,7 @@ def main(cfg: DictConfig):
     observations, observation_models = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
-    # Add range dependent variable to compute lighttime post simulation; to compare against jacobson paper
+    # Add range dependent variable to compute lighttime post simulation
     # range_setting = obs_dep_var.target_range_between_link_ends_dependent_variable()
     # observations.add_dependent_variable(range_setting)
     # logger.info("Added dependent variables (target_range_between_link_ends) succesfully")

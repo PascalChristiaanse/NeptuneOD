@@ -2,8 +2,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-from astropy import units as u
-from astropy.coordinates import ICRS, SkyCoord
 from tudatpy.interface import spice
 
 logger = logging.getLogger(__name__)
@@ -21,16 +19,20 @@ def convert_cartesian_frame(
     """Rotate Cartesian coordinates from input_frame to output_frame using SPICE rotation matrices.
 
     Args:
-        data (pd.DataFrame): input data containing Cartesian coordinates and optionally time. Modified in-place.
+        data (pd.DataFrame): input data containing Cartesian coordinates and optionally time.
+        Modified in-place.
         x_column (str): column name for x coordinate in data.
         y_column (str): column name for y coordinate in data.
         z_column (str): column name for z coordinate in data.
-        input_frame (str): identifier of the input reference frame (e.g. "B1950", "FK4", "J2000", "ICRS").
-        output_frame (str): identifier of the output reference frame (e.g. "B1950", "FK4", "J2000", "ICRS").
+        input_frame (str): identifier of the input reference frame
+        (e.g. "B1950", "FK4", "J2000", "ICRS").
+        output_frame (str): identifier of the output reference frame
+        (e.g. "B1950", "FK4", "J2000", "ICRS").
         time_column (str, optional): . Defaults to None.
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame: data with Cartesian coordinates rotated to the output frame.
+        The original x/y/z columns are overwritten.
     """
     if input_frame == output_frame:
         logger.info(f"Input and output frames are the same ({input_frame}), no conversion applied.")

@@ -1,0 +1,21 @@
+residual_scatter:
+  output_file: "residual_scatter.pdf"
+  figure:
+    width: 8.27
+    height: 8.27
+  titles:
+    title: "RA vs DEC Residuals for {target_name}"
+  axes:
+    x_label: "RA Residual [arcsec]"
+    y_label: "DEC Residual [arcsec]"
+    colorbar_label: "Epoch"
+    hover_x_label: "RA Residual [arcsec]"
+    hover_y_label: "DEC Residual [arcsec]"
+  styling:
+    cmap: "rainbow"
+    marker_size: 30
+  legend:
+    ncols: 2
+    bbox_to_anchor:
+      x: 0.5
+      y: -0.15

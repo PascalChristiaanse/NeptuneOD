@@ -116,7 +116,9 @@ def plot_differenced_dependent_variables(
     number_of_plots = difference_dict[dependent_variable_dict_A.time_history[0]].size
 
     # Load plotting configuration
-    plot_cfg = _cfg_get(cfg, "dependent_variable_differenced", default=None)['dependent_variable_differenced']
+    plot_cfg = _cfg_get(cfg, "dependent_variable_differenced", default=None)[
+        "dependent_variable_differenced"
+    ]
     if plot_cfg is None:
         plot_cfg = cfg
     fig_w = _cfg_get(plot_cfg, "figure", "width", default=10)

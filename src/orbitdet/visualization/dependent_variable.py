@@ -80,7 +80,7 @@ def plot_dependent_variable(
     number_of_plots = value_dict[dependent_variable_dict.time_history[0]].size
 
     # Load plotting configuration
-    plot_cfg = _cfg_get(cfg, "dependent_variable", default=None)['dependent_variable']
+    plot_cfg = _cfg_get(cfg, "dependent_variable", default=None)["dependent_variable"]
     fig_w = _cfg_get(plot_cfg, "figure", "width", default=10)
     fig_h = _cfg_get(plot_cfg, "figure", "height", default=5 * number_of_plots)
 

@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from omegaconf import DictConfig
 from scipy import stats
 from tudatpy.estimation import observations as obs
@@ -168,7 +167,9 @@ def plot_residual_qq(
     axs[1].set_xlabel(x_label)
 
     # Reference line y=x
-    ref_line_style = _cfg_get(plot_cfg, "styling", "ref_line", default={"ls": "--", "color": "k", "lw": 1.0})
+    ref_line_style = _cfg_get(
+        plot_cfg, "styling", "ref_line", default={"ls": "--", "color": "k", "lw": 1.0}
+    )
     ref_ls = ref_line_style.get("ls", "--") if isinstance(ref_line_style, dict) else "--"
     ref_color = ref_line_style.get("color", "k") if isinstance(ref_line_style, dict) else "k"
     ref_lw = float(ref_line_style.get("lw", 1.0)) if isinstance(ref_line_style, dict) else 1.0
@@ -181,7 +182,9 @@ def plot_residual_qq(
         ax.plot(lims, lims, ls=ref_ls, color=ref_color, lw=ref_lw, label="Normal reference")
 
     # Hover formatter
-    hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Theoretical Quantiles [std]")
+    hover_x_label = _cfg_get(
+        plot_cfg, "axes", "hover_x_label", default="Theoretical Quantiles [std]"
+    )
     hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="Sample Quantiles [std]")
     fmt = _make_hover_formatter(hover_x_label, hover_y_label)
     axs[0].format_coord = fmt

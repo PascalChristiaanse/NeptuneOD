@@ -23,7 +23,8 @@ def _find_column(
         normalized = _normalize_column_name(column_name)
 
         # Skip columns containing any excluded keywords
-        if any(re.search(rf"\b{re.escape(ex)}\b", normalized) for ex in excludes):
+        # Allow optional trailing "s" so that e.g. "second" also matches "seconds"
+        if any(re.search(rf"\b{re.escape(ex)}s?\b", normalized) for ex in excludes):
             continue
 
         matched_all = True

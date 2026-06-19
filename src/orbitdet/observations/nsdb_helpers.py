@@ -165,9 +165,9 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         ---
 
     """
-    ra_excludes = ["declination", "delta", "hour", "minute", "second"]
-    dec_excludes = ["ra", "right", "ascension", "alpha", "hour", "minute", "second"]
-    ra_component_excludes = ["observation time", "utc"]
+    ra_excludes = ["declination", "delta", "hour", "minute", "second", "parallax", "arcsec"]
+    dec_excludes = ["ra", "right", "ascension", "alpha", "hour", "minute", "second", "parallax", "arcsec"]
+    ra_component_excludes = ["observation time", "utc", "parallax", "arcsec"]
 
     # Try to find RA column already in decimal degrees
     ra_column = _find_column(dataframe, "ra", excludes=ra_excludes)

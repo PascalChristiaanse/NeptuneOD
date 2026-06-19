@@ -22,9 +22,10 @@ def create_dependent_variable_dictionary(
     propagation_results: SimulationResults,
 ) -> DependentVariableDictionary:
     """
-    Construct a dictionary-like object (`DependentVariableDictionary`) which maps which maps dependent variables
-    to their time histories. See the documentation of `DependentVariableDictionary` to learn more about how
-    time histories are saved, and how the time history of a given dependent variable can be retrieved.
+    Construct a dictionary-like object (`DependentVariableDictionary`) which maps which maps
+        dependent variables to their time histories. See the documentation of
+        `DependentVariableDictionary` to learn more about how time histories are saved, and how the
+        time history of a given dependent variable can be retrieved.
 
     NOTE: DOES NOT WORK WITH:
         - vehicle_panel_body_fixed_surface_normals

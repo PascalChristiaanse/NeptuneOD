@@ -192,20 +192,20 @@ def plot_residual_qq(
 
     # Legend placement (configurable)
     # Ensure legend params have correct types
-    try:
-        legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-    except Exception:
-        legend_ncols = 2
+    # try:
+    #     legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
+    # except Exception:
+    #     legend_ncols = 2
 
-    bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-    try:
-        if isinstance(bbox, dict):
-            bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-        else:
-            # coerce sequence values to floats
-            bbox_tuple = tuple(float(x) for x in bbox)
-    except Exception:
-        bbox_tuple = (0.5, -0.15)
+    # bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
+    # try:
+    #     if isinstance(bbox, dict):
+    #         bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
+    #     else:
+    #         # coerce sequence values to floats
+    #         bbox_tuple = tuple(float(x) for x in bbox)
+    # except Exception:
+    #     # bbox_tuple = (0.5, -0.15)
 
     # axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
     # axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)

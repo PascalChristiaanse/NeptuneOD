@@ -13,7 +13,7 @@ dependencies:
   - ruff
 
   # Tudatpy requirements
-  - tudatpy=1.0.0.dev53
+  - tudatpy=1.0.0.dev57
   - matplotlib # =3.9.2 Maybe this breaks stuff
   - scipy
   - pandas

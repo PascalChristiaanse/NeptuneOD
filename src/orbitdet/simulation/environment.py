@@ -120,8 +120,9 @@ def _configure_ephemeris_model(
 
     match ephemeris_type:
         case "direct_spice":
+            use_body_name = getattr(settings.ephemeris, "use_body_name", body_name)
             body_settings.get(body_name).ephemeris_settings = env_setup.ephemeris.direct_spice(
-                relative_to, cfg.global_frame_orientation
+                relative_to, cfg.global_frame_orientation, use_body_name
             )
         case "interpolated_spice":
             if not hasattr(settings.ephemeris, "interpolator_cadance"):
@@ -136,8 +137,8 @@ def _configure_ephemeris_model(
             body_settings.get(
                 body_name
             ).ephemeris_settings = env_setup.ephemeris.interpolated_spice(
-                ctx.start_epoch - 3000,
-                ctx.end_epoch + 3000,
+                ctx.start_epoch - settings.ephemeris.coverage_buffer,
+                ctx.end_epoch + settings.ephemeris.coverage_buffer,
                 settings.ephemeris.interpolator_cadance,
                 cfg.global_frame_origin,
                 cfg.global_frame_orientation,
@@ -160,11 +161,35 @@ def _configure_ephemeris_model(
                 if hasattr(settings.ephemeris, "relative_to")
                 else cfg.global_frame_origin
             )
-            body_settings.get(body_name).ephemeris_settings = env_setup.ephemeris.tabulated(
-                state_history,
-                relative_to,
-                cfg.global_frame_orientation,
-            )
+            if not hasattr(settings.ephemeris, "extended") or not settings.ephemeris.extended:
+                body_settings.get(body_name).ephemeris_settings = env_setup.ephemeris.tabulated(
+                    state_history,
+                    relative_to,
+                    cfg.global_frame_orientation,
+                )
+            else:
+                logger.info(
+                    f"Using extended tabulated ephemeris for {body_name} "
+                    f"(extended using SPICE data)."
+                )
+                tabulated_settings = env_setup.ephemeris.tabulated(
+                    state_history,
+                    relative_to,
+                    cfg.global_frame_orientation,
+                )
+                spice_settings = env_setup.ephemeris.direct_spice()
+                ephemeris_table = {
+                    # ctx.start_epoch: spice_settings,
+                    min(state_history.keys()): tabulated_settings,
+                    # max(state_history.keys()): spice_settings,
+                }
+                ephemeris_setting = env_setup.ephemeris.multi_arc_ephemeris(
+                    ephemeris_table,
+                    relative_to,
+                    cfg.global_frame_orientation,
+                    default_ephemeris_settings=spice_settings,
+                )
+                body_settings.get(body_name).ephemeris_settings = ephemeris_setting
         case _:
             raise ValueError(f"Unsupported ephemeris type for {body_name}: {ephemeris_type}")
 

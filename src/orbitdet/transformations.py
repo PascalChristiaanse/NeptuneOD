@@ -87,6 +87,8 @@ def convert_radec_frame(
 
     if input_frame == output_frame:
         return data.copy()
+    if input_frame == "J2000.0":
+        input_frame = "J2000"
 
     def radec_to_vector(ra_deg, dec_deg):
         ra = np.deg2rad(ra_deg)

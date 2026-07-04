@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,7 +44,7 @@ def _flatten_omegaconf(
         flat_key = f"{prefix}{sep}{key}" if prefix else key
         if isinstance(value, DictConfig):
             result.update(_flatten_omegaconf(value, prefix=flat_key, sep=sep))
-        elif isinstance(value, (list, tuple)):
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
             result[flat_key] = ",".join(str(v) for v in value)
         else:
             result[flat_key] = value

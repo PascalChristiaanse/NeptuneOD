@@ -1,11 +1,8 @@
-"""
-Copyright (c) 2010-2023, Delft University of Technology
-All rights reserved
+"""Copyright (c) 2010-2023, Delft University of Technology All rights reserved.
 
-This file is part of the Tudat. Redistribution and use in source and
-binary forms, with or without modification, are permitted exclusively
-under the terms of the Modified BSD license. You should have received
-a copy of the license with this file. If not, please or visit:
+This file is part of the Tudat. Redistribution and use in source and binary forms, with or without
+modification, are permitted exclusively under the terms of the Modified BSD license. You should have
+received a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
 
@@ -21,11 +18,10 @@ from tudatpy.util import result2array
 def create_dependent_variable_dictionary(
     propagation_results: SimulationResults,
 ) -> DependentVariableDictionary:
-    """
-    Construct a dictionary-like object (`DependentVariableDictionary`) which maps which maps
-        dependent variables to their time histories. See the documentation of
-        `DependentVariableDictionary` to learn more about how time histories are saved, and how the
-        time history of a given dependent variable can be retrieved.
+    """Construct a dictionary-like object (`DependentVariableDictionary`) which maps which maps
+    dependent variables to their time histories. See the documentation of
+    `DependentVariableDictionary` to learn more about how time histories are saved, and how the time
+    history of a given dependent variable can be retrieved.
 
     NOTE: DOES NOT WORK WITH:
         - vehicle_panel_body_fixed_surface_normals
@@ -44,7 +40,6 @@ def create_dependent_variable_dictionary(
     dependent_variable_dictionary : DependentVariableDictionary
         `DependentVariableDictionary` of propagation
     """
-
     # --------------------------------------------------------------------
     # %% RETRIEVE DEPENDENT VARIABLE DATA
     # --------------------------------------------------------------------

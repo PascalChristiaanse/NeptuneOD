@@ -73,8 +73,7 @@ def _to_iso_string(timestamp: object) -> str | pd._libs.missing.NAType:
 
 
 def set_iso_time_column(dataframe: pd.DataFrame) -> str:
-    """
-    Infer the observation time columns and add an ISO-8601 timestamp column in place.
+    """Infer the observation time columns and add an ISO-8601 timestamp column in place.
 
     Args:
         dataframe: The DataFrame containing the observation data, with columns named according to
@@ -163,10 +162,19 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         9. Minute of declination (delta, arcmin)
         10. Second of declination (delta, arcsec)
         ---
-
     """
     ra_excludes = ["declination", "delta", "hour", "minute", "second", "parallax", "arcsec"]
-    dec_excludes = ["ra", "right", "ascension", "alpha", "hour", "minute", "second", "parallax", "arcsec"]
+    dec_excludes = [
+        "ra",
+        "right",
+        "ascension",
+        "alpha",
+        "hour",
+        "minute",
+        "second",
+        "parallax",
+        "arcsec",
+    ]
     ra_component_excludes = ["observation time", "utc", "parallax", "arcsec"]
 
     # Try to find RA column already in decimal degrees
@@ -400,10 +408,9 @@ def _find_relative_position_y_column(dataframe: pd.DataFrame) -> str | None:
 def set_relative_position_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
     """Infer relative position component columns and convert them to radians.
 
-    The parser supports NSDB-style differential CCD files (delta alpha in seconds of time and
-    delta delta in arcseconds) as well as relative X/Y files stored in arcseconds.
+    The parser supports NSDB-style differential CCD files (delta alpha in seconds of time and delta
+    delta in arcseconds) as well as relative X/Y files stored in arcseconds.
     """
-
     x_column = _find_relative_position_x_column(dataframe)
     y_column = _find_relative_position_y_column(dataframe)
 

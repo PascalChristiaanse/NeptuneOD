@@ -71,7 +71,6 @@ def _setup_body_settings_from_config(cfg: DictConfig) -> env_setup.BodyListSetti
         cfg.global_frame_orientation,
     )
 
-
     # Add bodies not in default bodies but specified in config
     custom_bodies = set(cfg.bodies_to_create.keys()) - DEFAULT_BODIES
     if custom_bodies:

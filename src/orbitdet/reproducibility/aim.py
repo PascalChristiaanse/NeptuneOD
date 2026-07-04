@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from aim import Run
 from omegaconf import DictConfig, OmegaConf
 
 if TYPE_CHECKING:
@@ -53,12 +54,13 @@ def _flatten_omegaconf(
 # Public API – called from runtime.py / user scripts
 # ---------------------------------------------------------------------------
 
+
 def aim_start_run(
     cfg: DictConfig,
     git_commit: str,
     output_dir: Path,
     seed: int,
-) -> "Run":
+) -> Run:
     """Start a new Aim run and log the full Hydra configuration.
 
     Parameters
@@ -121,7 +123,7 @@ def aim_start_run(
     return run
 
 
-def aim_finalize(run: "Run | None") -> None:
+def aim_finalize(run: Run | None) -> None:
     """Close the Aim run, flushing all pending data."""
     if run is not None:
         try:
@@ -130,7 +132,7 @@ def aim_finalize(run: "Run | None") -> None:
             logger.warning("Failed to finalize Aim run", exc_info=True)
 
 
-def get_aim_run() -> "Run | None":
+def get_aim_run() -> Run | None:
     """Return the current Aim run from the active :class:`RuntimeContext`, if any."""
     # Late import to avoid circular dependency
     from orbitdet.reproducibility.runtime import _CONTEXT

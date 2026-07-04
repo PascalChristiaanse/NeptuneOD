@@ -40,6 +40,7 @@ _RUN_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$")
 
 # ── helpers ──────────────────────────────────────────────────────────
 
+
 def _is_run_dir(name: str) -> bool:
     """True if *name* looks like a Hydra timestamp output dir."""
     return bool(_RUN_DIR_RE.match(name))
@@ -69,6 +70,7 @@ def _flatten_cfg(cfg, prefix: str = "", sep: str = ".") -> dict:
 
 # ── scanning ─────────────────────────────────────────────────────────
 
+
 def find_runs(results_root: Path, run_hash_filter: str | None = None):
     """Yield ``(experiment, commit_str, timestamp_dir)`` tuples."""
     for exp_dir in sorted(results_root.iterdir()):
@@ -89,6 +91,7 @@ def find_runs(results_root: Path, run_hash_filter: str | None = None):
 
 
 # ── backfill single run ──────────────────────────────────────────────
+
 
 def backfill_run(experiment: str, commit_str: str, ts_dir: Path, *, dry_run: bool) -> bool:
     """Create an Aim run from the Hydra output at *ts_dir*.
@@ -127,7 +130,12 @@ def backfill_run(experiment: str, commit_str: str, ts_dir: Path, *, dry_run: boo
         return False
 
     if dry_run:
-        logger.info("  would import: experiment=%s commit=%s timestamp=%s", experiment, commit_str, ts_dir.name)
+        logger.info(
+            "  would import: experiment=%s commit=%s timestamp=%s",
+            experiment,
+            commit_str,
+            ts_dir.name,
+        )
         return True
 
     # ── create Aim run ──
@@ -183,6 +191,7 @@ def backfill_run(experiment: str, commit_str: str, ts_dir: Path, *, dry_run: boo
 
 # ── main ─────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill existing Hydra results into Aim")
     parser.add_argument("--dry-run", action="store_true", help="Only list what would be imported")
@@ -195,7 +204,9 @@ def main() -> None:
 
     results_root = Path(AIM_REPO_DIR)
     if not (results_root / ".aim").exists():
-        logger.error("No Aim repository found at %s/.aim — run `aim init --repo results` first", results_root)
+        logger.error(
+            "No Aim repository found at %s/.aim — run `aim init --repo results` first", results_root
+        )
         sys.exit(1)
 
     runs = list(find_runs(results_root, run_hash_filter=args.run_hash))
@@ -213,7 +224,9 @@ def main() -> None:
         else:
             skipped += 1
 
-    logger.info("Done — %d imported, %d skipped%s", ok, skipped, " (dry run)" if args.dry_run else "")
+    logger.info(
+        "Done — %d imported, %d skipped%s", ok, skipped, " (dry run)" if args.dry_run else ""
+    )
 
     if not args.dry_run and ok:
         logger.info("Start the UI with:  aim up")

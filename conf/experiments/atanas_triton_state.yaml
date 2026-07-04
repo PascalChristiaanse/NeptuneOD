@@ -4,10 +4,16 @@
 # - Triton initial state
 
 defaults:
-  - /collections/atanas_triton_generated_extended
+  # - /collection@collection: atanas_plus_micro
+  - /collection@collection: atanas_triton_generated_extended
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
   - /figures/dependent_variable_differenced@dependent_variable_differenced
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/dependent_variable_differenced
+
 seed: 42
 
 # Hydra settings
@@ -16,10 +22,13 @@ hydra:
     dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
   job:
     chdir: false
+  launcher:
+    _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
+
 
 # Time settings
 start_date: 1985-1-1T12:00:00
-end_date: 2025-1-2T12:00:00
+end_date: 2025-1-1T12:00:00
 
 # Kernel settings
 kernel_folder: "data/kernels"
@@ -47,6 +56,9 @@ bodies_to_propagate:
     initial_state: null
     central_body: "Neptune"
 
+propagation:
+  set_integrated_result: true
+
 bodies_to_create:
   Neptune:
     gravity: "Jacobson2009"
@@ -58,10 +70,10 @@ bodies_to_create:
     #   type: "direct_spice"
     #   use_body_name: "Triton"
     # gravity: "central"
-    # ephemeris:
-    #   type: "interpolated_spice"
-    #   interpolator_cadance: 480
-    #   coverage_buffer: 8640000
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
   Sun:
     gravity: "central"
   Jupiter:
@@ -75,6 +87,7 @@ bodies_to_create:
   Venus:
     gravity: "central"
   Earth:
+    gravity: "central"
     ephemeris:
       type: "direct_spice"
     shape_model:
@@ -82,6 +95,13 @@ bodies_to_create:
     rotation_model:
       type: "GCRS_to_ITRS"
       nutation_model: "iau_2006"
+  Mars:
+    gravity: "central"
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
   Voyager 2:
     ephemeris:
       relative_to: "Neptune Barycenter"
@@ -96,10 +116,16 @@ integrator:
   fixed_step_size: 3600
 
 # Estimation settings
+# Estimation settings
 estimation:
   max_iterations: 5
   parameters_to_estimate:
-    - "initial_state"
+    - initial_state:
+        apriori: [1.0e10, 1.0e6] 
+    # - "iau_rotation_model_pole"
+    # - "neptune_GM"
+    # - "neptune_j2_j4"
+
 
 # Logging settings
 logging:

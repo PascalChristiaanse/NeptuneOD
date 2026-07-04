@@ -1,0 +1,3 @@
+# @package _global_
+defaults:
+  - /collections/atanas_triton_generated_extended

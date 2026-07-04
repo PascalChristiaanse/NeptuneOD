@@ -1,5 +1,7 @@
 # src/orbitdet/reproducibility/runtime.py
 
+from __future__ import annotations
+
 import atexit
 import errno
 import logging
@@ -11,14 +13,20 @@ import shutil
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import yaml
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
+
+from orbitdet.reproducibility.aim import aim_finalize, aim_start_run
+
+if TYPE_CHECKING:
+    from aim.sdk import Run
 
 
 @dataclass
@@ -27,10 +35,11 @@ class RuntimeContext:
     output_dir: Path
     seed: int
     test_mode: bool
+    aim_run: Run | None = field(default=None, repr=False)
 
 
 _CONTEXT: RuntimeContext | None = None
-_NATIVE_FD_CAPTURES: tuple["FdCapture", "FdCapture"] | None = None
+_NATIVE_FD_CAPTURES: tuple[FdCapture, FdCapture] | None = None
 _PYTHON_LOG_LINE_PATTERN = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\]")
 
 
@@ -312,11 +321,15 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
 
     save_conda_environment(output_dir)
 
+    # Start an Aim run for experiment tracking
+    aim_run = aim_start_run(cfg, git_commit, output_dir, seed)
+
     _CONTEXT = RuntimeContext(
         git_commit=git_commit,
         output_dir=output_dir,
         seed=seed,
         test_mode=False,
+        aim_run=aim_run,
     )
 
     setup_logging(cfg)
@@ -377,6 +390,11 @@ def enforce_initialization(func):
         except Exception:
             logging.getLogger(func.__module__).exception("Uncaught exception")
             raise
+        finally:
+            # Finalize the Aim run when the experiment finishes (success or failure)
+            ctx = _CONTEXT
+            if ctx is not None and ctx.aim_run is not None:
+                aim_finalize(ctx.aim_run)
 
         if _CONTEXT is None:
             raise RuntimeError(

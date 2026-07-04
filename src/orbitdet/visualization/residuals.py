@@ -130,8 +130,13 @@ def plot_residuals(
 
         # Both RA and DEC residuals are circular; fold them to the principal interval
         # before converting to avoid wrapping artifacts near ±180° / 360°.
-        ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
-        dec_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 1]))
+        # ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
+        # dec_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 1]))
+
+        # Dont use wrapping (TEST)
+        ra_residuals_arcsec = _rad_to_arcsec(residuals[:, 0])
+        dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
+
         ra_rms_arcsec = _rms_arcsec(ra_residuals_arcsec)
         dec_rms_arcsec = _rms_arcsec(dec_residuals_arcsec)
         ra_rms_label = f"{ra_rms_arcsec:.3e} arcsec" if ra_rms_arcsec is not None else None

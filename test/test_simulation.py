@@ -48,6 +48,7 @@ def basic_config():
                     "ephemeris": {
                         "type": "interpolated_spice",
                         "interpolator_cadance": 300,
+                        "coverage_buffer": 86400,
                     },
                 },
             },
@@ -85,6 +86,7 @@ def jacobson_config():
                     "ephemeris": {
                         "type": "interpolated_spice",
                         "interpolator_cadance": 300,
+                        "coverage_buffer": 86400,
                     },
                 },
             },

@@ -1,0 +1,28 @@
+# @package _global_
+defaults:
+  - /datasets/generated/nm0002.yaml@datasets.nm0002
+  - /datasets/generated/nm0006.yaml@datasets.nm0006 
+  - /datasets/generated/nm0007.yaml@datasets.nm0007 
+  - /datasets/generated/nm0013.yaml@datasets.nm0013
+  - /datasets/generated/nm0015.yaml@datasets.nm0015
+  - /datasets/generated/nm0016.yaml@datasets.nm0016
+  - /datasets/generated/nm0017.yaml@datasets.nm0017
+  - /datasets/generated/nm0019.yaml@datasets.nm0019
+  - /datasets/generated/nm0077.yaml@datasets.nm0077
+  - /datasets/generated/nm0078.yaml@datasets.nm0078
+  - /datasets/generated/nm0079.yaml@datasets.nm0079
+  - /datasets/generated/nm0082.yaml@datasets.nm0082
+  - /datasets/generated/nm0083.yaml@datasets.nm0083 # Ukraine 1963
+  - /datasets/generated/nm0085.yaml@datasets.nm0085
+  - /datasets/generated/nm0086.yaml@datasets.nm0086
+  - /datasets/generated/nm0088.yaml@datasets.nm0088
+  - /datasets/generated/nm0091.yaml@datasets.nm0091
+  - /datasets/voyager@datasets.voyager
+  # - /datasets/generated/nm0084.yaml@datasets.nm0084 # Multiple observations 
+  # - /datasets/generated/nm0081.yaml@datasets.nm0081 # J2015 not supported
+  # - /datasets/generated/nm0003.yaml@datasets.nm0003 # X, Y type not yet supported
+  # - /datasets/generated/nm0004.yaml@datasets.nm0004 # X, Y type not yet supported
+  # - /datasets/generated/nm0008.yaml@datasets.nm0008 # X, Y type not yet supported
+  # - /datasets/generated/nm0009.yaml@datasets.nm0009 # X, Y type not yet supported
+  # - /datasets/generated/nm0010.yaml@datasets.nm0010 # X, Y type not yet supported
+name: "NSDB Triton Data"

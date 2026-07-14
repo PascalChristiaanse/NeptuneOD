@@ -30,9 +30,12 @@ def get_dynamical_model(
         for perturbing_body, settings in cfg.bodies_to_create.items():
             if affected_body == perturbing_body:
                 continue  # skip self-acceleration
-            if getattr(settings, "gravity", None) is None:
-                continue  # skip if no gravity settings defined
-            match settings.gravity:
+
+            gravity_type = getattr(settings, "gravity", None)
+            if gravity_type is None:
+                continue  # skip bodies with no explicit gravity model
+
+            match gravity_type:
                 case "central":
                     accelerations.setdefault(affected_body, {})[perturbing_body] = [
                         prop_setup.acceleration.point_mass_gravity()

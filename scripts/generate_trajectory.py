@@ -4,11 +4,8 @@ import hydra
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
-from tudatpy.estimation import estimation_analysis as est_an
 
 from orbitdet.data import KernelManager
-from orbitdet.estimation import get_estimatable_parameters
-from orbitdet.observations import create_observation_collection
 from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
 from orbitdet.simulation import (
     get_dynamical_model,
@@ -59,6 +56,7 @@ def main(cfg: DictConfig):
     result = simulator.create_dynamics_simulator(bodies, prop)
 
     from orbitdet.visualization import plot_differenced_dependent_variables
+
     fig, data = plot_differenced_dependent_variables(
         cfg,
         result.propagation_results,
@@ -68,7 +66,9 @@ def main(cfg: DictConfig):
     )
     # Save the figure to the output directory
     from pathlib import Path
+
     from hydra.core.hydra_config import HydraConfig
+
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     fig_psd_path = output_dir / "prefit_residuals_psd.pdf"
@@ -77,9 +77,9 @@ def main(cfg: DictConfig):
 
     fig_path = output_dir / "prefit_residuals.pdf"
     fig.savefig(fig_path)
-    
+
     fig.show()
-    
+
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -96,8 +96,7 @@ def main(cfg: DictConfig):
     ax.set_zlabel("Z (m)")
     ax.set_title("Triton Trajectory from Estimation")
     ax.legend()
-    
-    
+
     plt.show()
 
 

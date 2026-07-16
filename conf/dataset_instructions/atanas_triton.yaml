@@ -1,0 +1,38 @@
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+seed: 42
+
+data_folder: data/raw
+config_folder: conf/datasets/generated
+
+datasets:
+  nm0083: nsdb
+  nm0017: nsdb
+  nm0016: nsdb
+  nm0084: nsdb
+  nm0090: nsdb
+  nm0091: nsdb
+  nm0019: nsdb
+  nm0082: nsdb
+  nm0015: nsdb
+  nm0085: nsdb
+  nm0086: nsdb
+  nm0088: nsdb
+  nm0002: nsdb
+  nm0006: nsdb
+  nm0079: nsdb
+  nm0007: nsdb
+  nm0008: nsdb
+  nm0009: nsdb
+  nm0010: nsdb
+  nm0077: nsdb
+  nm0078: nsdb
+  nm0081: nsdb
+  nm0003: nsdb
+  nm0004: nsdb
+  nm0013: nsdb

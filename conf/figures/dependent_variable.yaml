@@ -1,0 +1,18 @@
+dependent_variable:
+  output_file: "dependent_variable.pdf"
+  figure:
+    width: 10
+    height: 15
+  titles:
+    suptitle: "{dependent_variable_name} for {associated_body}"
+  axes:
+    x_label: "Epoch"
+    y_label:
+      - "X [m/s²]"
+      - "Y [m/s²]"
+      - "Z [m/s²]"
+    hover_x_label: "Epoch"
+    hover_y_label:
+      - "X [m/s²]"
+      - "Y [m/s²]"
+      - "Z [m/s²]"

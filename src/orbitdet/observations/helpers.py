@@ -38,7 +38,6 @@ def convert_time_to_seconds_since_j2000_TDB(
     Returns:
         A pandas Series containing the observation times in seconds since J2000 epoch TDB.
     """
-
     # Convert iso string to epoch using time_rep.iso_string_to_epoch
     iso_times = dataframe[ISO_TIME_COLUMN].tolist()
     epochs = [
@@ -87,7 +86,7 @@ OBSERVATORY_INFO_FILE = "observatories.txt"  # https://www.projectpluto.com/obsc
 
 
 def get_observatory_info(cfg: DictConfig, observatory_code: int | str) -> dict:
-    """Retrieve the station information from observatories.txt
+    """Retrieve the station information from observatories.txt.
 
     Args:
         observatory_code (int): observatory code
@@ -141,7 +140,7 @@ def get_observatory_location(
     cfg: DictConfig,
     observatory_code: int | str,
 ) -> tuple[float, float, float]:  # Positive to north and east
-    """Retrieve the station position from observatories.txt
+    """Retrieve the station position from observatories.txt.
 
     Args:
         observatory_code (int): observatory code
@@ -177,7 +176,6 @@ def add_observatory_to_SOB(
     Returns:
         None. The system_of_bodies is modified in place.
     """
-
     station_name = normalize_observatory_code(observatory_code)
 
     # Test if ground station already exists

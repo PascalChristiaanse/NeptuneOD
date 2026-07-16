@@ -66,8 +66,7 @@ def convert_radec_frame(
     time_column: str = None,
     ra_wrap: bool = True,
 ) -> pd.DataFrame:
-    """
-    Convert RA/DEC between reference frames using SPICE rotation matrices.
+    """Convert RA/DEC between reference frames using SPICE rotation matrices.
 
     The method:
         RA/DEC -> unit vector -> rotate -> RA/DEC
@@ -84,9 +83,10 @@ def convert_radec_frame(
     Returns:
         pd.DataFrame: copy of input data with transformed RA/DEC.
     """
-
     if input_frame == output_frame:
         return data.copy()
+    if input_frame == "J2000.0":
+        input_frame = "J2000"
 
     def radec_to_vector(ra_deg, dec_deg):
         ra = np.deg2rad(ra_deg)

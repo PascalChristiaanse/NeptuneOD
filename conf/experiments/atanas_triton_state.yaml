@@ -1,0 +1,136 @@
+# @package _global_
+
+# Experiment: Atanas D. estimating:
+# - Triton initial state
+
+defaults:
+  # - /collection@collection: atanas_plus_micro
+  - /collection@collection: atanas_triton_generated_extended
+  - _self_ # Apply experiment config fields after collections
+  - /figures/residuals
+  - /figures/dependent_variable_differenced@dependent_variable_differenced
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/dependent_variable_differenced
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+  launcher:
+    _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
+
+
+# Time settings
+start_date: 1985-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  nep105.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  # Voyager_2.m05016u.merged.bsp: "https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/Voyager_2.m05016u.merged.bsp"
+  vgr2_nep097.bsp: https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/vgr2_nep097.bsp
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "J2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+bodies_to_create:
+  Neptune:
+    gravity: "Jacobson2009"
+    rotation_model:
+      type: "IAU2015"
+  Triton:
+    placeholder: True
+    # ephemeris:
+    #   type: "direct_spice"
+    #   use_body_name: "Triton"
+    # gravity: "central"
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Sun:
+    gravity: "central"
+  Jupiter:
+    gravity: "central"
+  Saturn:
+    gravity: "central"
+  Uranus:
+    gravity: "central"
+  Mercury:
+    gravity: "central"
+  Venus:
+    gravity: "central"
+  Earth:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+    shape_model:
+      type: "oblate_spherical_spice"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
+  Mars:
+    gravity: "central"
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
+  Voyager 2:
+    ephemeris:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file"
+      extended: True
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600
+
+# Estimation settings
+# Estimation settings
+estimation:
+  max_iterations: 5
+  parameters_to_estimate:
+    - initial_state:
+        apriori: [1.0e10, 1.0e6] 
+    # - "iau_rotation_model_pole"
+    # - "neptune_GM"
+    # - "neptune_j2_j4"
+
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"
+    # - "orbitdet.data.kernel"

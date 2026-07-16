@@ -35,7 +35,6 @@ def create_absolute_ccd_dataset(
 
     Returns:
         Tuple of (ObservationCollection, ObservationModelSettings) for the absolute CCD dataset.
-
     """
     logger.info(f"""Creating absolute CCD observation dataset: {dataset_cfg.identifier}.""")
 

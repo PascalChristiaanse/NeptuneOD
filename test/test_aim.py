@@ -1,13 +1,10 @@
 """Lean tests for the AimStack integration (orbitdet.reproducibility.aim)."""
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 from omegaconf import OmegaConf
 
 from orbitdet.reproducibility import aim
-
 
 # ---------------------------------------------------------------------------
 # _flatten_omegaconf — pure helper, no mocking needed

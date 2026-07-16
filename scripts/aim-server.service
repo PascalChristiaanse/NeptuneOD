@@ -1,0 +1,28 @@
+[Unit]
+Description=AimStack experiment tracking UI & server (NeptuneOD)
+Documentation=https://aimstack.readthedocs.io/
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=pascal
+Group=pascal
+
+Environment=AIM_REPO=/home/pascal/Documents/NeptuneOD/results
+WorkingDirectory=/home/pascal/Documents/NeptuneOD/results
+
+ExecStart=/home/pascal/miniconda3/envs/NeptuneOD/bin/aim up \
+    --host 127.0.0.1 \
+    --port 43801 \
+    --repo /home/pascal/Documents/NeptuneOD/results \
+    --log-level info
+
+KillSignal=SIGINT
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

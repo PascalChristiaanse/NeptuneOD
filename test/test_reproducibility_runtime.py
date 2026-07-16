@@ -83,6 +83,7 @@ def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):
         "get",
         staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
     )
+    monkeypatch.setattr(runtime, "aim_start_run", MagicMock())
 
     cfg = OmegaConf.create({"seed": 7, "foo": "bar"})
     ctx = runtime.initialize(cfg)
@@ -112,6 +113,7 @@ def test_initialize_starts_native_fd_capture(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "save_conda_environment", MagicMock())
     monkeypatch.setattr(runtime, "setup_logging", MagicMock())
     monkeypatch.setattr(runtime, "assert_clean_repo", MagicMock())
+    monkeypatch.setattr(runtime, "aim_start_run", MagicMock())
     start_capture = MagicMock()
     monkeypatch.setattr(runtime, "_start_native_fd_capture", start_capture)
     monkeypatch.setattr(

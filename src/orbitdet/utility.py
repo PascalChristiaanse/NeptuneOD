@@ -6,6 +6,8 @@ received a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
 
+from pathlib import Path
+
 from tudatpy.dynamics.environment_setup import create_system_of_bodies, get_default_body_settings
 from tudatpy.dynamics.propagation import SimulationResults
 from tudatpy.dynamics.propagation.dependent_variable_dictionary import DependentVariableDictionary
@@ -91,3 +93,43 @@ def create_dependent_variable_dictionary(
     )
 
     return dependent_variable_dictionary
+
+
+def save_tudat_object(obj: object, file_path: str | Path) -> Path:
+    """Serialize a TudatPy object to a binary ``.tudat`` file.
+
+    Uses the object's native ``save_to_binary`` method.  Only objects that
+    provide this native serialization are supported (e.g.
+    :class:`~tudatpy.estimation.observations.ObservationCollection`).
+
+    Parameters
+    ----------
+    obj : object
+        TudatPy object with a native ``save_to_binary`` method.
+    file_path : str | Path
+        Target file path.  If the path does not end in ``.tudat`` the
+        extension is appended automatically.
+
+    Returns
+    -------
+    Path
+        The resolved path the object was saved to.
+
+    Raises
+    ------
+    TypeError
+        If *obj* does not have a ``save_to_binary`` method.
+    """
+    if not hasattr(obj, "save_to_binary"):
+        raise TypeError(
+            f"Object of type {type(obj).__name__} does not provide "
+            "a native save_to_binary method."
+        )
+
+    path = Path(file_path)
+    if path.suffix != ".tudat":
+        path = path.with_suffix(path.suffix + ".tudat")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    obj.save_to_binary(str(path))
+    return path

@@ -5,6 +5,7 @@ from pathlib import Path
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
@@ -13,7 +14,14 @@ from tudatpy.estimation.observations_setup import observations_simulation_settin
 
 from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
-from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
+from orbitdet.reproducibility import (
+    RuntimeContext,
+    aim_log_artifact,
+    aim_log_figure,
+    aim_log_metrics,
+    enforce_initialization,
+    initialize,
+)
 from orbitdet.simulation import (
     get_environment,
 )
@@ -81,6 +89,21 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
+    # Log metric summary of residuals to Aim
+    rms = np.sqrt(
+        np.mean(np.square(observations.get_single_observation_sets()[0].concatenated_residuals))
+    )
+    if rms.size > 0:
+        aim_log_metrics(
+            {
+                "residuals_rms": float(rms.std()),
+                "residuals_mean": float(rms.mean()),
+                "residuals_max": float(abs(rms).max()),
+                "num_observations": rms.size,
+            }
+        )
+        logger.info("Logged residual summary metrics to Aim.")
+
     fig_psd, ax_psd = plot_residuals_psd(cfg, observations, 30, cfg.figures.residuals_psd)
     fig, ax = plot_residuals(cfg, observations)
 
@@ -99,12 +122,29 @@ def main(cfg: DictConfig):
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     fig_psd_path = output_dir / "prefit_residuals_psd.pdf"
-    # fig_psd.savefig(fig_psd_path)
+    fig_psd.savefig(fig_psd_path)
     logger.info(f"Pre-fit residual PSD plot saved to {fig_psd_path}")
 
     fig_path = output_dir / "prefit_residuals.pdf"
     fig.savefig(fig_path)
     logger.info(f"Pre-fit residuals plot saved to {fig_path}")
+
+    # Log figures for the interactive Aim Figures tab
+    aim_log_figure(fig, name="prefit_residuals")
+    logger.info("Logged prefit residuals figure to Aim.")
+
+    aim_log_figure(fig_psd, name="prefit_residuals_psd")
+    logger.info("Logged prefit residuals PSD figure to Aim.")
+
+    # Attach the saved PDFs as artifacts
+    aim_log_artifact(fig_path)
+    aim_log_artifact(fig_psd_path)
+    logger.info("Attached prefit residuals PDF artifacts to Aim.")
+
+    # Also log config.yaml as artifact for this run
+    config_path = output_dir / "config.yaml"
+    if config_path.exists():
+        aim_log_artifact(config_path)
 
     backend = plt.get_backend().lower()
     if backend == "agg" or "inline" in backend:

@@ -10,13 +10,21 @@ from tudatpy.estimation import estimation_analysis as est_an
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
 from orbitdet.observations import create_observation_collection
-from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
+from orbitdet.reproducibility import (
+    RuntimeContext,
+    aim_log_artifact,
+    aim_log_figure,
+    aim_log_metrics,
+    enforce_initialization,
+    initialize,
+)
 from orbitdet.simulation import (
     get_dynamical_model,
     get_environment,
     get_integrator_settings,
     get_propagator_settings,
 )
+from orbitdet.utility import save_tudat_object
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +124,34 @@ def main(cfg: DictConfig):
     logger.info("Starting estimation...")
     estimation_output = estimator.perform_estimation(estimation_input)
 
+    # Log residual RMS per iteration to Aim
+    num_iterations = estimation_output.residual_history.shape[1]
+    logger.info("Logging per-iteration metrics to Aim...")
+    for i in range(num_iterations):
+        rms_i = np.sqrt(np.mean(np.square(estimation_output.residual_history[:, i])))
+        aim_log_metrics(
+            {"residual_rms": float(rms_i)},
+            step=i,
+            context={"metric_type": "iteration"},
+        )
+    # Log final residual summary metrics to Aim
+    final_residuals = estimation_output.final_residuals
+    logger.info("Logging summary metrics to Aim...")
+    aim_log_metrics(
+        {
+            "residuals_rms": float(np.sqrt(np.mean(np.square(final_residuals)))),
+            "residuals_mean": float(np.mean(final_residuals)),
+            "residuals_max": float(np.abs(final_residuals).max()),
+            "residuals_std": float(np.std(final_residuals)),
+            "num_observations": final_residuals.size,
+            "num_iterations": num_iterations,
+            "parameter_norm": float(np.linalg.norm(estimation_output.final_parameters)),
+            "covariance_condition": float(np.linalg.cond(estimation_output.covariance)),
+        },
+        context={"metric_type": "summary"},
+    )
+    logger.info("Logged summary metrics to Aim.")
+
     logger.info("Estimation completed successfully.")
 
     # Plot post-fit residuals
@@ -184,6 +220,16 @@ def main(cfg: DictConfig):
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Save TudatPy objects to binary .tudat files
+    logger.info("Saving TudatPy objects to disk...")
+    observations_path = save_tudat_object(observations, output_dir / "observations")
+    logger.info("Observation collection saved to %s", observations_path)
+
+    estimation_output_path = save_tudat_object(
+        estimation_output, output_dir / "estimation_output"
+    )
+    logger.info("Estimation output saved to %s", estimation_output_path)
+
     fig_residuals_path = output_dir / "postfit_residuals.pdf"
     fig_residuals.savefig(fig_residuals_path)
     logger.info(f"Post-fit residuals plot saved to {fig_residuals_path}")
@@ -211,6 +257,41 @@ def main(cfg: DictConfig):
     fig_rsw_path = output_dir / "rsw_distance.pdf"
     fig_rsw.savefig(fig_rsw_path)
     logger.info(f"RSW distance plot saved to {fig_rsw_path}")
+
+    fig_diff_path = output_dir / "differenced_dependent_variables.pdf"
+    fig_diff.savefig(fig_diff_path)
+    logger.info(f"Differenced dependent variables plot saved to {fig_diff_path}")
+
+    # Log all figures to Aim (interactive Figures + static Images)
+    logger.info("Logging figures to Aim...")
+    aim_log_figure(fig_residuals, name="postfit_residuals")
+    aim_log_figure(fig_psd, name="postfit_residuals_psd")
+    aim_log_figure(fig_rms, name="residual_rms_per_iteration")
+    aim_log_figure(fig_corr, name="parameter_correlation_heatmap")
+    aim_log_figure(fig_param, name="parameter_history_per_iteration")
+    aim_log_figure(fig_ellipses, name="covariance_ellipses")
+    aim_log_figure(fig_rsw, name="rsw_distance")
+    aim_log_figure(fig_diff, name="differenced_dependent_variables")
+    logger.info("Logged figures to Aim.")
+
+    # Attach saved PDFs as artifacts
+    logger.info("Attaching artifacts to Aim...")
+    aim_log_artifact(fig_residuals_path)
+    aim_log_artifact(fig_psd_path)
+    aim_log_artifact(fig_rms_path)
+    aim_log_artifact(fig_corr_path)
+    aim_log_artifact(fig_param_path)
+    aim_log_artifact(fig_ellipses_path)
+    aim_log_artifact(fig_rsw_path)
+    aim_log_artifact(fig_diff_path)
+    # Also log the config as an artifact
+    config_path = output_dir / "config.yaml"
+    if config_path.exists():
+        aim_log_artifact(config_path)
+    # Also log the saved TudatPy objects as artifacts
+    aim_log_artifact(observations_path)
+    aim_log_artifact(estimation_output_path)
+    logger.info("Attached artifacts to Aim.")
 
     # fig_traj_path = output_dir / "triton_trajectory.pdf"
     # fig_traj.savefig(fig_traj_path)

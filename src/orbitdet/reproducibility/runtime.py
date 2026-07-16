@@ -386,10 +386,10 @@ def enforce_initialization(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         outcome: str | None = None
+        result = None
         try:
             result = func(*args, **kwargs)
             outcome = "completed"
-            return result
         except KeyboardInterrupt:
             outcome = "cancelled"
             logging.getLogger(func.__module__).warning("Run cancelled by user")

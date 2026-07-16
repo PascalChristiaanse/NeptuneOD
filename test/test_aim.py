@@ -94,7 +94,7 @@ def test_aim_log_artifact_no_run(caplog):
 
 def test_aim_log_artifact_skips_missing_file(caplog):
     """When a run *is* active but the file doesn't exist, warn and skip."""
-    run = MagicMock()
+    MagicMock() 
     aim.aim_log_artifact("/nonexistent/file.pdf")
     # run.log_artifact should not be called since there's no active run
     assert "No active Aim run" in caplog.text

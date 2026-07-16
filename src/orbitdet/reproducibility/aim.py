@@ -124,6 +124,15 @@ def aim_start_run(
     return run
 
 
+def aim_add_tag(run: Run | None, tag: str) -> None:
+    """Add a tag to the Aim run, if it is active."""
+    if run is not None:
+        try:
+            run.add_tag(tag)
+        except Exception:
+            logger.warning("Failed to add tag '%s' to Aim run", tag, exc_info=True)
+
+
 def aim_finalize(run: Run | None) -> None:
     """Close the Aim run, flushing all pending data."""
     if run is not None:

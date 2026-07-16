@@ -23,7 +23,7 @@ import yaml
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from orbitdet.reproducibility.aim import aim_finalize, aim_start_run
+from orbitdet.reproducibility.aim import aim_add_tag, aim_finalize, aim_start_run
 
 if TYPE_CHECKING:
     from aim.sdk import Run
@@ -385,15 +385,23 @@ def require_initialized() -> None:
 def enforce_initialization(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
+        outcome: str | None = None
         try:
             result = func(*args, **kwargs)
+            outcome = "completed"
+            return result
+        except KeyboardInterrupt:
+            outcome = "cancelled"
+            logging.getLogger(func.__module__).warning("Run cancelled by user")
+            raise
         except Exception:
+            outcome = "crashed"
             logging.getLogger(func.__module__).exception("Uncaught exception")
             raise
         finally:
-            # Finalize the Aim run when the experiment finishes (success or failure)
             ctx = _CONTEXT
-            if ctx is not None and ctx.aim_run is not None:
+            if ctx is not None and ctx.aim_run is not None and outcome is not None:
+                aim_add_tag(ctx.aim_run, outcome)
                 aim_finalize(ctx.aim_run)
 
         if _CONTEXT is None:

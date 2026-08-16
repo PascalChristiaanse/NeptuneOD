@@ -10,9 +10,9 @@ defaults:
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
   - /figures/dependent_variable_differenced@dependent_variable_differenced
-  - /figures/parameter_correlation_heatmap
-  - /figures/parameter_history_per_iteration
-  - /figures/covariance_ellipses
+  # - /figures/parameter_correlation_heatmap
+  # - /figures/parameter_history_per_iteration
+  # - /figures/covariance_ellipses
   - /figures/dependent_variable_differenced
 
 seed: 42

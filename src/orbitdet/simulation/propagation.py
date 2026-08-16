@@ -44,7 +44,7 @@ def get_propagator_settings(
                 observer_body_name=settings.central_body,
                 reference_frame_name=cfg.global_frame_orientation,
                 aberration_corrections="none",
-                ephemeris_time=ctx.start_epoch,
+                ephemeris_time=ctx.initial_epoch,
             )
             initial_state.extend(state)
         else:
@@ -63,7 +63,7 @@ def get_propagator_settings(
         acceleration_settings,
         list(cfg.bodies_to_propagate.keys()),
         initial_state,
-        ctx.start_epoch,
+        ctx.initial_epoch,
         integrator_settings,
         termination_settings,
         output_variables=dependent_variables_to_save,

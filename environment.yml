@@ -1,4 +1,4 @@
-name: NeptuneOD
+name: NeptuneODWTudat
 
 channels:
   - conda-forge
@@ -13,7 +13,7 @@ dependencies:
   - ruff
 
   # Tudatpy requirements
-  - tudatpy=1.0.0.dev57
+  # - tudatpy=1.0.0.dev57
   - matplotlib # =3.9.2 Maybe this breaks stuff
   - scipy
   - pandas
@@ -28,6 +28,7 @@ dependencies:
 
   # orbitdet requirements
   - hydra-core
+  - hydra-joblib-launcher
   - beautifulsoup4
   - aim
   - plotly

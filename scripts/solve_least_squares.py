@@ -1,11 +1,14 @@
 import logging
+from pathlib import Path
 
 import hydra
 import numpy as np
+import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import estimation_analysis as est_an
+from tudatpy.util import redirect_std
 
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
@@ -27,6 +30,170 @@ from orbitdet.simulation import (
 from orbitdet.utility import save_tudat_object
 
 logger = logging.getLogger(__name__)
+
+
+def _build_timestamp_series(
+    dataframe: pd.DataFrame, year_col: str, month_col: str, day_col: str
+) -> pd.Series:
+    """Combine year/month/day columns into a pandas timestamp series.
+
+    The day column may contain a fractional part (e.g. ``24.583229``), which is
+    interpreted as the fraction of the day elapsed.
+
+    Args:
+        dataframe: The DataFrame with the observation data.
+        year_col: Name of the year column.
+        month_col: Name of the month column.
+        day_col: Name of the day column (may include a fractional part).
+
+    Returns:
+        A pandas Series with datetime64 values; missing/invalid rows become NaT.
+    """
+    day = pd.to_numeric(dataframe[day_col], errors="coerce")
+    day_integer = np.floor(day)
+    day_fraction_seconds = (day - day_integer) * 86400.0
+
+    timestamps = pd.to_datetime(
+        pd.DataFrame(
+            {
+                "year": pd.to_numeric(dataframe[year_col], errors="coerce"),
+                "month": pd.to_numeric(dataframe[month_col], errors="coerce"),
+                "day": day_integer,
+            }
+        ),
+        errors="coerce",
+    )
+    return timestamps + pd.to_timedelta(day_fraction_seconds, unit="s")
+
+
+def _dataset_time_columns(dataset_cfg: DictConfig) -> tuple[str, str, str] | None:
+    """Find the year, month and day column names for a dataset config.
+
+    The NSDB dataset configs describe the columns of the associated data file via
+    ``format_columns`` (a mapping of 1-based column index to column name). This
+    function locates the column names matching the year, month and day of the
+    moment of observation. Alternative spellings ("Day of the moment of
+    observation" without "with decimals") are also accepted, and month may be
+    written as "Month" or "Month of the moment of observation".
+
+    Args:
+        dataset_cfg: The dataset config containing the ``format_columns`` mapping.
+
+    Returns:
+        A tuple of (year, month, day) column names, or None when not all three
+        columns could be identified (e.g. datasets that only contain a Julian
+        date, or micrometric relative observations).
+    """
+    fmt = dataset_cfg.get("format_columns", {})
+    if not fmt:
+        return None
+
+    def _find(candidates: list[str]) -> str | None:
+        for index, name in fmt.items():
+            normalized = str(name).strip().lower()
+            if any(candidate in normalized for candidate in candidates):
+                return str(name)
+        return None
+
+    year_col = _find(["year"])
+    month_col = _find(["month"])
+    day_col = _find(["day"]) if year_col is not None else None
+
+    if year_col is None or month_col is None or day_col is None:
+        return None
+    return year_col, month_col, day_col
+
+
+def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str | None]:
+    """Detect the observation date bounds from the configured datasets.
+
+    Walks through all datasets listed in the experiment configuration and, for
+    each one that references a data file with year/month/day columns, reads the
+    file to find the earliest and latest observation time. The overall bounds
+    across all datasets are returned as ISO-8601 strings.
+
+    Datasets that do not expose year/month/day columns (e.g. relative position
+    angle and separation micrometric observations, or data with a single Julian
+    date column) are skipped.
+
+    Args:
+        cfg: The Hydra experiment configuration containing the ``datasets`` list.
+
+    Returns:
+        A tuple of (start_date, end_date) as ISO-8601 strings, or (None, None)
+        when no dates could be detected.
+    """
+    datasets = OmegaConf.select(cfg, "datasets")
+    if datasets is None:
+        return None, None
+
+    min_timestamp = None
+    max_timestamp = None
+    for set_name, dataset_cfg in datasets.items():
+        columns = _dataset_time_columns(dataset_cfg)
+        if columns is None:
+            logger.debug(
+                "Skipping dataset %s: no year/month/day columns found in format_columns.",
+                set_name,
+            )
+            continue
+
+        file_path = Path(dataset_cfg.file)
+        if not file_path.exists():
+            logger.warning("Skipping dataset %s: data file %s does not exist.", set_name, file_path)
+            continue
+
+        try:
+            dataframe = pd.read_csv(
+                file_path, sep=r"\s+", header=None, comment="#", engine="python"
+            )
+        except Exception as exc:
+            logger.warning("Skipping dataset %s: could not read data file: %s", set_name, exc)
+            continue
+
+        # Map the format_columns indices (1-based) to the positional column names.
+        fmt = dict(dataset_cfg.format_columns)
+        col_names = list(dataframe.columns)
+
+        def _keyfunc(k):
+            try:
+                return int(k)
+            except Exception:
+                return str(k)
+
+        for index in sorted(fmt.keys(), key=_keyfunc):
+            name = fmt.get(index, fmt.get(str(index), None))
+            pos = None
+            try:
+                pos = int(index) - 1
+            except Exception:
+                try:
+                    pos = int(index)
+                except Exception:
+                    pos = None
+            if pos is not None and 0 <= pos < len(col_names):
+                col_names[pos] = name if name is not None else col_names[pos]
+
+        dataframe.columns = col_names
+        timestamps = _build_timestamp_series(dataframe, *columns)
+        timestamps = timestamps.dropna()
+        if timestamps.empty:
+            logger.warning("Skipping dataset %s: no valid timestamps found.", set_name)
+            continue
+
+        dataset_min = timestamps.min()
+        dataset_max = timestamps.max()
+        logger.debug(
+            "Dataset %s: observation dates from %s to %s", set_name, dataset_min, dataset_max
+        )
+        if min_timestamp is None or dataset_min < min_timestamp:
+            min_timestamp = dataset_min
+        if max_timestamp is None or dataset_max > max_timestamp:
+            max_timestamp = dataset_max
+
+    if min_timestamp is None or max_timestamp is None:
+        return None, None
+    return min_timestamp.isoformat(), max_timestamp.isoformat()
 
 
 def compute_apriori_vs_design_matrix_ratio(
@@ -56,7 +223,7 @@ def compute_apriori_vs_design_matrix_ratio(
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/atanas_triton_state",
+    config_name="experiments/classic_triton_state",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -65,6 +232,41 @@ def main(cfg: DictConfig):
     # Inject start and end epochs into the runtime context
     ctx.start_epoch = iso_string_to_epoch_time_object(cfg.start_date)
     ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
+    ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
+
+    # Detect the actual observation date bounds from the configured datasets
+    detected_start, detected_end = detect_date_bounds_from_datasets(cfg)
+    if detected_start is not None and detected_end is not None:
+        ctx.start_epoch = iso_string_to_epoch_time_object(detected_start)
+        ctx.end_epoch = iso_string_to_epoch_time_object(detected_end)
+        logger.info(
+            "Detected observation date bounds from datasets: %s to %s.",
+            detected_start,
+            detected_end,
+        )
+
+        # Add a buffer around the observation dates to cover the propagation
+        # arc before the first and after the last observation.
+        ctx.start_epoch = ctx.start_epoch - 365.25 * 24 * 3600
+        ctx.end_epoch = ctx.end_epoch + 365.25 * 24 * 360
+    else:
+        logger.warning(
+            "Could not detect observation date bounds from datasets; "
+            "using configured start_date/end_date instead."
+        )
+
+    from tudatpy.astro.time_representation import DateTime
+
+    logger.info(
+        "Detected start epoch from datasets: "
+        f"{DateTime.from_epoch_time_object(ctx.start_epoch).to_iso_string()}"
+        " (with one year buffer)."
+    )
+    logger.info(
+        "Detected end epoch from datasets: "
+        f"{DateTime.from_epoch_time_object(ctx.end_epoch).to_iso_string()}"
+        " (with one year buffer)."
+    )
 
     km: KernelManager = KernelManager(cfg)
     km.download_all_kernels()
@@ -89,7 +291,17 @@ def main(cfg: DictConfig):
     logger.info("Generating observations from collection...")
 
     observations, observation_models = create_observation_collection(cfg, bodies)
+
+    # import tudatpy.estimation.observations as obs
+    # observations = obs.ObservationCollection.load_from_binary("atanasObservations")
+    # logger.warning("Observations loaded from binary file 'atanasObservations'.")
+
     logger.info("Observations generated successfully.")
+
+    # Plot and save pre-fit residuals before estimation modifies them
+    from orbitdet.visualization import plot_residuals
+
+    fig_prefit_residuals, ax_prefit_residuals = plot_residuals(cfg, observations)
 
     logger.info("Simulation setup complete. Ready for propagation and estimation.")
 
@@ -110,19 +322,36 @@ def main(cfg: DictConfig):
     # Build inverse a priori covariance matrix from configuration
     inverse_apriori_covariance = get_apriori_covariance_matrix(cfg)
 
-    estimation_input = est_an.EstimationInput(
-        observations_and_times=observations,
-        inverse_apriori_covariance=inverse_apriori_covariance,
-        convergence_checker=convergence_settings,
-    )
-
+    if inverse_apriori_covariance is not None:
+        estimation_input = est_an.EstimationInput(
+            observations_and_times=observations,
+            inverse_apriori_covariance=inverse_apriori_covariance,
+            convergence_checker=convergence_settings,
+        )
+    else:
+        estimation_input = est_an.EstimationInput(
+            observations_and_times=observations,
+            convergence_checker=convergence_settings,
+        )
     # Set methodological options
     estimation_input.define_estimation_settings(
         save_state_history_per_iteration=True, save_residuals_and_parameters_per_iteration=True
     )
+    from hydra.core.hydra_config import HydraConfig
 
+    # estimation_input.save_to_binary(HydraConfig.get().runtime.output_dir + "/estimation_input")
     logger.info("Starting estimation...")
-    estimation_output = estimator.perform_estimation(estimation_input)
+
+    estimation_log_path = Path(HydraConfig.get().runtime.output_dir) / "estimation_progression.log"
+    with redirect_std(str(estimation_log_path)):
+        estimation_output = estimator.perform_estimation(estimation_input)
+    logger.info("Estimation progression logged to %s", estimation_log_path)
+
+    # Also log the estimation progress to the regular logger
+    if estimation_log_path.exists():
+        with open(estimation_log_path) as f:
+            for line in f:
+                logger.info("Estimation: %s", line.rstrip("\n"))
 
     # Log residual RMS per iteration to Aim
     num_iterations = estimation_output.residual_history.shape[1]
@@ -213,10 +442,6 @@ def main(cfg: DictConfig):
     )
 
     # Save all figures to the output directory
-    from pathlib import Path
-
-    from hydra.core.hydra_config import HydraConfig
-
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -225,10 +450,12 @@ def main(cfg: DictConfig):
     observations_path = save_tudat_object(observations, output_dir / "observations")
     logger.info("Observation collection saved to %s", observations_path)
 
-    estimation_output_path = save_tudat_object(
-        estimation_output, output_dir / "estimation_output"
-    )
+    estimation_output_path = save_tudat_object(estimation_output, output_dir / "estimation_output")
     logger.info("Estimation output saved to %s", estimation_output_path)
+
+    fig_prefit_path = output_dir / "prefit_residuals.pdf"
+    fig_prefit_residuals.savefig(fig_prefit_path)
+    logger.info(f"Pre-fit residuals plot saved to {fig_prefit_path}")
 
     fig_residuals_path = output_dir / "postfit_residuals.pdf"
     fig_residuals.savefig(fig_residuals_path)
@@ -264,6 +491,7 @@ def main(cfg: DictConfig):
 
     # Log all figures to Aim (interactive Figures + static Images)
     logger.info("Logging figures to Aim...")
+    aim_log_figure(fig_prefit_residuals, name="prefit_residuals")
     aim_log_figure(fig_residuals, name="postfit_residuals")
     aim_log_figure(fig_psd, name="postfit_residuals_psd")
     aim_log_figure(fig_rms, name="residual_rms_per_iteration")
@@ -276,6 +504,7 @@ def main(cfg: DictConfig):
 
     # Attach saved PDFs as artifacts
     logger.info("Attaching artifacts to Aim...")
+    aim_log_artifact(fig_prefit_path)
     aim_log_artifact(fig_residuals_path)
     aim_log_artifact(fig_psd_path)
     aim_log_artifact(fig_rms_path)
@@ -288,18 +517,17 @@ def main(cfg: DictConfig):
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact(config_path)
-    # Also log the saved TudatPy objects as artifacts
-    aim_log_artifact(observations_path)
-    aim_log_artifact(estimation_output_path)
+    # Also log the saved TudatPy objects and estimation log as artifacts
+    aim_log_artifact(observations_path.with_suffix(".tudat"))
+    aim_log_artifact(estimation_output_path.with_suffix(".tudat"))
+    aim_log_artifact(estimation_log_path.with_suffix(".tudat"))
     logger.info("Attached artifacts to Aim.")
 
     # fig_traj_path = output_dir / "triton_trajectory.pdf"
     # fig_traj.savefig(fig_traj_path)
     # logger.info(f"Triton trajectory plot saved to {fig_traj_path}")
 
-    from matplotlib import pyplot as plt
-
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":

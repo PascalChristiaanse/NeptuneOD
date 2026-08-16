@@ -434,6 +434,7 @@ def _setup_rotation_neptune_iau2015(
         pole_precession,
         merdian_periodic_terms,
         pole_periodic_terms,
+        angle_base_frame="J2000",
     )
 
 
@@ -503,4 +504,5 @@ def _setup_rotation_neptune_jacobson2009(
         pole_precession,
         merdian_periodic_terms,
         pole_periodic_terms,
+        angle_base_frame="J2000",
     )

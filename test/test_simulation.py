@@ -25,6 +25,7 @@ def mock_runtime_context(tmp_path):
     ctx.git_commit = "abc123"
     ctx.test_mode = True
     ctx.output_dir = tmp_path
+    ctx.initial_epoch = 1234567890.0
     ctx.start_epoch = 1234567890.0
     ctx.end_epoch = 1234567900.0
     return ctx

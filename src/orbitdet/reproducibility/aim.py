@@ -188,6 +188,9 @@ def aim_log_figure(
     (Images tab) so you can explore interactively *and* see thumbnails at a
     glance.
 
+    If the interactive conversion fails (e.g. due to plotly/matplotlib
+    incompatibilities) the static image is still logged.
+
     Parameters
     ----------
     fig : matplotlib.figure.Figure | plotly.graph_objects.Figure
@@ -207,12 +210,24 @@ def aim_log_figure(
     # Interactive figure for the Figures tab
     from aim import Figure as AimFigure
 
-    run.track(AimFigure(fig), name=name, step=step, context=context)
+    try:
+        run.track(AimFigure(fig), name=name, step=step, context=context)
+    except Exception:
+        logger.warning(
+            "Failed to create Aim interactive figure for '%s' — "
+            "logging static image only. Error: %s",
+            name,
+            exc_info=True,
+        )
 
     # Static image for the Images tab (rasterize via canvas)
     from aim.sdk.objects import Image as AimImage
 
-    fig.canvas.draw()
+    try:
+        fig.canvas.draw()
+    except Exception:
+        logger.warning("Failed to render figure canvas for '%s'", name, exc_info=True)
+        return
     run.track(AimImage(fig), name=f"{name}_static", step=step, context=context)
 
 

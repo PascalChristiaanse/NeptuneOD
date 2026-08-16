@@ -1,17 +1,18 @@
 # @package _global_
 
-# Experiment: Atanas D. estimating:
+# Experiment: Triton State Estimation using only classical data
+# estimating:
 # - Triton initial state
 
 defaults:
   # - /collection@collection: atanas_plus_micro
-  - /collection@collection: atanas_triton_generated_extended_no_voyager
+  - /collection@collection: working
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
   - /figures/dependent_variable_differenced@dependent_variable_differenced
-  - /figures/parameter_correlation_heatmap
-  - /figures/parameter_history_per_iteration
-  - /figures/covariance_ellipses
+  # - /figures/parameter_correlation_heatmap
+  # - /figures/parameter_history_per_iteration
+  # - /figures/covariance_ellipses
   - /figures/dependent_variable_differenced
 
 seed: 42
@@ -40,7 +41,7 @@ kernels:
   nep105.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
   naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
   # Voyager_2.m05016u.merged.bsp: "https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/Voyager_2.m05016u.merged.bsp"
-  vgr2_nep097.bsp: https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/vgr2_nep097.bsp
+  # vgr2_nep097.bsp: https://naif.jpl.nasa.gov/pub/naif/VOYAGER/kernels/spk/vgr2_nep097.bsp
 
 # Data files settings
 data_folder: "data/other"
@@ -119,11 +120,11 @@ integrator:
 # Estimation settings
 # Estimation settings
 estimation:
-  max_iterations: 3
+  max_iterations: 5
   parameters_to_estimate:
     - initial_state:
-      placeholder: true
-        # apriori: [1.0e10, 1.0e6] 
+      - placeholder: True
+        # apriori: [1.0e7, 1.0e2]
     # - "iau_rotation_model_pole"
     # - "neptune_GM"
     # - "neptune_j2_j4"

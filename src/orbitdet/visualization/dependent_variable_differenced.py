@@ -52,68 +52,128 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
 
 def plot_differenced_dependent_variables(
     cfg: DictConfig,
-    result_A: prop.SimulationResults,
-    result_B: prop.SimulationResults,
-    dependent_variable_A: prop_setup.dependent_variable.SingleDependentVariableSaveSettings,
-    dependent_variable_B: prop_setup.dependent_variable.SingleDependentVariableSaveSettings,
+    reference_result: prop.SimulationResults,
+    comparison_results: list[prop.SimulationResults],
+    reference_dependent_variable: prop_setup.dependent_variable.SingleDependentVariableSaveSettings,
+    comparison_dependent_variables: list[
+        prop_setup.dependent_variable.SingleDependentVariableSaveSettings
+    ],
+    comparison_names: list[str] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    # Check if result objects are of the correct type
-    if not issubclass(result_A.__class__, prop.SimulationResults) or not issubclass(
-        result_B.__class__, prop.SimulationResults
-    ):
-        raise TypeError(
-            "Both result_A and result_B must be of (derived) type 'SimulationResults'. "
-            f"Got {type(result_A)} and {type(result_B)}."
-        )
+    """Plot the difference in a dependent variable between a reference result and one
+    or more comparison results.
 
-    # Check if dependent variable types are the same
-    if dependent_variable_A.dependent_variable_type != dependent_variable_B.dependent_variable_type:
-        raise ValueError(
-            "Dependent variable types must be the same for differencing. "
-            f"Got {dependent_variable_A.dependent_variable_type} and "
-            f"{dependent_variable_B.dependent_variable_type}."
+    Args:
+        cfg: Configuration dictionary for plotting settings.
+        reference_result (SimulationResults): The reference SimulationResults object.
+        comparison_results (list[SimulationResults]): A list of SimulationResults objects
+            to compare against the reference.
+        reference_dependent_variable (SingleDependentVariableSaveSettings): The dependent
+            variable to extract from the reference result.
+        comparison_dependent_variables (list[SingleDependentVariableSaveSettings]): A list
+            of dependent variables to extract from the comparison results.
+        comparison_names (list[str] | None, optional)): Optional list of names for the
+            comparison results, used in the legend. If not provided, default names will
+            be generated.
+    """
+
+    # Check if result objects are of the correct type
+    if not issubclass(reference_result.__class__, prop.SimulationResults):
+        raise TypeError(
+            "reference_result must be of (derived) type 'SimulationResults'. "
+            f"Got {type(reference_result)}."
         )
-    if (
-        dependent_variable_A.dependent_variable_type
-        is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
-        or dependent_variable_A.dependent_variable_type
-        is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
-    ):
-        if (
-            dependent_variable_A.acceleration_model_type
-            is not dependent_variable_B.acceleration_model_type
-        ):
-            raise ValueError(
-                "Acceleration model types must be the same for differencing "
-                "when dependent variable type is single_acceleration_norm_type "
-                "or single_acceleration_type. "
-                f"Got {dependent_variable_A.acceleration_model_type} and "
-                f"{dependent_variable_B.acceleration_model_type}."
+    if not isinstance(comparison_results, list) or len(comparison_results) == 0:
+        raise TypeError("comparison_results must be a non-empty list of SimulationResults.")
+    for i, r in enumerate(comparison_results):
+        if not issubclass(r.__class__, prop.SimulationResults):
+            raise TypeError(
+                f"comparison_results[{i}] must be of (derived) type 'SimulationResults'. "
+                f"Got {type(r)}."
             )
 
-    # Create dependent variable dictionaries for both results
-    dependent_variable_dict_A = create_dependent_variable_dictionary(result_A)
-    dependent_variable_dict_B = create_dependent_variable_dictionary(result_B)
+    if (
+        not isinstance(comparison_dependent_variables, list)
+        or len(comparison_dependent_variables) == 0
+    ):
+        raise TypeError(
+            "comparison_dependent_variables must be a non-empty list of "
+            "SingleDependentVariableSaveSettings."
+        )
+    if len(comparison_results) != len(comparison_dependent_variables):
+        raise ValueError(
+            "comparison_results and comparison_dependent_variables must have the same length. "
+            f"Got {len(comparison_results)} and {len(comparison_dependent_variables)}."
+        )
 
-    # Check if dependent variable is available in both results objects
+    # Check if all dependent variable types are the same
+    ref_dv_type = reference_dependent_variable.dependent_variable_type
+    for i, dv in enumerate(comparison_dependent_variables):
+        if dv.dependent_variable_type != ref_dv_type:
+            raise ValueError(
+                "All dependent variable types must be the same for differencing. "
+                f"Reference type: {ref_dv_type}, "
+                f"comparison[{i}] type: {dv.dependent_variable_type}."
+            )
+
+    is_acceleration_type = (
+        ref_dv_type
+        is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
+        or ref_dv_type
+        is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
+    )
+    if is_acceleration_type:
+        ref_acc_type = reference_dependent_variable.acceleration_model_type
+        for i, dv in enumerate(comparison_dependent_variables):
+            if dv.acceleration_model_type is not ref_acc_type:
+                raise ValueError(
+                    "Acceleration model types must be the same for differencing "
+                    "when dependent variable type is single_acceleration_norm_type "
+                    "or single_acceleration_type. "
+                    f"Reference type: {ref_acc_type}, comparison[{i}] type: "
+                    f"{dv.acceleration_model_type}."
+                )
+
+    # Validate comparison_names
+    if comparison_names is not None and len(comparison_names) != len(comparison_results):
+        raise ValueError(
+            "comparison_names must have the same length as comparison_results. "
+            f"Got {len(comparison_names)} and {len(comparison_results)}."
+        )
+    if comparison_names is None:
+        comparison_names = [f"Comparison {i}" for i in range(len(comparison_results))]
+
+    # Create dependent variable dictionaries for all results
+    reference_dv_dict = create_dependent_variable_dictionary(reference_result)
+    comparison_dv_dicts = [create_dependent_variable_dictionary(r) for r in comparison_results]
+
+    # Check if dependent variable is available in all results objects
     try:
-        dependent_variable_dict_A[dependent_variable_A]
-        dependent_variable_dict_B[dependent_variable_B]
+        reference_dv_dict[reference_dependent_variable]
     except KeyError as e:
         raise ValueError(
-            "Dependent variable not found in one of the results objects. "
-            f"Dependent variable A: {dependent_variable_A}, "
-            f"Dependent variable B: {dependent_variable_B}."
+            "Dependent variable not found in reference result. "
+            f"Reference dependent variable: {reference_dependent_variable}."
         ) from e
+    for i, (dvd, dv) in enumerate(zip(comparison_dv_dicts, comparison_dependent_variables)):
+        try:
+            dvd[dv]
+        except KeyError as e:
+            raise ValueError(
+                f"Dependent variable not found in comparison result {i}. Dependent variable: {dv}."
+            ) from e
 
-    # Compute the difference
-    difference_dict = {
-        epoch: dependent_variable_dict_A[dependent_variable_A][epoch]
-        - dependent_variable_dict_B[dependent_variable_B][epoch]
-        for epoch in dependent_variable_dict_A.time_history
-    }
+    # Compute the differences (one per comparison)
+    difference_dicts = []
+    for dvd, dv in zip(comparison_dv_dicts, comparison_dependent_variables):
+        diff = {
+            epoch: reference_dv_dict[reference_dependent_variable][epoch] - dvd[dv][epoch]
+            for epoch in reference_dv_dict.time_history
+        }
+        difference_dicts.append(diff)
+
     # Check how large the dependent variable is to determine how many plots to make
-    number_of_plots = difference_dict[dependent_variable_dict_A.time_history[0]].size
+    number_of_plots = difference_dicts[0][reference_dv_dict.time_history[0]].size
 
     # Load plotting configuration
     plot_cfg = _cfg_get(cfg, "dependent_variable_differenced", default=None)[
@@ -131,20 +191,15 @@ def plot_differenced_dependent_variables(
         axes = np.array([axes])
 
     # Build default title components
-    dependent_variable_name_raw = dependent_variable_A.dependent_variable_type.name
+    dependent_variable_name_raw = reference_dependent_variable.dependent_variable_type.name
     dependent_variable_name = (
         dependent_variable_name_raw.replace("_", " ").replace(" type", "").title()
     )
-    associated_body = dependent_variable_A.associated_body
-    secondary_body = dependent_variable_A.secondary_body
+    associated_body = reference_dependent_variable.associated_body
+    secondary_body = reference_dependent_variable.secondary_body
 
-    if (
-        dependent_variable_A.dependent_variable_type
-        is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
-        or dependent_variable_A.dependent_variable_type
-        is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
-    ):
-        acceleration_model_type = dependent_variable_A.acceleration_model_type.name
+    if is_acceleration_type:
+        acceleration_model_type = reference_dependent_variable.acceleration_model_type.name
         default_plot_title = (
             f"Difference in {dependent_variable_name} ({acceleration_model_type}) "
             f"for {associated_body} w.r.t. {secondary_body}"
@@ -194,6 +249,8 @@ def plot_differenced_dependent_variables(
     except Exception:
         pass
 
+    # Plot each component with all comparisons overlaid
+    time_history = reference_dv_dict.time_history
     for i in range(number_of_plots):
         # Per-component title (configurable), with fallback to default
         component_title = _cfg_get(
@@ -211,21 +268,24 @@ def plot_differenced_dependent_variables(
             pass
 
         if i < number_of_plots - 1:
-            x_data = dependent_variable_dict_A.time_history
+            x_data = time_history
             axes[i].tick_params(axis="x", which="both", labelbottom=False)
         else:
-            x_data = _seconds_since_j2000_to_datetimes(
-                np.asarray(dependent_variable_dict_A.time_history)
-            )
+            x_data = _seconds_since_j2000_to_datetimes(np.asarray(time_history))
             axes[i].set_xlabel(x_label)
             _configure_datetime_axis(axes[i])
-        axes[i].plot(
-            x_data,
-            [difference_dict[epoch][i] for epoch in dependent_variable_dict_A.time_history],
-        )
+
+        # Plot each comparison as a separate line
+        for diff_dict, name in zip(difference_dicts, comparison_names):
+            axes[i].plot(
+                x_data,
+                [np.atleast_1d(diff_dict[epoch])[i] for epoch in time_history],
+                label=name,
+            )
         axes[i].set_title(component_title)
         axes[i].set_ylabel(y_labels[i])
         axes[i].grid()
+        axes[i].legend()
 
     # Hover formatter (per-axis when multiple y-labels are provided)
     for ax, hy_label in zip(axes, hover_y_labels):

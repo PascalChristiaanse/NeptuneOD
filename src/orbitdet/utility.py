@@ -122,13 +122,10 @@ def save_tudat_object(obj: object, file_path: str | Path) -> Path:
     """
     if not hasattr(obj, "save_to_binary"):
         raise TypeError(
-            f"Object of type {type(obj).__name__} does not provide "
-            "a native save_to_binary method."
+            f"Object of type {type(obj).__name__} does not provide a native save_to_binary method."
         )
 
     path = Path(file_path)
-    if path.suffix != ".tudat":
-        path = path.with_suffix(path.suffix + ".tudat")
     path.parent.mkdir(parents=True, exist_ok=True)
 
     obj.save_to_binary(str(path))

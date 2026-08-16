@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 logger = logging.getLogger(__name__)
 
 
-def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
+def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray | None:
     """
     Constructs the inverse a priori covariance matrix based on the configuration.
 
@@ -22,6 +22,10 @@ def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
       - Global config ``cfg.estimation.apriori``
       - A huge default (1e30) if nothing is specified, meaning *no constraint*.
 
+    If **no** a priori constraints are specified anywhere in the configuration
+    (neither per-parameter nor global), the function returns ``None`` to indicate
+    that no a priori covariance should be applied.
+
     Parameters
     ----------
     cfg : DictConfig
@@ -29,10 +33,11 @@ def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
 
     Returns
     -------
-    np.ndarray
+    np.ndarray | None
         Diagonal **inverse** a priori covariance matrix (shape ``N x N``),
         ready to be passed to
-        ``est_an.EstimationInput(…, inverse_apriori_covariance=…)``.
+        ``est_an.EstimationInput(…, inverse_apriori_covariance=…)``,
+        or ``None`` if no a priori constraints are configured.
     """
     # ------------------------------------------------------------------
     # 1. Count propagated bodies – each contributes 6 state parameters
@@ -53,11 +58,22 @@ def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
         if isinstance(param_entry, DictConfig):
             param_name = next(iter(param_entry.keys()))
             param_config = param_entry[param_name]
-            if "apriori" in param_config:
+            if param_config is not None and "apriori" in param_config:
                 per_param_apriori[param_name] = list(param_config.apriori)
 
     # ------------------------------------------------------------------
-    # 4. Helper: get sigma for a parameter block
+    # 4. Early return if no a priori constraints are configured at all
+    # ------------------------------------------------------------------
+    has_global_apriori = bool(global_apriori) and (
+        hasattr(global_apriori, "position")
+        or any(hasattr(global_apriori, k) for k in ("position", "velocity"))
+    )
+    if not per_param_apriori and not has_global_apriori:
+        logger.info("No a priori constraints configured — returning None.")
+        return None
+
+    # ------------------------------------------------------------------
+    # 5. Helper: get sigma for a parameter block
     # ------------------------------------------------------------------
     def _get_sigma(param_name: str, default: float = 1e30) -> float:
         """Return a single sigma for *param_name*."""
@@ -71,11 +87,11 @@ def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
         return default
 
     # ------------------------------------------------------------------
-    # 5. Build inverse-variance list in parameter order
+    # 6. Build inverse-variance list in parameter order
     # ------------------------------------------------------------------
     inv_var_list: list[float] = []
 
-    # ---- 5a. Initial state(s) -----------------------------------------
+    # ---- 6a. Initial state(s) -----------------------------------------
     initial_apriori = per_param_apriori.get("initial_state", None)
     if initial_apriori is not None:
         sigma_pos = float(initial_apriori[0])
@@ -90,7 +106,7 @@ def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
         inv_var_list.extend([1.0 / sigma_pos**2] * 3)  # x, y, z
         inv_var_list.extend([1.0 / sigma_vel**2] * 3)  # vx, vy, vz
 
-    # ---- 5b. Additional parameters (in config order) ------------------
+    # ---- 6b. Additional parameters (in config order) ------------------
     # Known parameter sizes (number of estimatable parameters per type)
     #   - iau_rotation_model_pole : 2  (RA, Dec)
     #   - neptune_GM             : 1  (gravitational parameter)
@@ -117,7 +133,7 @@ def get_apriori_covariance_matrix(cfg: DictConfig) -> np.ndarray:
         inv_var_list.extend([1.0 / sigma**2] * n_params)
 
     # ------------------------------------------------------------------
-    # 6. Assemble and return the diagonal inverse covariance matrix
+    # 7. Assemble and return the diagonal inverse covariance matrix
     # ------------------------------------------------------------------
     inverse_apriori_covariance = np.diag(inv_var_list)
 

@@ -1,4 +1,4 @@
-name: NeptuneOD
+name: NeptuneODWTudat
 
 channels:
   - conda-forge
@@ -28,6 +28,7 @@ dependencies:
 
   # orbitdet requirements
   - hydra-core
+  - hydra-joblib-launcher
   - beautifulsoup4
   - aim
   - plotly

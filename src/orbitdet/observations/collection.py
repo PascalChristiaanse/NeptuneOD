@@ -84,4 +84,13 @@ def create_observation_collection(
 
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
 
-    return total_collection, model_setting
+    # Flatten model settings list — factories may return a single model or a list of models,
+    # and we accumulate them by appending, producing a nested list [[m1, m2], [m3], ...].
+    flat_models = []
+    for ms in model_setting:
+        if isinstance(ms, (list, tuple)):
+            flat_models.extend(ms)
+        else:
+            flat_models.append(ms)
+
+    return total_collection, flat_models

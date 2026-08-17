@@ -1,0 +1,13 @@
+parameter_correlation_heatmap:
+  parameter_names:
+    - "x"
+    - "y"
+    - "z"
+    - "v_x"
+    - "v_y"
+    - "v_z"
+  annotation: true
+  decimal_places: 2
+  figure:
+    width: 8.0
+    height: 8.0

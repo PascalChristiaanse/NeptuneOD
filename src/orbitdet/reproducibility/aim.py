@@ -208,10 +208,10 @@ def aim_log_figure(
         return
 
     # Interactive figure for the Figures tab
-    from aim import Figure as AimFigure
-
     # Suppress noisy plotly conversion warnings for known-incompatible formatters
     import warnings
+
+    from aim import Figure as AimFigure
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="plotly")

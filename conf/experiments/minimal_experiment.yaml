@@ -5,7 +5,7 @@
 
 defaults:
   # - /collection@collection: atanas_plus_micro
-  - /collection@collection: atanas_triton_generated_extended_no_voyager
+  - /collection@collection: minimal_for_testing
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
   - /figures/residual_histogram
@@ -31,9 +31,9 @@ hydra:
 
 
 # Time settings
-start_date: 1963-1-1T12:00:00
+start_date: 2020-1-1T12:00:00
 end_date: 2025-1-1T12:00:00
-initial_epoch: 2006-10-1T12:00:00
+initial_epoch: 2020-1-1T12:00:00
 
 # Kernel settings
 kernel_folder: "data/kernels"
@@ -123,7 +123,7 @@ integrator:
 # Estimation settings
 # Estimation settings
 estimation:
-  max_iterations: 3
+  max_iterations: 1
   parameters_to_estimate:
     - initial_state:
       placeholder: true

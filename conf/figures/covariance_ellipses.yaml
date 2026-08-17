@@ -1,0 +1,16 @@
+covariance_ellipses:
+  rotate_to_rsw: true
+  body_name: "Triton"
+  central_body_name: "Neptune"
+  parameter_names:
+    - "R"
+    - "S"
+    - "W"
+    - "v_R"
+    - "v_S"
+    - "v_W"
+  n_sigma: 1.0
+  confidence: false
+  figure:
+    width: 4.0
+    height: 4.0

@@ -224,7 +224,10 @@ def _configure_psd_axis(
 
     period_axis = ax.secondary_xaxis(
         "top",
-        functions=(lambda frequency: 1.0 / frequency, lambda period: 1.0 / period),
+        functions=(
+            lambda frequency: np.divide(1.0, frequency, where=frequency != 0),
+            lambda period: np.divide(1.0, period, where=period != 0),
+        ),
     )
     period_axis.set_xlabel(axes_cfg.get("period_label", "Period [days/cycle]"))
     period_ticks = axes_cfg.get("period_ticks_days", DEFAULT_PERIOD_TICKS_DAYS)

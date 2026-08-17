@@ -1,0 +1,5 @@
+# @package _global_
+defaults:
+  - /datasets/generated/nm0017.yaml@datasets.nm0017
+
+name: "NSDB Triton Data"

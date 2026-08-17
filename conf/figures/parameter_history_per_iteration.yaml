@@ -1,0 +1,13 @@
+parameter_history_per_iteration:
+  parameter_names:
+    - "x"
+    - "y"
+    - "z"
+    - "v_x"
+    - "v_y"
+    - "v_z"
+  normalize: true
+  y_label: "Relative Parameter Value (normalized to initial)"
+  figure:
+    width: 10.0
+    height: 6.0

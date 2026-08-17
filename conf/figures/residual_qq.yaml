@@ -1,0 +1,21 @@
+residual_qq:
+  output_file: "residual_qq.pdf"
+  figure:
+    width: 16.54
+    height: 8.27
+  titles:
+    ra: "Right Ascension Q-Q"
+    dec: "Declination Q-Q"
+    suptitle: "Residual Q-Q Plot for {target_name}"
+  axes:
+    x_label: "Theoretical Quantiles [std]"
+    y_label: "Sample Quantiles [std]"
+    hover_x_label: "Theoretical Quantiles [std]"
+    hover_y_label: "Sample Quantiles [std]"
+  styling:
+    cmap: "tab10"
+    marker_size: 30
+    ref_line:
+      ls: "--"
+      color: "k"
+      lw: 1.0

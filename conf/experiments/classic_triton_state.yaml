@@ -9,6 +9,10 @@ defaults:
   - /collection@collection: working
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/dependent_variable
   - /figures/dependent_variable_differenced@dependent_variable_differenced
   # - /figures/parameter_correlation_heatmap
   # - /figures/parameter_history_per_iteration

@@ -8,7 +8,13 @@ from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 
 from orbitdet.data import KernelManager
-from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
+from orbitdet.reproducibility import (
+    RuntimeContext,
+    aim_log_artifact,
+    aim_log_figure,
+    enforce_initialization,
+    initialize,
+)
 from orbitdet.simulation import (
     get_dynamical_model,
     get_environment,
@@ -124,6 +130,26 @@ def main(cfg: DictConfig):
     fig_dep_relvel_path = output_dir / "dependent_variable_relative_velocity.pdf"
     fig_dep_relvel.savefig(fig_dep_relvel_path)
     logger.info(f"Relative velocity plot saved to {fig_dep_relvel_path}")
+
+    # Log all figures to Aim
+    logger.info("Logging figures to Aim...")
+    aim_log_figure(fig_diff_kep, name="keplerian_difference")
+    aim_log_figure(fig_rsw, name="rsw_distance")
+    aim_log_figure(fig_dep_spice_kep, name="dependent_variable_spice_keplerian")
+    aim_log_figure(fig_dep_triton_kep, name="dependent_variable_triton_keplerian")
+    aim_log_figure(fig_dep_relpos, name="dependent_variable_relative_position")
+    aim_log_figure(fig_dep_relvel, name="dependent_variable_relative_velocity")
+    logger.info("Logged figures to Aim.")
+
+    # Attach saved PDFs as artifacts
+    logger.info("Attaching artifacts to Aim...")
+    aim_log_artifact(fig_diff_kep_path)
+    aim_log_artifact(fig_rsw_path)
+    aim_log_artifact(fig_dep_spice_kep_path)
+    aim_log_artifact(fig_dep_triton_kep_path)
+    aim_log_artifact(fig_dep_relpos_path)
+    aim_log_artifact(fig_dep_relvel_path)
+    logger.info("Attached artifacts to Aim.")
 
 
 if __name__ == "__main__":

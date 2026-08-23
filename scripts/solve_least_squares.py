@@ -7,7 +7,10 @@ import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
+from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import estimation_analysis as est_an
+from tudatpy.estimation import observations as obs
+from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 from tudatpy.util import redirect_std
 
 from orbitdet.data import KernelManager
@@ -196,34 +199,10 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
     return min_timestamp.isoformat(), max_timestamp.isoformat()
 
 
-def compute_apriori_vs_design_matrix_ratio(
-    estimation_output: est_an.EstimationOutput, inverse_a_priori: np.ndarray
-) -> float:
-    """
-    Computes the ratio of the a priori covariance matrix to the design matrix.
-
-    Parameters:
-        estimation_output (est_an.EstimationOutput): The output of the estimation process.
-        inverse_a_priori (np.ndarray): The inverse of the a priori covariance matrix.
-
-    Returns:
-        float: The ratio of the a priori covariance matrix to the design matrix.
-    """
-    H = estimation_output.design_matrix
-    W = np.identity(H.shape[0])  # Assuming equal weights for all observations
-    HtWH = H.T @ W @ H
-
-    logger.info("Design matrix vs a priori covariance ratio:")
-    logger.info(f"Design matrix (HtWH):\n{HtWH}")
-    logger.info(f"Inverse a priori covariance:\n{inverse_a_priori}")
-    logger.info(f"Ratio (HtWH / inverse_a_priori):\n{np.diag(HtWH) / np.diag(inverse_a_priori)}")
-    return HtWH, np.diag(inverse_a_priori) / np.diag(HtWH)
-
-
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/minimal_experiment",
+    config_name="experiments/classic_triton_state",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -289,21 +268,30 @@ def main(cfg: DictConfig):
     logger.info("Propagator settings created successfully.")
 
     logger.info("Generating observations from collection...")
-
     observations, observation_models = create_observation_collection(cfg, bodies)
-
-    # import tudatpy.estimation.observations as obs
-    # observations = obs.ObservationCollection.load_from_binary("atanasObservations")
-    # logger.warning("Observations loaded from binary file 'atanasObservations'.")
-
     logger.info("Observations generated successfully.")
+
+
+    # Create observation simulators for pre-fit residuals
+    ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
+        observation_models, bodies
+    )
+    logger.info("Observation simulators created successfully.")
+
+    if prop.processing_settings.set_integrated_result:
+        logger.info("Prefit residuals will be computed using the integrated result from the propagator.")
+        sim.create_dynamics_simulator(bodies, prop)
+
+    # Populate residuals in SingleObservationSets
+    obs.compute_residuals_and_dependent_variables(
+        observations, ephemeris_observation_simulators, bodies
+    )
 
     # Plot and save pre-fit residuals before estimation modifies them
     from orbitdet.visualization import plot_residuals
-
     fig_prefit_residuals, ax_prefit_residuals = plot_residuals(cfg, observations)
+    logger.info("Pre-fit residuals computed successfully.")
 
-    logger.info("Simulation setup complete. Ready for propagation and estimation.")
 
     parameter_set = get_estimatable_parameters(cfg, ctx, prop, bodies)
     logger.info("Parameter set for estimation created successfully.")
@@ -346,6 +334,11 @@ def main(cfg: DictConfig):
     with redirect_std(str(estimation_log_path)):
         estimation_output = estimator.perform_estimation(estimation_input)
     logger.info("Estimation progression logged to %s", estimation_log_path)
+    save_tudat_object(estimation_output, estimation_log_path.with_suffix(".tudat"))
+    save_tudat_object(observations, estimation_log_path.with_name("observations.tudat"))
+    logger.info("Estimation output saved to %s", estimation_log_path.with_suffix(".tudat"))
+    logger.info("Observations saved to %s", estimation_log_path.with_name("observations.tudat"))
+    logger.info("Estimation completed successfully.")
 
     # Also log the estimation progress to the regular logger
     if estimation_log_path.exists():

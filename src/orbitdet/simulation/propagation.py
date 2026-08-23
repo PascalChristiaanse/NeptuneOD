@@ -58,9 +58,7 @@ def get_propagator_settings(
     )
 
     if cfg.propagation.set_integrated_result:
-        logger.info(
-            "Propagator settings will set the integrated result in the runtime context."
-        )
+        logger.info("Propagator settings will set the integrated result in the runtime context.")
 
     central_bodies = [settings.central_body for body, settings in cfg.bodies_to_propagate.items()]
     settings = prop_setup.propagator.translational(

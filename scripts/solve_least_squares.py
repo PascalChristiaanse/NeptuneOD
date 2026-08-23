@@ -271,7 +271,6 @@ def main(cfg: DictConfig):
     observations, observation_models = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
-
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies
@@ -279,7 +278,9 @@ def main(cfg: DictConfig):
     logger.info("Observation simulators created successfully.")
 
     if prop.processing_settings.set_integrated_result:
-        logger.info("Prefit residuals will be computed using the integrated result from the propagator.")
+        logger.info(
+            "Prefit residuals will be computed using the integrated result from the propagator."
+        )
         sim.create_dynamics_simulator(bodies, prop)
 
     # Populate residuals in SingleObservationSets
@@ -289,9 +290,9 @@ def main(cfg: DictConfig):
 
     # Plot and save pre-fit residuals before estimation modifies them
     from orbitdet.visualization import plot_residuals
+
     fig_prefit_residuals, ax_prefit_residuals = plot_residuals(cfg, observations)
     logger.info("Pre-fit residuals computed successfully.")
-
 
     parameter_set = get_estimatable_parameters(cfg, ctx, prop, bodies)
     logger.info("Parameter set for estimation created successfully.")

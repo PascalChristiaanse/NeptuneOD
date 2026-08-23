@@ -1,0 +1,4 @@
+[submodule "tudatpy"]
+	path = tudatpy
+	url = https://github.com/PascalChristiaanse/tudat_UTAS.git
+	branch = thesis

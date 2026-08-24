@@ -406,9 +406,7 @@ def main(cfg: DictConfig):
     # Plot covariance ellipses
     from orbitdet.visualization import CovarianceEllipses
 
-    fig_ellipses, axes_ellipses = CovarianceEllipses(
-        cfg, estimation_output, bodies, ctx
-    ).plot()
+    fig_ellipses, axes_ellipses = CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
 
     from orbitdet.visualization import DifferencedDependentVariables
 

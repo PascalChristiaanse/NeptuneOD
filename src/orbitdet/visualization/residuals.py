@@ -137,7 +137,9 @@ class Residuals(Plot):
             color = colors(set_index % colors.N)
             marker = marker_types[set_index % len(marker_types)]
 
-            obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
+            obs_times_sec_j2000 = np.array(
+                [epoch.to_float() for epoch in obs_set.observation_times]
+            )
             obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
             residuals = np.array(obs_set.residuals)
             # n x 2 array of RA and DEC residuals in radians

@@ -105,7 +105,9 @@ class ResidualScatter(Plot):
         # First pass: collect all timestamps to determine global time range for color mapping
         all_times_sec = []
         for obs_set in observation_sets:
-            obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
+            obs_times_sec_j2000 = np.array(
+                [epoch.to_float() for epoch in obs_set.observation_times]
+            )
             all_times_sec.append(obs_times_sec_j2000)
 
         all_times_sec = np.concatenate(all_times_sec)
@@ -129,7 +131,9 @@ class ResidualScatter(Plot):
             target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
             marker = marker_types[set_index % len(marker_types)]
 
-            obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
+            obs_times_sec_j2000 = np.array(
+                [epoch.to_float() for epoch in obs_set.observation_times]
+            )
             residuals = np.array(obs_set.residuals)
             # n x 2 array of RA and DEC residuals in radians
 
@@ -153,7 +157,9 @@ class ResidualScatter(Plot):
             )
 
         # Titles and labels (configurable)
-        title = _cfg_get(plot_cfg, "titles", "title", default=f"RA vs DEC Residuals for {target_name}")
+        title = _cfg_get(
+            plot_cfg, "titles", "title", default=f"RA vs DEC Residuals for {target_name}"
+        )
         # Allow templates like "RA vs DEC Residuals for {target_name}" in config
         try:
             if isinstance(title, str):

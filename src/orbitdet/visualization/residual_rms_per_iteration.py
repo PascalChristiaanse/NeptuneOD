@@ -1,22 +1,17 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from tudatpy.estimation import estimation_analysis as est_an
+
 from orbitdet.visualization.base import Plot
 
 
 class ResidualRMSPerIteration(Plot):
     """Plot the RMS of the residuals per iteration of the estimation process."""
 
-    def __init__(
-        self,
-        cfg,
-        estimation_output
-    ):
+    def __init__(self, cfg, estimation_output):
         super().__init__(cfg)
         self.estimation_output = estimation_output
 
     def _make_figure(self):
-        cfg = self.cfg
         estimation_output = self.estimation_output
 
         """

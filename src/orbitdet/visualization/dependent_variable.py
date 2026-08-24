@@ -114,7 +114,9 @@ class DependentVariable(Plot):
 
         if (
             dependent_variable.dependent_variable_type
-            is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
+            is (
+                prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
+            )
             or dependent_variable.dependent_variable_type
             is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
         ):
@@ -170,7 +172,10 @@ class DependentVariable(Plot):
         for i in range(number_of_plots):
             # Per-component title (configurable), with fallback to default
             component_title = _cfg_get(
-                plot_cfg, "titles", f"component_{i}", default=f"{default_plot_title} (Component {i})"
+                plot_cfg,
+                "titles",
+                f"component_{i}",
+                default=f"{default_plot_title} (Component {i})",
             )
             try:
                 if isinstance(component_title, str):

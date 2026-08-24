@@ -307,7 +307,9 @@ class ResidualsPSD(Plot):
             info = get_observatory_info(cfg, observatory_code)
             color = colors(set_index % colors.N)
 
-            obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
+            obs_times_sec_j2000 = np.array(
+                [epoch.to_float() for epoch in obs_set.observation_times]
+            )
             residuals = np.array(obs_set.residuals)
 
             time_mask = np.ones(obs_times_sec_j2000.shape, dtype=bool)

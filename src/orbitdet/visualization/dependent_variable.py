@@ -112,12 +112,14 @@ class DependentVariable(Plot):
         associated_body = dependent_variable.associated_body
         secondary_body = dependent_variable.secondary_body
 
-        if (
-            dependent_variable.dependent_variable_type
-            is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
-            or dependent_variable.dependent_variable_type
-            is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
-        ):
+        dv_type = dependent_variable.dependent_variable_type
+        acceleration_norm_type = (
+            prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
+        )
+        acceleration_type = (
+            prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
+        )
+        if dv_type is acceleration_norm_type or dv_type is acceleration_type:
             acceleration_model_type = dependent_variable.acceleration_model_type.name
             default_plot_title = (
                 f"{dependent_variable_name} ({acceleration_model_type}) "
@@ -170,7 +172,10 @@ class DependentVariable(Plot):
         for i in range(number_of_plots):
             # Per-component title (configurable), with fallback to default
             component_title = _cfg_get(
-                plot_cfg, "titles", f"component_{i}", default=f"{default_plot_title} (Component {i})"
+                plot_cfg,
+                "titles",
+                f"component_{i}",
+                default=f"{default_plot_title} (Component {i})",
             )
             try:
                 if isinstance(component_title, str):

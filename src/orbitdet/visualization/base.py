@@ -12,8 +12,8 @@ bookkeeping above, so callers only need::
     fig, ax = Residuals(cfg, observations).plot()
 """
 
-from abc import ABC, abstractmethod
 import re
+from abc import ABC, abstractmethod
 from pathlib import Path
 
 from hydra.core.hydra_config import HydraConfig

@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from tudatpy.estimation import estimation_analysis as est_an
+
 from orbitdet.visualization.base import Plot
 
 
@@ -16,7 +16,6 @@ class ResidualRMSPerIteration(Plot):
         self.estimation_output = estimation_output
 
     def _make_figure(self):
-        cfg = self.cfg
         estimation_output = self.estimation_output
 
         """

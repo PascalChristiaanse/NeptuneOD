@@ -199,7 +199,9 @@ class ResidualQQ(Plot):
         hover_x_label = _cfg_get(
             plot_cfg, "axes", "hover_x_label", default="Theoretical Quantiles [std]"
         )
-        hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="Sample Quantiles [std]")
+        hover_y_label = _cfg_get(
+            plot_cfg, "axes", "hover_y_label", default="Sample Quantiles [std]"
+        )
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt

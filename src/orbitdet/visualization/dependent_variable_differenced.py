@@ -52,14 +52,18 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
 
 
 class DifferencedDependentVariables(Plot):
-    """Plot the difference in a dependent variable between a reference result and one or more comparison results."""
+    """Plot the difference in a dependent variable between a reference result and
+    one or more comparison results.
+    """
 
     def __init__(
         self,
         cfg: DictConfig,
         reference_result: prop.SimulationResults,
         comparison_results: list[prop.SimulationResults],
-        reference_dependent_variable: prop_setup.dependent_variable.SingleDependentVariableSaveSettings,
+        reference_dependent_variable: (
+            prop_setup.dependent_variable.SingleDependentVariableSaveSettings
+        ),
         comparison_dependent_variables: list[
             prop_setup.dependent_variable.SingleDependentVariableSaveSettings
         ],
@@ -136,11 +140,14 @@ class DifferencedDependentVariables(Plot):
                     f"comparison[{i}] type: {dv.dependent_variable_type}."
                 )
 
+        acceleration_norm_type = (
+            prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
+        )
+        acceleration_type = (
+            prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
+        )
         is_acceleration_type = (
-            ref_dv_type
-            is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_norm_type
-            or ref_dv_type
-            is prop_setup.dependent_variable.PropagationDependentVariables.single_acceleration_type
+            ref_dv_type is acceleration_norm_type or ref_dv_type is acceleration_type
         )
         if is_acceleration_type:
             ref_acc_type = reference_dependent_variable.acceleration_model_type
@@ -180,7 +187,8 @@ class DifferencedDependentVariables(Plot):
                 dvd[dv]
             except KeyError as e:
                 raise ValueError(
-                    f"Dependent variable not found in comparison result {i}. Dependent variable: {dv}."
+                    "Dependent variable not found in comparison result "
+                    f"{i}. Dependent variable: {dv}."
                 ) from e
 
         # Compute the differences (one per comparison)
@@ -224,7 +232,9 @@ class DifferencedDependentVariables(Plot):
             )
         else:
             if secondary_body is None:
-                default_plot_title = f"Difference in {dependent_variable_name} for {associated_body}"
+                default_plot_title = (
+                    f"Difference in {dependent_variable_name} for {associated_body}"
+                )
             else:
                 default_plot_title = (
                     f"Difference in {dependent_variable_name} for "
@@ -272,7 +282,10 @@ class DifferencedDependentVariables(Plot):
         for i in range(number_of_plots):
             # Per-component title (configurable), with fallback to default
             component_title = _cfg_get(
-                plot_cfg, "titles", f"component_{i}", default=f"{default_plot_title} (Component {i})"
+                plot_cfg,
+                "titles",
+                f"component_{i}",
+                default=f"{default_plot_title} (Component {i})",
             )
             try:
                 if isinstance(component_title, str):

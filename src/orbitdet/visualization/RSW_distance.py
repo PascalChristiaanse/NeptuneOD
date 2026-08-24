@@ -53,13 +53,17 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
 
 
 class RSWDistance(Plot):
-    """Decompose the relative position vector between two bodies into its Radial (R), Transverse (S), and Cross-track (W) components in the RSW frame."""
+    """Decompose the relative position vector between two bodies into its Radial
+    (R), Transverse (S), and Cross-track (W) components in the RSW frame.
+    """
 
     def __init__(
         self,
         cfg: DictConfig,
         result: prop.SimulationResults,
-        position_dependent_variable: prop_setup.dependent_variable.SingleDependentVariableSaveSettings,
+        position_dependent_variable: (
+            prop_setup.dependent_variable.SingleDependentVariableSaveSettings
+        ),
         central_body: str = "Neptune",
     ):
         super().__init__(cfg)

@@ -17,7 +17,6 @@ from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
     aim_log_artifact,
-    aim_log_figure,
     aim_log_metrics,
     enforce_initialization,
     initialize,
@@ -25,7 +24,7 @@ from orbitdet.reproducibility import (
 from orbitdet.simulation import (
     get_environment,
 )
-from orbitdet.visualization import plot_residuals, plot_residuals_psd
+from orbitdet.visualization import Residuals, ResidualsPSD
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -104,8 +103,10 @@ def main(cfg: DictConfig):
         )
         logger.info("Logged residual summary metrics to Aim.")
 
-    fig_psd, ax_psd = plot_residuals_psd(cfg, observations, 30, cfg.figures.residuals_psd)
-    fig, ax = plot_residuals(cfg, observations)
+    residuals_psd = ResidualsPSD(cfg, observations, 30, cfg.figures.residuals_psd)
+    fig_psd, ax_psd = residuals_psd._make_figure()
+    residuals = Residuals(cfg, observations)
+    fig, ax = residuals._make_figure()
 
     # add line on y axis at date of voyager 2 closest approach to neptune,
     # which is 1989-8-25T16:00:00
@@ -118,30 +119,13 @@ def main(cfg: DictConfig):
     ax[1].legend()
     logger.info("Pre-fit residuals plotted successfully.")
 
-    # Save the figure to the output directory
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig_psd_path = output_dir / "prefit_residuals_psd.pdf"
-    fig_psd.savefig(fig_psd_path)
-    logger.info(f"Pre-fit residual PSD plot saved to {fig_psd_path}")
-
-    fig_path = output_dir / "prefit_residuals.pdf"
-    fig.savefig(fig_path)
-    logger.info(f"Pre-fit residuals plot saved to {fig_path}")
-
-    # Log figures for the interactive Aim Figures tab
-    aim_log_figure(fig, name="prefit_residuals")
-    logger.info("Logged prefit residuals figure to Aim.")
-
-    aim_log_figure(fig_psd, name="prefit_residuals_psd")
-    logger.info("Logged prefit residuals PSD figure to Aim.")
-
-    # Attach the saved PDFs as artifacts
-    aim_log_artifact(fig_path)
-    aim_log_artifact(fig_psd_path)
-    logger.info("Attached prefit residuals PDF artifacts to Aim.")
+    # Save, log to Aim, and attach the PDFs via the Plot base class after the
+    # closest-approach lines were added.
+    residuals.publish(fig, ax)
+    residuals_psd.publish(fig_psd, ax_psd)
 
     # Also log config.yaml as artifact for this run
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact(config_path)

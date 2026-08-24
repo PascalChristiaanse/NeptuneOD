@@ -10,8 +10,6 @@ from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from orbitdet.data import KernelManager
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact,
-    aim_log_figure,
     enforce_initialization,
     initialize,
 )
@@ -68,88 +66,48 @@ def main(cfg: DictConfig):
     result.propagation_results.save_to_binary("myresult_atanas_triton_state")
 
     # ── Plot Keplerian differences (Triton Spice vs Triton) ──
-    from orbitdet.visualization import plot_differenced_dependent_variables
+    from orbitdet.visualization import DifferencedDependentVariables
 
-    fig_diff_kep, data_diff_kep = plot_differenced_dependent_variables(
+    fig_diff_kep, data_diff_kep = DifferencedDependentVariables(
         cfg,
         result.propagation_results,
         [result.propagation_results],
         dep_vars[0],
         [dep_vars[1]],
-    )
+    ).plot()
 
     # ── Plot RSW decomposition ──
-    from orbitdet.visualization import plot_RSW_distance
+    from orbitdet.visualization import RSWDistance
 
-    fig_rsw, data_rsw = plot_RSW_distance(
+    fig_rsw, data_rsw = RSWDistance(
         cfg,
         result.propagation_results,
         dep_vars[2],
-    )
+    ).plot()
 
     # ── Plot dependent variables ──
-    from orbitdet.visualization import plot_dependent_variable
+    from orbitdet.visualization import DependentVariable
 
-    fig_dep_spice_kep, axes_dep_spice_kep = plot_dependent_variable(
+    fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
         cfg, result.propagation_results, dep_vars[0]
-    )
-    fig_dep_triton_kep, axes_dep_triton_kep = plot_dependent_variable(
+    ).plot()
+    fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
         cfg, result.propagation_results, dep_vars[1]
-    )
-    fig_dep_relpos, axes_dep_relpos = plot_dependent_variable(
+    ).plot()
+    fig_dep_relpos, axes_dep_relpos = DependentVariable(
         cfg, result.propagation_results, dep_vars[2]
-    )
-    fig_dep_relvel, axes_dep_relvel = plot_dependent_variable(
+    ).plot()
+    fig_dep_relvel, axes_dep_relvel = DependentVariable(
         cfg, result.propagation_results, dep_vars[3]
-    )
+    ).plot()
 
     # Save all figures to the output directory
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    fig_diff_kep_path = output_dir / "keplerian_difference.pdf"
-    fig_diff_kep.savefig(fig_diff_kep_path)
-    logger.info(f"Keplerian difference plot saved to {fig_diff_kep_path}")
-
-    fig_rsw_path = output_dir / "rsw_distance.pdf"
-    fig_rsw.savefig(fig_rsw_path)
-    logger.info(f"RSW distance plot saved to {fig_rsw_path}")
-
-    fig_dep_spice_kep_path = output_dir / "dependent_variable_spice_keplerian.pdf"
-    fig_dep_spice_kep.savefig(fig_dep_spice_kep_path)
-    logger.info(f"Spice Keplerian plot saved to {fig_dep_spice_kep_path}")
-
-    fig_dep_triton_kep_path = output_dir / "dependent_variable_triton_keplerian.pdf"
-    fig_dep_triton_kep.savefig(fig_dep_triton_kep_path)
-    logger.info(f"Triton Keplerian plot saved to {fig_dep_triton_kep_path}")
-
-    fig_dep_relpos_path = output_dir / "dependent_variable_relative_position.pdf"
-    fig_dep_relpos.savefig(fig_dep_relpos_path)
-    logger.info(f"Relative position plot saved to {fig_dep_relpos_path}")
-
-    fig_dep_relvel_path = output_dir / "dependent_variable_relative_velocity.pdf"
-    fig_dep_relvel.savefig(fig_dep_relvel_path)
-    logger.info(f"Relative velocity plot saved to {fig_dep_relvel_path}")
-
-    # Log all figures to Aim
-    logger.info("Logging figures to Aim...")
-    aim_log_figure(fig_diff_kep, name="keplerian_difference")
-    aim_log_figure(fig_rsw, name="rsw_distance")
-    aim_log_figure(fig_dep_spice_kep, name="dependent_variable_spice_keplerian")
-    aim_log_figure(fig_dep_triton_kep, name="dependent_variable_triton_keplerian")
-    aim_log_figure(fig_dep_relpos, name="dependent_variable_relative_position")
-    aim_log_figure(fig_dep_relvel, name="dependent_variable_relative_velocity")
-    logger.info("Logged figures to Aim.")
-
-    # Attach saved PDFs as artifacts
-    logger.info("Attaching artifacts to Aim...")
-    aim_log_artifact(fig_diff_kep_path)
-    aim_log_artifact(fig_rsw_path)
-    aim_log_artifact(fig_dep_spice_kep_path)
-    aim_log_artifact(fig_dep_triton_kep_path)
-    aim_log_artifact(fig_dep_relpos_path)
-    aim_log_artifact(fig_dep_relvel_path)
-    logger.info("Attached artifacts to Aim.")
+    # The Plot base class already saved each figure as a PDF, logged it to Aim
+    # as a static image, and attached the PDF as an artifact reference.
+    logger.info("Figures saved, logged to Aim, and artifacts attached by Plot base class.")
 
 
 if __name__ == "__main__":

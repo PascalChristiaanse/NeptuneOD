@@ -331,8 +331,8 @@ class TestGetPropagatorSettings:
                     },
                 },
                 "propagation": {
-                                "set_integrated_result": True,
-                            },
+                    "set_integrated_result": True,
+                },
             }
         )
         mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
@@ -397,8 +397,8 @@ class TestGetPropagatorSettings:
                     },
                 },
                 "propagation": {
-                                "set_integrated_result": True,
-                            },
+                    "set_integrated_result": True,
+                },
             }
         )
 

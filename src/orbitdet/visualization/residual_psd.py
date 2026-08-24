@@ -13,6 +13,7 @@ from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.observations import get_observatory_info
+from orbitdet.visualization.base import Plot
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -242,133 +243,152 @@ def _configure_psd_axis(
     ax.format_coord = lambda x_value, y_value: _format_hover_coord(x_value, y_value, axes_cfg)
 
 
-def plot_residuals_psd(
-    cfg: DictConfig,
-    observation_collection: obs.ObservationCollection,
-    window_length_days: float,
-    plot_cfg,
-    observation_parsers: list[obs_proc.ObservationParserType] = None,
-) -> tuple[plt.Figure, np.ndarray]:
+class ResidualsPSD(Plot):
     """Plot Welch PSD spectra of the residual signal for the orbit determination."""
-    if observation_parsers is None:
-        observation_sets: list[obs.SingleObservationSet] = (
-            observation_collection.get_single_observation_sets()
-        )
-    else:
-        observation_sets: list[obs.SingleObservationSet] = (
-            observation_collection.get_single_observation_sets(observation_parsers)
-        )
 
-    figure_cfg = plot_cfg.get("figure", {})
-    styling_cfg = plot_cfg.get("styling", {})
-    x_lim_cfg = plot_cfg.get("x_lim", plot_cfg.get("axes", {}).get("x_lim", {}))
-    axes_cfg = plot_cfg.get("axes", {})
-    titles_cfg = plot_cfg.get("titles", {})
-    legend_cfg = plot_cfg.get("legend", {})
-    window_cfg = plot_cfg.get("window", {})
-    window_type = str(plot_cfg.get("window_type", window_cfg.get("type", DEFAULT_WINDOW_TYPE)))
-    method = str(plot_cfg.get("method", "welch")).lower()
-    window_type = _normalize_window_type(window_type, method)
-    time_start_seconds, time_end_seconds = _parse_time_range(plot_cfg)
+    def __init__(
+        self,
+        cfg: DictConfig,
+        observation_collection: obs.ObservationCollection,
+        window_length_days: float,
+        plot_cfg,
+        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+    ):
+        super().__init__(cfg)
+        self.observation_collection = observation_collection
+        self.window_length_days = window_length_days
+        self.plot_cfg = plot_cfg
+        self.observation_parsers = observation_parsers
 
-    fig_width = float(figure_cfg.get("width", DEFAULT_FIGURE_WIDTH))
-    fig_height = float(figure_cfg.get("height", DEFAULT_FIGURE_HEIGHT))
-    fig, axs = plt.subplots(2, 1, figsize=(fig_width, fig_height), sharex=True)
-    colors = plt.get_cmap(styling_cfg.get("cmap", "tab20"))
-    line_width = float(styling_cfg.get("line_width", 1.2))
-    legend_ncols = int(legend_cfg.get("ncols", 2))
-    legend_bbox = legend_cfg.get("bbox_to_anchor", {})
-    legend_bbox_x = float(legend_bbox.get("x", 0.5))
-    legend_bbox_y = float(legend_bbox.get("y", -0.15))
-    min_frequency = np.inf
-    max_frequency = 0.0
+    def _make_figure(self):
+        cfg = self.cfg
+        observation_collection = self.observation_collection
+        window_length_days = self.window_length_days
+        plot_cfg = self.plot_cfg
+        observation_parsers = self.observation_parsers
 
-    for set_index, obs_set in enumerate(observation_sets):
-        observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-        target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
-        info = get_observatory_info(cfg, observatory_code)
-        color = colors(set_index % colors.N)
-
-        obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
-        residuals = np.array(obs_set.residuals)
-
-        time_mask = np.ones(obs_times_sec_j2000.shape, dtype=bool)
-        if time_start_seconds is not None:
-            time_mask &= obs_times_sec_j2000 >= time_start_seconds
-        if time_end_seconds is not None:
-            time_mask &= obs_times_sec_j2000 <= time_end_seconds
-
-        if not np.any(time_mask):
-            logger.warning(
-                "Skipping %s because no observations fall inside the configured time range.",
-                info["name"],
+        """Plot Welch PSD spectra of the residual signal for the orbit determination."""
+        if observation_parsers is None:
+            observation_sets: list[obs.SingleObservationSet] = (
+                observation_collection.get_single_observation_sets()
             )
-            continue
+        else:
+            observation_sets: list[obs.SingleObservationSet] = (
+                observation_collection.get_single_observation_sets(observation_parsers)
+            )
 
-        obs_times_sec_j2000 = obs_times_sec_j2000[time_mask]
-        residuals = residuals[time_mask]
+        figure_cfg = plot_cfg.get("figure", {})
+        styling_cfg = plot_cfg.get("styling", {})
+        x_lim_cfg = plot_cfg.get("x_lim", plot_cfg.get("axes", {}).get("x_lim", {}))
+        axes_cfg = plot_cfg.get("axes", {})
+        titles_cfg = plot_cfg.get("titles", {})
+        legend_cfg = plot_cfg.get("legend", {})
+        window_cfg = plot_cfg.get("window", {})
+        window_type = str(plot_cfg.get("window_type", window_cfg.get("type", DEFAULT_WINDOW_TYPE)))
+        method = str(plot_cfg.get("method", "welch")).lower()
+        window_type = _normalize_window_type(window_type, method)
+        time_start_seconds, time_end_seconds = _parse_time_range(plot_cfg)
 
-        reference_seconds_since_j2000 = float(obs_times_sec_j2000.min())
-        obs_times_days = (obs_times_sec_j2000 - reference_seconds_since_j2000) / 86400.0
+        fig_width = float(figure_cfg.get("width", DEFAULT_FIGURE_WIDTH))
+        fig_height = float(figure_cfg.get("height", DEFAULT_FIGURE_HEIGHT))
+        fig, axs = plt.subplots(2, 1, figsize=(fig_width, fig_height), sharex=True)
+        colors = plt.get_cmap(styling_cfg.get("cmap", "tab20"))
+        line_width = float(styling_cfg.get("line_width", 1.2))
+        legend_ncols = int(legend_cfg.get("ncols", 2))
+        legend_bbox = legend_cfg.get("bbox_to_anchor", {})
+        legend_bbox_x = float(legend_bbox.get("x", 0.5))
+        legend_bbox_y = float(legend_bbox.get("y", -0.15))
+        min_frequency = np.inf
+        max_frequency = 0.0
 
-        ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
-        dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
+        for set_index, obs_set in enumerate(observation_sets):
+            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
+            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+            info = get_observatory_info(cfg, observatory_code)
+            color = colors(set_index % colors.N)
 
-        _, ra_uniform, ra_dt_days = _resample_uniform(obs_times_days, ra_residuals_arcsec)
-        _, dec_uniform, dec_dt_days = _resample_uniform(obs_times_days, dec_residuals_arcsec)
+            obs_times_sec_j2000 = np.array(
+                [epoch.to_float() for epoch in obs_set.observation_times]
+            )
+            residuals = np.array(obs_set.residuals)
 
-        ra_freq, ra_psd = _compute_psd(
-            ra_uniform, ra_dt_days, window_length_days, window_type, method
+            time_mask = np.ones(obs_times_sec_j2000.shape, dtype=bool)
+            if time_start_seconds is not None:
+                time_mask &= obs_times_sec_j2000 >= time_start_seconds
+            if time_end_seconds is not None:
+                time_mask &= obs_times_sec_j2000 <= time_end_seconds
+
+            if not np.any(time_mask):
+                logger.warning(
+                    "Skipping %s because no observations fall inside the configured time range.",
+                    info["name"],
+                )
+                continue
+
+            obs_times_sec_j2000 = obs_times_sec_j2000[time_mask]
+            residuals = residuals[time_mask]
+
+            reference_seconds_since_j2000 = float(obs_times_sec_j2000.min())
+            obs_times_days = (obs_times_sec_j2000 - reference_seconds_since_j2000) / 86400.0
+
+            ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
+            dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
+
+            _, ra_uniform, ra_dt_days = _resample_uniform(obs_times_days, ra_residuals_arcsec)
+            _, dec_uniform, dec_dt_days = _resample_uniform(obs_times_days, dec_residuals_arcsec)
+
+            ra_freq, ra_psd = _compute_psd(
+                ra_uniform, ra_dt_days, window_length_days, window_type, method
+            )
+            dec_freq, dec_psd = _compute_psd(
+                dec_uniform, dec_dt_days, window_length_days, window_type, method
+            )
+
+            positive_ra = ra_freq > 0.0
+            positive_dec = dec_freq > 0.0
+            if np.any(positive_ra):
+                min_frequency = min(min_frequency, float(np.min(ra_freq[positive_ra])))
+                max_frequency = max(max_frequency, float(np.max(ra_freq[positive_ra])))
+            if np.any(positive_dec):
+                min_frequency = min(min_frequency, float(np.min(dec_freq[positive_dec])))
+                max_frequency = max(max_frequency, float(np.max(dec_freq[positive_dec])))
+
+            _plot_psd_series(
+                axs[0],
+                ra_freq,
+                ra_psd,
+                label=f"{info['name']} - {info['region']}",
+                color=color,
+                line_width=line_width,
+            )
+            _plot_psd_series(
+                axs[1],
+                dec_freq,
+                dec_psd,
+                label=f"{info['name']} - {info['region']}",
+                color=color,
+                line_width=line_width,
+            )
+
+        if not np.isfinite(min_frequency) or max_frequency <= 0.0:
+            raise ValueError("Could not determine a valid PSD frequency range to plot.")
+
+        _configure_psd_axis(axs[0], min_frequency, max_frequency, x_lim_cfg, axes_cfg)
+        _configure_psd_axis(axs[1], min_frequency, max_frequency, x_lim_cfg, axes_cfg)
+
+        axs[0].set_title(titles_cfg.get("ra", "Right Ascension PSD"))
+        axs[1].set_title(titles_cfg.get("dec", "Declination PSD"))
+        axs[0].legend(
+            ncols=legend_ncols, loc="upper center", bbox_to_anchor=(legend_bbox_x, legend_bbox_y)
         )
-        dec_freq, dec_psd = _compute_psd(
-            dec_uniform, dec_dt_days, window_length_days, window_type, method
+        axs[1].legend(
+            ncols=legend_ncols, loc="upper center", bbox_to_anchor=(legend_bbox_x, legend_bbox_y)
         )
-
-        positive_ra = ra_freq > 0.0
-        positive_dec = dec_freq > 0.0
-        if np.any(positive_ra):
-            min_frequency = min(min_frequency, float(np.min(ra_freq[positive_ra])))
-            max_frequency = max(max_frequency, float(np.max(ra_freq[positive_ra])))
-        if np.any(positive_dec):
-            min_frequency = min(min_frequency, float(np.min(dec_freq[positive_dec])))
-            max_frequency = max(max_frequency, float(np.max(dec_freq[positive_dec])))
-
-        _plot_psd_series(
-            axs[0],
-            ra_freq,
-            ra_psd,
-            label=f"{info['name']} - {info['region']}",
-            color=color,
-            line_width=line_width,
+        fig.suptitle(
+            titles_cfg.get("suptitle", f"Residual PSD for {target_name}").format(
+                target_name=target_name
+            )
         )
-        _plot_psd_series(
-            axs[1],
-            dec_freq,
-            dec_psd,
-            label=f"{info['name']} - {info['region']}",
-            color=color,
-            line_width=line_width,
-        )
+        fig.set_tight_layout(True)
 
-    if not np.isfinite(min_frequency) or max_frequency <= 0.0:
-        raise ValueError("Could not determine a valid PSD frequency range to plot.")
-
-    _configure_psd_axis(axs[0], min_frequency, max_frequency, x_lim_cfg, axes_cfg)
-    _configure_psd_axis(axs[1], min_frequency, max_frequency, x_lim_cfg, axes_cfg)
-
-    axs[0].set_title(titles_cfg.get("ra", "Right Ascension PSD"))
-    axs[1].set_title(titles_cfg.get("dec", "Declination PSD"))
-    axs[0].legend(
-        ncols=legend_ncols, loc="upper center", bbox_to_anchor=(legend_bbox_x, legend_bbox_y)
-    )
-    axs[1].legend(
-        ncols=legend_ncols, loc="upper center", bbox_to_anchor=(legend_bbox_x, legend_bbox_y)
-    )
-    fig.suptitle(
-        titles_cfg.get("suptitle", f"Residual PSD for {target_name}").format(
-            target_name=target_name
-        )
-    )
-    fig.set_tight_layout(True)
-
-    return fig, axs
+        return fig, axs

@@ -18,8 +18,7 @@ from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_p
 from orbitdet.observations import create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact,
-    aim_log_figure,
+    aim_log_artifact_reference,
     aim_log_metrics,
     enforce_initialization,
     initialize,
@@ -289,9 +288,9 @@ def main(cfg: DictConfig):
     )
 
     # Plot and save pre-fit residuals before estimation modifies them
-    from orbitdet.visualization import plot_residuals
+    from orbitdet.visualization import Residuals
 
-    fig_prefit_residuals, ax_prefit_residuals = plot_residuals(cfg, observations)
+    fig_prefit_residuals, ax_prefit_residuals = Residuals(cfg, observations).plot()
     logger.info("Pre-fit residuals computed successfully.")
 
     parameter_set = get_estimatable_parameters(cfg, ctx, prop, bodies)
@@ -378,86 +377,76 @@ def main(cfg: DictConfig):
     logger.info("Estimation completed successfully.")
 
     # Plot post-fit residuals
-    from orbitdet.visualization import plot_residuals, plot_residuals_psd
+    from orbitdet.visualization import Residuals, ResidualsPSD
 
-    fig_residuals, ax_residuals = plot_residuals(cfg, observations)
+    fig_residuals, ax_residuals = Residuals(cfg, observations).plot()
 
     # Plot residual PSD
     residuals_psd_cfg = cfg.get("residuals_psd", {})
     window_length_days = residuals_psd_cfg.get("window_length_days", 30.0)
-    fig_psd, ax_psd = plot_residuals_psd(
+    fig_psd, ax_psd = ResidualsPSD(
         cfg, observations, window_length_days, cfg.figures.get("residuals_psd", {})
-    )
+    ).plot()
 
     # Plot residual RMS per iteration
-    from orbitdet.visualization.residual_rms_per_iteration import plot_residual_rms_per_iteration
+    from orbitdet.visualization import ResidualRMSPerIteration
 
-    fig_rms, ax_rms = plot_residual_rms_per_iteration(cfg, estimation_output)
+    fig_rms, ax_rms = ResidualRMSPerIteration(cfg, estimation_output).plot()
 
     # Plot parameter correlation heatmap
-    from orbitdet.visualization.parameter_correlation_heatmap import (
-        plot_parameter_correlation_heatmap,
-    )
+    from orbitdet.visualization import ParameterCorrelationHeatmap
 
-    fig_corr, ax_corr = plot_parameter_correlation_heatmap(cfg, estimation_output)
+    fig_corr, ax_corr = ParameterCorrelationHeatmap(cfg, estimation_output).plot()
 
     # Plot parameter history per iteration
-    from orbitdet.visualization.parameter_history_per_iteration import (
-        plot_parameter_history_per_iteration,
-    )
+    from orbitdet.visualization import ParameterHistoryPerIteration
 
-    fig_param, ax_param = plot_parameter_history_per_iteration(cfg, estimation_output)
+    fig_param, ax_param = ParameterHistoryPerIteration(cfg, estimation_output).plot()
 
     # Plot covariance ellipses
-    from orbitdet.visualization.covariance_ellipses import plot_covariance_ellipses
+    from orbitdet.visualization import CovarianceEllipses
 
-    fig_ellipses, axes_ellipses = plot_covariance_ellipses(cfg, estimation_output, bodies, ctx)
+    fig_ellipses, axes_ellipses = CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
 
-    from orbitdet.visualization.dependent_variable_differenced import (
-        plot_differenced_dependent_variables,
-    )
+    from orbitdet.visualization import DifferencedDependentVariables
 
-    fig_diff, axes_diff = plot_differenced_dependent_variables(
+    fig_diff, axes_diff = DifferencedDependentVariables(
         cfg,
         reference_result=estimation_output.simulation_results_per_iteration[0].dynamics_results,
         comparison_results=[estimation_output.simulation_results_per_iteration[0].dynamics_results],
         reference_dependent_variable=dep_vars[2],
         comparison_dependent_variables=[dep_vars[1]],
-    )
+    ).plot()
 
     # Plot RSW decomposition of relative position (Triton Spice vs Triton)
-    from orbitdet.visualization.RSW_distance import plot_RSW_distance
+    from orbitdet.visualization import RSWDistance
 
-    fig_rsw, axes_rsw = plot_RSW_distance(
+    fig_rsw, axes_rsw = RSWDistance(
         cfg,
         estimation_output.simulation_results_per_iteration[-1].dynamics_results,
         dep_vars[0],
         central_body="Neptune",
-    )
+    ).plot()
 
     # Plot dependent variable (Triton Spice relative position, Keplerian states)
-    from orbitdet.visualization.dependent_variable import plot_dependent_variable
+    from orbitdet.visualization import DependentVariable
 
-    fig_dep_relpos, axes_dep_relpos = plot_dependent_variable(
+    fig_dep_relpos, axes_dep_relpos = DependentVariable(
         cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[0]
-    )
-    fig_dep_triton_kep, axes_dep_triton_kep = plot_dependent_variable(
+    ).plot()
+    fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
         cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[1]
-    )
-    fig_dep_spice_kep, axes_dep_spice_kep = plot_dependent_variable(
+    ).plot()
+    fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
         cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[2]
-    )
+    ).plot()
 
     # Plot residual histogram, Q-Q, and scatter
-    from orbitdet.visualization import (
-        plot_residual_histogram,
-        plot_residual_qq,
-        plot_residual_scatter,
-    )
+    from orbitdet.visualization import ResidualHistogram, ResidualQQ, ResidualScatter
 
-    fig_hist, axes_hist = plot_residual_histogram(cfg, observations)
-    fig_qq, axes_qq = plot_residual_qq(cfg, observations)
-    fig_scatter, ax_scatter = plot_residual_scatter(cfg, observations)
+    fig_hist, axes_hist = ResidualHistogram(cfg, observations).plot()
+    fig_qq, axes_qq = ResidualQQ(cfg, observations).plot()
+    fig_scatter, ax_scatter = ResidualScatter(cfg, observations).plot()
 
     # Save all figures to the output directory
     output_dir = Path(HydraConfig.get().runtime.output_dir)
@@ -471,110 +460,15 @@ def main(cfg: DictConfig):
     estimation_output_path = save_tudat_object(estimation_output, output_dir / "estimation_output")
     logger.info("Estimation output saved to %s", estimation_output_path)
 
-    fig_prefit_path = output_dir / "prefit_residuals.pdf"
-    fig_prefit_residuals.savefig(fig_prefit_path)
-    logger.info(f"Pre-fit residuals plot saved to {fig_prefit_path}")
-
-    fig_residuals_path = output_dir / "postfit_residuals.pdf"
-    fig_residuals.savefig(fig_residuals_path)
-    logger.info(f"Post-fit residuals plot saved to {fig_residuals_path}")
-
-    fig_psd_path = output_dir / "postfit_residuals_psd.pdf"
-    fig_psd.savefig(fig_psd_path)
-    logger.info(f"Post-fit residual PSD plot saved to {fig_psd_path}")
-
-    fig_rms_path = output_dir / "residual_rms_per_iteration.pdf"
-    fig_rms.savefig(fig_rms_path)
-    logger.info(f"Residual RMS per iteration plot saved to {fig_rms_path}")
-
-    fig_corr_path = output_dir / "parameter_correlation_heatmap.pdf"
-    fig_corr.savefig(fig_corr_path)
-    logger.info(f"Parameter correlation heatmap saved to {fig_corr_path}")
-
-    fig_param_path = output_dir / "parameter_history_per_iteration.pdf"
-    fig_param.savefig(fig_param_path)
-    logger.info(f"Parameter history per iteration plot saved to {fig_param_path}")
-
-    fig_ellipses_path = output_dir / "covariance_ellipses.pdf"
-    fig_ellipses.savefig(fig_ellipses_path)
-    logger.info(f"Covariance ellipses plot saved to {fig_ellipses_path}")
-
-    fig_rsw_path = output_dir / "rsw_distance.pdf"
-    fig_rsw.savefig(fig_rsw_path)
-    logger.info(f"RSW distance plot saved to {fig_rsw_path}")
-
-    fig_diff_path = output_dir / "differenced_dependent_variables.pdf"
-    fig_diff.savefig(fig_diff_path)
-    logger.info(f"Differenced dependent variables plot saved to {fig_diff_path}")
-
-    fig_dep_relpos_path = output_dir / "dependent_variable_relative_position.pdf"
-    fig_dep_relpos.savefig(fig_dep_relpos_path)
-    logger.info(f"Dependent variable relative position plot saved to {fig_dep_relpos_path}")
-
-    fig_dep_triton_kep_path = output_dir / "dependent_variable_triton_keplerian.pdf"
-    fig_dep_triton_kep.savefig(fig_dep_triton_kep_path)
-    logger.info(f"Dependent variable Triton Keplerian plot saved to {fig_dep_triton_kep_path}")
-
-    fig_dep_spice_kep_path = output_dir / "dependent_variable_spice_keplerian.pdf"
-    fig_dep_spice_kep.savefig(fig_dep_spice_kep_path)
-    logger.info(f"Dependent variable Spice Keplerian plot saved to {fig_dep_spice_kep_path}")
-
-    fig_hist_path = output_dir / "residual_histogram.pdf"
-    fig_hist.savefig(fig_hist_path)
-    logger.info(f"Residual histogram plot saved to {fig_hist_path}")
-
-    fig_qq_path = output_dir / "residual_qq.pdf"
-    fig_qq.savefig(fig_qq_path)
-    logger.info(f"Residual Q-Q plot saved to {fig_qq_path}")
-
-    fig_scatter_path = output_dir / "residual_scatter.pdf"
-    fig_scatter.savefig(fig_scatter_path)
-    logger.info(f"Residual scatter plot saved to {fig_scatter_path}")
-
-    # Log all figures to Aim (interactive Figures + static Images)
-    logger.info("Logging figures to Aim...")
-    aim_log_figure(fig_prefit_residuals, name="prefit_residuals")
-    aim_log_figure(fig_residuals, name="postfit_residuals")
-    aim_log_figure(fig_psd, name="postfit_residuals_psd")
-    aim_log_figure(fig_rms, name="residual_rms_per_iteration")
-    aim_log_figure(fig_corr, name="parameter_correlation_heatmap")
-    aim_log_figure(fig_param, name="parameter_history_per_iteration")
-    aim_log_figure(fig_ellipses, name="covariance_ellipses")
-    aim_log_figure(fig_rsw, name="rsw_distance")
-    aim_log_figure(fig_diff, name="differenced_dependent_variables")
-    aim_log_figure(fig_dep_relpos, name="dependent_variable_relative_position")
-    aim_log_figure(fig_dep_triton_kep, name="dependent_variable_triton_keplerian")
-    aim_log_figure(fig_dep_spice_kep, name="dependent_variable_spice_keplerian")
-    aim_log_figure(fig_hist, name="residual_histogram")
-    aim_log_figure(fig_qq, name="residual_qq")
-    aim_log_figure(fig_scatter, name="residual_scatter")
-    logger.info("Logged figures to Aim.")
-
-    # Attach saved PDFs as artifacts
-    logger.info("Attaching artifacts to Aim...")
-    aim_log_artifact(fig_prefit_path)
-    aim_log_artifact(fig_residuals_path)
-    aim_log_artifact(fig_psd_path)
-    aim_log_artifact(fig_rms_path)
-    aim_log_artifact(fig_corr_path)
-    aim_log_artifact(fig_param_path)
-    aim_log_artifact(fig_ellipses_path)
-    aim_log_artifact(fig_rsw_path)
-    aim_log_artifact(fig_diff_path)
-    aim_log_artifact(fig_dep_relpos_path)
-    aim_log_artifact(fig_dep_triton_kep_path)
-    aim_log_artifact(fig_dep_spice_kep_path)
-    aim_log_artifact(fig_hist_path)
-    aim_log_artifact(fig_qq_path)
-    aim_log_artifact(fig_scatter_path)
-    # Also log the config as an artifact
+    # The Plot base class already saved each figure as a PDF, logged it to Aim
+    # as a static image, and attached the PDF as an artifact reference. Only
+    # the config and binary TudatPy objects still need explicit references.
     config_path = output_dir / "config.yaml"
     if config_path.exists():
-        aim_log_artifact(config_path)
-    # Also log the saved TudatPy objects and estimation log as artifacts
-    aim_log_artifact(observations_path.with_suffix(".tudat"))
-    aim_log_artifact(estimation_output_path.with_suffix(".tudat"))
-    aim_log_artifact(estimation_log_path.with_suffix(".tudat"))
+        aim_log_artifact_reference(config_path)
+    aim_log_artifact_reference(observations_path.with_suffix(".tudat"))
+    aim_log_artifact_reference(estimation_output_path.with_suffix(".tudat"))
+    aim_log_artifact_reference(estimation_log_path.with_suffix(".tudat"))
     logger.info("Attached artifacts to Aim.")
 
     # fig_traj_path = output_dir / "triton_trajectory.pdf"

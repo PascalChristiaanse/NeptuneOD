@@ -2,6 +2,7 @@
 
 from orbitdet.reproducibility.aim import (
     aim_log_artifact,
+    aim_log_artifact_reference,
     aim_log_figure,
     aim_log_metrics,
     get_aim_run,
@@ -29,4 +30,5 @@ __all__ = [
     "aim_log_metrics",
     "aim_log_figure",
     "aim_log_artifact",
+    "aim_log_artifact_reference",
 ]

@@ -6,12 +6,10 @@ Usage:
 
 import logging
 import os
-from pathlib import Path
 
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import observations as obs
@@ -21,7 +19,7 @@ from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
 from orbitdet.simulation import get_environment
-from orbitdet.visualization import plot_residuals
+from orbitdet.visualization import Residuals
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -80,15 +78,8 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
-    fig, ax = plot_residuals(cfg, observations)
+    fig, ax = Residuals(cfg, observations).plot(name="gaia_prefit_residuals")
     logger.info("Pre-fit residuals plotted successfully.")
-
-    # Save the figure to the output directory
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig_path = output_dir / "gaia_prefit_residuals.pdf"
-    fig.savefig(fig_path)
-    logger.info(f"Pre-fit residuals plot saved to {fig_path}")
 
     backend = plt.get_backend().lower()
     if backend == "agg" or "inline" in backend:

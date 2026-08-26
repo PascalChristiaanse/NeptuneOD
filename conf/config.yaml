@@ -1,0 +1,7 @@
+# @package _global_
+
+# Root config: declares the experiment config group and its default.
+# Override on the CLI with: experiment=<name>
+
+defaults:
+  - experiment: classic_triton_state

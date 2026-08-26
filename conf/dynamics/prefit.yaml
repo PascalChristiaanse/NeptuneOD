@@ -1,0 +1,43 @@
+# @package _global_
+
+# Pre-fit residual dynamical model.
+# Uses direct SPICE ephemerides for Neptune and Triton, with Voyager 2 as observer.
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "J2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+bodies_to_create:
+  Neptune:
+    ephemeris:
+      type: "direct_spice"
+  Triton:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+  Voyager 2:
+    ephemeris:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+  Earth:
+    ephemeris:
+      type: "direct_spice"
+    shape_model:
+      type: "oblate_spherical_spice"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600

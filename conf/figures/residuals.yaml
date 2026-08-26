@@ -10,6 +10,7 @@ residuals:
   axes:
     x_label: "Epoch"
     y_label: "Residual [arcsec]"
+    unit: "mas"   # Display unit for residuals: "arcsec" or "mas"
     hover_x_label: "Epoch"
     hover_y_label: "Residual [arcsec]"
   styling:

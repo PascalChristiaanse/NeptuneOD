@@ -5,9 +5,7 @@
 # - Triton initial state
 
 defaults:
-  - /collection: working
-  - /dynamics: classical
-  - /kernels: classical
+  - /data: classical
   - /parameters: initial_state
   - /logging: default
   - _self_ # Apply experiment config fields after collections
@@ -29,8 +27,6 @@ hydra:
     dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
   job:
     chdir: false
-  launcher:
-    _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
 
 # Time settings
 start_date: 1963-1-1T12:00:00

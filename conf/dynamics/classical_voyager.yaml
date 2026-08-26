@@ -1,0 +1,69 @@
+# @package _global_
+
+# Classical dynamical model for Triton state estimation, augmented with
+# Voyager 2 as an observer body (for combined classical + Voyager data).
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "ECLIPJ2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+bodies_to_create:
+  Neptune:
+    gravity: "Jacobson2009"
+    rotation_model:
+      type: "IAU2015"
+  Triton:
+    placeholder: True
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Sun:
+    gravity: "central"
+  Jupiter:
+    gravity: "central"
+  Saturn:
+    gravity: "central"
+  Uranus:
+    gravity: "central"
+  Mercury:
+    gravity: "central"
+  Venus:
+    gravity: "central"
+  Earth:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+    shape_model:
+      type: "oblate_spherical_spice"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
+  Mars:
+    gravity: "central"
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+  Voyager 2:
+    ephemeris:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file"
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600

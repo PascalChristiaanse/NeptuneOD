@@ -1,0 +1,18 @@
+# @package _global_
+
+# Sweep: 8 experiments = 4 parameter combos x 2 data variants (with/without Voyager).
+# Run with: python scripts/solve_least_squares.py --multirun --config-name sweep/params_x_data
+
+defaults:
+  - /experiment: classic_triton_state
+  - _self_
+  - override /hydra/launcher: joblib
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    n_jobs: 2
+  sweeper:
+    params:
+      parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity
+      data: classical,classical_voyager

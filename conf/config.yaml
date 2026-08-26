@@ -5,3 +5,9 @@
 
 defaults:
   - experiment: classic_triton_state
+  - _self_
+  - override hydra/launcher: joblib
+
+hydra:
+  launcher:
+    n_jobs: 4

@@ -6,6 +6,7 @@ from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import environment_setup as env_setup
 from tudatpy.interface import spice
 
+from orbitdet.data.gaia_data import build_gaia_tabulated_state_history
 from orbitdet.data.voyager_data import build_voyager_tabulated_state_history
 from orbitdet.reproducibility.runtime import RuntimeContext
 
@@ -188,6 +189,37 @@ def _configure_ephemeris_model(
                     default_ephemeris_settings=spice_settings,
                 )
                 body_settings.get(body_name).ephemeris_settings = ephemeris_setting
+        case "tabulated_from_gaia":
+            source_ids = list(getattr(settings.ephemeris, "source_ids", []))
+            if not source_ids:
+                raise ValueError(
+                    f"Gaia source_ids must be specified for tabulated_from_gaia "
+                    f"ephemeris of {body_name}."
+                )
+            cache_file = getattr(settings.ephemeris, "cache_file", None)
+            geocentric = bool(getattr(settings.ephemeris, "geocentric", False))
+            filter_outcomes = bool(getattr(settings.ephemeris, "filter_outcomes", True))
+            logger.info(
+                f"Building tabulated ephemeris for {body_name} from Gaia source_ids "
+                f"{source_ids} (geocentric={geocentric}, filter_outcomes={filter_outcomes})."
+            )
+            state_history = build_gaia_tabulated_state_history(
+                source_ids,
+                cache_file=cache_file,
+                geocentric=geocentric,
+                filter_outcomes=filter_outcomes,
+            )
+
+            relative_to = (
+                settings.ephemeris.relative_to
+                if hasattr(settings.ephemeris, "relative_to")
+                else cfg.global_frame_origin
+            )
+            body_settings.get(body_name).ephemeris_settings = env_setup.ephemeris.tabulated(
+                state_history,
+                relative_to,
+                cfg.global_frame_orientation,
+            )
         case _:
             raise ValueError(f"Unsupported ephemeris type for {body_name}: {ephemeris_type}")
 

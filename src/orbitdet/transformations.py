@@ -21,6 +21,62 @@ def _seconds_since_j2000_to_jd(et_s: float | np.ndarray) -> float | np.ndarray:
     return et_s / 86400.0 + JD_J2000
 
 
+def _radec_icrs_to_j2000(
+    data: pd.DataFrame,
+    ra_column: str,
+    dec_column: str,
+    angle_unit: str = "deg",
+) -> pd.DataFrame:
+    """Apply the ICRS -> FK5 (equinox J2000) frame-bias rotation via Astropy.
+
+    ICRS and the FK5 mean equator/equinox of J2000 differ by a small constant
+    rotation (frame bias, ~17-20 mas).  SPICE has no exact ICRS frame, so this
+    uses Astropy to transform the coordinates exactly.  The input column unit
+    is preserved in the output.
+
+    Args:
+        data: DataFrame with RA/DEC columns.
+        ra_column: Column name for right ascension.
+        dec_column: Column name for declination.
+        angle_unit: Unit of the RA/DEC columns, ``"deg"`` or ``"rad"``.
+
+    Returns:
+        Copy of *data* with RA/DEC rotated from ICRS to FK5-J2000, in *angle_unit*.
+    """
+    from astropy import units as u
+    from astropy.coordinates import FK5, ICRS
+    from astropy.time import Time
+
+    ras = data[ra_column].to_numpy(copy=True)
+    decs = data[dec_column].to_numpy(copy=True)
+
+    angle_unit = str(angle_unit).lower()
+    if angle_unit == "rad":
+        unit = u.rad
+    else:
+        unit = u.deg
+
+    icrs_coords = ICRS(ras * unit, decs * unit)
+    j2000_coords = icrs_coords.transform_to(FK5(equinox=Time("J2000", scale="tdb")))
+
+    out = data.copy()
+    if angle_unit == "rad":
+        new_ra = j2000_coords.ra.to(u.rad).value
+        new_dec = j2000_coords.dec.to(u.rad).value
+        # Astropy reports RA in [0, 2*pi); rewrap to the source convention
+        # (principal interval [-pi, pi]) so the small frame bias leaves the
+        # angles near their original values.
+        new_ra = np.remainder(new_ra + np.pi, 2.0 * np.pi) - np.pi
+        out[ra_column] = new_ra
+        out[dec_column] = new_dec
+    else:
+        out[ra_column] = j2000_coords.ra.to(u.deg).value
+        out[dec_column] = j2000_coords.dec.to(u.deg).value
+
+    logger.info("Applied ICRS -> FK5 (J2000) frame-bias rotation to RA/DEC.")
+    return out
+
+
 def _precess_radec_date_to_j2000(
     data: pd.DataFrame,
     ra_column: str,
@@ -165,6 +221,7 @@ def convert_radec_frame(
     output_frame: str,
     time_column: str = None,
     ra_wrap: bool = True,
+    angle_unit: str = "deg",
 ) -> pd.DataFrame:
     """Convert RA/DEC between reference frames using SPICE and/or Astropy.
 
@@ -173,28 +230,58 @@ def convert_radec_frame(
     date).  When *input_frame* or *output_frame* is ``'Date'``, Astropy FK5
     precession is used because SPICE does not recognise this frame.
 
+    ICRS is *not* identical to J2000: there is a real frame-bias rotation
+    (~17-20 mas) between the ICRS and the FK5 mean equator/equinox of J2000.
+    Because SPICE has no exact ICRS sprite, an ``ICRS``/``ICRF`` *input* is
+    rotated to J2000 with an Astropy frame-bias transform before any onward
+    SPICE conversion.
+
     The method:
         RA/DEC -> unit vector -> rotate -> RA/DEC
 
     Args:
-        data: input data containing RA/DEC (degrees).
-        ra_column: column name for right ascension (deg).
-        dec_column: column name for declination (deg).
+        data: input data containing RA/DEC.
+        ra_column: column name for right ascension.
+        dec_column: column name for declination.
         input_frame: input reference frame name (or ``'Date'``).
         output_frame: output reference frame name (or ``'Date'``).
         time_column: epoch column (seconds since J2000 TDB) required for
             time-dependent frame conversions.  **Must** be provided when
             either frame is ``'Date'``.
         ra_wrap: wrap RA into [0, 360). Default True.
+        angle_unit: unit of the RA/DEC columns. Either ``"deg"`` (default) or
+            ``"rad"``.  The returned frame has the same unit as the input.
 
     Returns:
-        Copy of input data with transformed RA/DEC.
+        Copy of input data with transformed RA/DEC (same angular unit as input).
     """
     if input_frame == output_frame:
         return data.copy()
 
-    input_is_date = input_frame.lower() == "date"
-    output_is_date = output_frame.lower() == "date"
+    input_is_date = str(input_frame).lower() == "date"
+    output_is_date = str(output_frame).lower() == "date"
+
+    # ICRS/ICRF input: apply the real ICRS->J2000 frame-bias rotation (Astropy),
+    # then (if needed) continue from J2000 to the requested output via SPICE.
+    input_is_icrs = str(input_frame).strip().upper() in {"ICRS", "ICRF"}
+    if input_is_icrs and not output_is_date and not str(output_frame).lower() in {"date"}:
+        output_norm = str(output_frame).strip().upper()
+        if output_norm in {"J2000", "J2000.0"}:
+            return _radec_icrs_to_j2000(data, ra_column, dec_column, angle_unit)
+
+        # ICRS -> J2000 (frame bias), then J2000 -> output_frame (SPICE).
+        # Do the frame bias in radians, run SPICE on degrees, restore input unit.
+        inter = _radec_icrs_to_j2000(data, ra_column, dec_column, "rad")
+        temp = inter.copy()
+        temp[ra_column] = np.rad2deg(temp[ra_column])
+        temp[dec_column] = np.rad2deg(temp[dec_column])
+        out = _radec_spice_convert(
+            temp, ra_column, dec_column, "J2000", output_frame, time_column, ra_wrap
+        )
+        if angle_unit == "rad":
+            out[ra_column] = np.deg2rad(out[ra_column])
+            out[dec_column] = np.deg2rad(out[dec_column])
+        return out
 
     # If neither frame is Date, use pure SPICE as before
     if not input_is_date and not output_is_date:
@@ -237,6 +324,35 @@ def convert_radec_frame(
     return data.copy()
 
 
+def _canonicalize_frame(frame: str) -> str:
+    """Map non-SPICE frame names to the closest SPICE frame.
+
+    ``ICRS``/``ICRF`` should have been handled by the Astropy frame-bias path
+    in :func:`convert_radec_frame`; if one still reaches SPICE directly it is
+    approximated as J2000 (they coincide to ~17-20 mas, not 0.1 arcsec).
+    ``J2015.0`` is a precession of the J2000 orientation.
+    """
+    frame = str(frame).strip()
+    if frame.upper() in {"ICRS", "ICRF"}:
+        if frame != "J2000":
+            logger.warning(
+                "Frame %s reached the SPICE path without the Astropy frame-bias "
+                "correction; approximating as J2000 (frames differ by ~20 mas).",
+                frame,
+            )
+        return "J2000"
+    if frame == "J2015.0":
+        logger.warning(
+            "Input frame is J2015.0, which is not a standard SPICE frame. "
+            "Using J2000 as an approximation for the transformation."
+            "This should be fixed later, J2015 is a precession, orientation is just J2000.0"
+        )
+        return "J2000"
+    if frame == "J2000.0":
+        return "J2000"
+    return frame
+
+
 def _radec_spice_convert(
     data: pd.DataFrame,
     ra_column: str,
@@ -251,16 +367,8 @@ def _radec_spice_convert(
     This is the original SPICE-based conversion extracted from
     *convert_radec_frame* for reuse.
     """
-    if input_frame == "J2000.0":
-        input_frame = "J2000"
-
-    if input_frame == "J2015.0":
-        logger.warning(
-            "Input frame is J2015.0, which is not a standard SPICE frame. "
-            "Using J2000 as an approximation for the transformation."
-            "This should be fixed later, J2015 is a precession, orientation is just J2000.0"
-        )
-        input_frame = "J2000"
+    input_frame = _canonicalize_frame(input_frame)
+    output_frame = _canonicalize_frame(output_frame)
 
     def radec_to_vector(ra_deg, dec_deg):
         ra = np.deg2rad(ra_deg)

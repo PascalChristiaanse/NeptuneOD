@@ -1,0 +1,87 @@
+# @package _global_
+
+defaults:
+  - /collections/gaia_collection # Compose Gaia observation collection
+  - _self_ # Apply experiment config fields after collections
+  - /figures/residuals
+  - /figures/residuals_psd
+  - /figures/residual_histogram
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 2014-1-1T12:00:00
+end_date: 2017-1-1T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+  gaia_ops_v110_20250708_001.tm: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/tm/gaia_ops_v110_20250708_001.tm" # Gaia meta kernel
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  DE440.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440.bsp" # Planets
+  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  # nep105.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
+  # F8B24.bsp: "htt ps://pub.nddc.pmo.ac.cn/eph/planets/bsp/forces-8-bary-2024.bsp"  # Neptune barycenter
+  # F8M24.bsp: "https://pub.nddc.pmo.ac.cn/eph/satellites/bsp/forces-8-main-2024.bsp" # Triton
+  # gaia_flp.bsp: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/spk/gaia_flp_20131219_21250328_v01.bsp" # Gaia position
+  # gaia_v01.tf: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/fk/gaia_v01.tf" # Gaia frame
+
+  
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "J2000"
+
+# Environment settings
+bodies_to_create:
+  Neptune:
+    ephemeris:
+      type: "direct_spice"
+  Triton:
+    ephemeris:
+      type: "direct_spice"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+  Earth:
+    ephemeris:
+      type: "direct_spice"
+  Gaia:
+    ephemeris:
+      type: "tabulated_from_gaia"
+      source_ids: [-4293959295]
+      cache_file: "data/gaia/triton.pkl"
+      geocentric: false
+      filter_outcomes: false
+
+  Gaia Spice:
+    ephemeris:
+      type: "direct_spice"
+      source_ids: [-4293959295]
+      cache_file: "data/gaia/triton.pkl"
+      geocentric: false
+      filter_outcomes: false
+  Sun:
+    ephemeris:
+      type: "direct_spice"
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"

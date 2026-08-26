@@ -280,7 +280,7 @@ class ResidualScanHistogram(Plot):
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
         unit = _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
 
-        fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=True)
+        fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=False)
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         n_bins = int(_cfg_get(plot_cfg, "styling", "n_bins", default=30))

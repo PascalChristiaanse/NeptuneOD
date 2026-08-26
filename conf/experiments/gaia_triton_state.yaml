@@ -1,0 +1,146 @@
+# @package _global_
+
+# Experiment: Triton State Estimation using Gaia FPR astrometry.
+# estimating:
+# - Triton initial state
+
+defaults:
+  - /collections/gaia_collection       # Gaia FPR astrometry of Triton
+  # Classical NSDB observations are needed to constrain Triton's full state;
+  # Gaia alone (2014-2019, bursts) does not converge.
+  - /collections/working               # NSDB ground-based astrometry (1963-2025)
+  - _self_
+  - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/dependent_variable
+  - /figures/dependent_variable_differenced@dependent_variable_differenced
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/residuals_psd
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+# Classical NSDB observations span ~1963-2025; Gaia covers 2014-2019. The
+# fit script detects the true observation bounds from the datasets and adds a
+# ~1 year buffer. start_date/end_date here are only fallbacks.
+start_date: 1963-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+initial_epoch: 2006-10-1T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+  # naif0012.tls is provided by tspice.load_standard_kernels() (in
+  # KernelManager.furnish). We still list pck00010.tpc so the FULL NAIF PCK
+  # (with BODY10_RADII etc.) is loaded for get_default_body_settings.
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  nep105.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
+  # F8M24.bsp: "https://pub.nddc.pmo.ac.cn/eph/satellites/bsp/forces-8-main-2024.bsp"
+  gaia_flp.bsp: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/spk/gaia_flp_20131219_21250328_v01.bsp"
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "ECLIPJ2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600
+
+# Environment settings
+bodies_to_create:
+  Neptune:
+    gravity: "Jacobson2009"
+    rotation_model:
+      type: "IAU2015"
+  Triton:
+    placeholder: True
+    # ephemeris:
+    #   type: "direct_spice"
+    #   use_body_name: "Triton"
+    # gravity: "central"
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Sun:
+    gravity: "central"
+  Jupiter:
+    gravity: "central"
+  Saturn:
+    gravity: "central"
+  Uranus:
+    gravity: "central"
+  Mercury:
+    gravity: "central"
+  Venus:
+    gravity: "central"
+  Earth:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+    shape_model:
+      type: "oblate_spherical_spice"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
+  Mars:
+    gravity: "central"
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+  Gaia:
+    ephemeris:
+      type: "tabulated_from_gaia"
+      source_ids: [-4293959295]
+      cache_file: "data/gaia/triton.pkl"
+      geocentric: false
+      filter_outcomes: false
+
+# Estimation settings
+estimation:
+  max_iterations: 5
+  parameters_to_estimate:
+    - initial_state:
+      - placeholder: True
+        # apriori: [1.0e7, 1.0e2]
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"

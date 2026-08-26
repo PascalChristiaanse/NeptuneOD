@@ -2,7 +2,7 @@
 
 # Import all factory modules to trigger automatic registration
 
-from . import absolute_ccd_nsdb, relative_ccd_nsdb, simulated, voyager
+from . import absolute_ccd_nsdb, gaia, relative_ccd_nsdb, simulated, voyager
 from .collection import create_observation_collection
 from .configs import (
     ObservationDatasetConfig,
@@ -28,6 +28,7 @@ __all__ = [
     "absolute_ccd_nsdb",
     "relative_ccd_nsdb",
     "voyager",
+    "gaia",
     # Helper functions
     "get_observatory_info",
 ]

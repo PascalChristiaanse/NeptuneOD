@@ -196,34 +196,10 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
     return min_timestamp.isoformat(), max_timestamp.isoformat()
 
 
-def compute_apriori_vs_design_matrix_ratio(
-    estimation_output: est_an.EstimationOutput, inverse_a_priori: np.ndarray
-) -> float:
-    """
-    Computes the ratio of the a priori covariance matrix to the design matrix.
-
-    Parameters:
-        estimation_output (est_an.EstimationOutput): The output of the estimation process.
-        inverse_a_priori (np.ndarray): The inverse of the a priori covariance matrix.
-
-    Returns:
-        float: The ratio of the a priori covariance matrix to the design matrix.
-    """
-    H = estimation_output.design_matrix
-    W = np.identity(H.shape[0])  # Assuming equal weights for all observations
-    HtWH = H.T @ W @ H
-
-    logger.info("Design matrix vs a priori covariance ratio:")
-    logger.info(f"Design matrix (HtWH):\n{HtWH}")
-    logger.info(f"Inverse a priori covariance:\n{inverse_a_priori}")
-    logger.info(f"Ratio (HtWH / inverse_a_priori):\n{np.diag(HtWH) / np.diag(inverse_a_priori)}")
-    return HtWH, np.diag(inverse_a_priori) / np.diag(HtWH)
-
-
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/minimal_experiment",
+    config_name="config",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -343,8 +319,24 @@ def main(cfg: DictConfig):
     logger.info("Starting estimation...")
 
     estimation_log_path = Path(HydraConfig.get().runtime.output_dir) / "estimation_progression.log"
-    with redirect_std(str(estimation_log_path)):
-        estimation_output = estimator.perform_estimation(estimation_input)
+    try:
+        with redirect_std(str(estimation_log_path)):
+            estimation_output = estimator.perform_estimation(estimation_input)
+    except Exception as e:
+        logger.error("Estimation failed: %s", e)
+        logger.info("Estimation progression logged to %s", estimation_log_path)
+        # write estimation log file to logger
+        if estimation_log_path.exists():
+            with open(estimation_log_path) as f:
+                for line in f:
+                    logger.info("Estimation: %s", line.rstrip("\n"))
+        else:
+            logger.warning("Unable to find estimation log file at %s", estimation_log_path)
+        # Exit program cleanly with error code
+        import sys
+
+        sys.exit(1)
+
     logger.info("Estimation progression logged to %s", estimation_log_path)
 
     # Also log the estimation progress to the regular logger

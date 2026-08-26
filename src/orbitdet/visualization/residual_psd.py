@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter, LogLocator
 from omegaconf import DictConfig
-from scipy.signal import welch
+from scipy.signal import find_peaks, lombscargle, welch
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
@@ -39,6 +39,13 @@ DEFAULT_WINDOW_TYPE = "hamming"
 DEFAULT_FIGURE_WIDTH = 16.54
 DEFAULT_FIGURE_HEIGHT = 8.27
 DEFAULT_PERIOD_TICKS_DAYS = (0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
+
+# Triton's orbital period around Neptune (days). Used to highlight the expected
+# signal in the residual spectrum.
+TRITON_PERIOD_DAYS = 5.877
+
+# Number of frequency samples per decade for the Lomb-Scargle grid.
+DEFAULT_LOMB_FREQS_PER_DECADE = 200
 
 
 def _plot_config(cfg: DictConfig):
@@ -138,39 +145,112 @@ def _resample_uniform(
 
 
 def _compute_psd(
+    times_days: np.ndarray,
     values: np.ndarray,
-    sample_spacing_days: float,
     window_length_days: float,
     window_type: str,
     method: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if method != "welch":
-        raise ValueError(f"Unsupported PSD method '{method}'. Supported methods: welch")
+    if method == "welch":
+        _, uniform_values, sample_spacing_days = _resample_uniform(times_days, values)
+        centered = uniform_values - np.mean(uniform_values)
+        sample_count = centered.size
+        window_length_samples = int(round(window_length_days / sample_spacing_days))
+        window_length_samples = max(8, window_length_samples)
+        window_length_samples = min(window_length_samples, sample_count)
+
+        noverlap = window_length_samples // 2
+        try:
+            frequencies, power_density = welch(
+                centered,
+                fs=1.0 / sample_spacing_days,
+                window=window_type,
+                nperseg=window_length_samples,
+                noverlap=noverlap,
+                detrend="constant",
+                scaling="density",
+                return_onesided=True,
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Unsupported window type '{window_type}' for Welch PSD. "
+                "Use a SciPy-compatible window name (e.g., hamming, hann, boxcar, blackman)."
+            ) from exc
+        return frequencies, power_density
+
+    if method == "lombscargle":
+        return _compute_lombscargle(times_days, values)
+
+    raise ValueError(
+        f"Unsupported PSD method '{method}'. Supported methods: welch, lombscargle"
+    )
+
+
+def _compute_lombscargle(
+    times_days: np.ndarray,
+    values: np.ndarray,
+    frequencies_per_decade: int = DEFAULT_LOMB_FREQS_PER_DECADE,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute a Lomb-Scargle periodogram on irregularly sampled data.
+
+    Unlike Welch, Lomb-Scargle does not require uniform resampling, so it is
+    appropriate for bursty Gaia observations separated by long gaps.
+    """
+    finite_mask = np.isfinite(times_days) & np.isfinite(values)
+    times_days = times_days[finite_mask]
+    values = values[finite_mask]
+
+    if times_days.size < 2:
+        raise ValueError("Need at least two finite residual samples to compute a PSD.")
+
+    order = np.argsort(times_days)
+    times_days = times_days[order]
+    values = values[order]
 
     centered = values - np.mean(values)
-    sample_count = centered.size
-    window_length_samples = int(round(window_length_days / sample_spacing_days))
-    window_length_samples = max(8, window_length_samples)
-    window_length_samples = min(window_length_samples, sample_count)
+    span_days = float(times_days[-1] - times_days[0])
+    if span_days <= 0.0:
+        raise ValueError("Could not infer a valid sampling interval for the residual PSD.")
 
-    noverlap = window_length_samples // 2
-    try:
-        frequencies, power_density = welch(
-            centered,
-            fs=1.0 / sample_spacing_days,
-            window=window_type,
-            nperseg=window_length_samples,
-            noverlap=noverlap,
-            detrend="constant",
-            scaling="density",
-            return_onesided=True,
-        )
-    except ValueError as exc:
-        raise ValueError(
-            f"Unsupported window type '{window_type}' for Welch PSD. "
-            "Use a SciPy-compatible window name (e.g., hamming, hann, boxcar, blackman)."
-        ) from exc
+    # Frequency grid: from one cycle over the full span up to a physically
+    # meaningful ceiling. The raw within-cluster spacing (~seconds) would push
+    # the Nyquist to thousands of cycles/day, which is meaningless for orbit
+    # residuals; cap at 1 cycle/day (periods >= 1 day) so the Triton peak
+    # (period ~5.9 d) is well resolved without flooding the spectrum with
+    # high-frequency noise. A log-spaced grid keeps the peak well sampled.
+    f_min = 1.0 / span_days
+    f_max = min(1.0, 0.5 / float(np.median(np.diff(times_days))))
+    if not np.isfinite(f_max) or f_max <= f_min:
+        f_max = f_min * 10.0
+
+    num_frequencies = frequencies_per_decade * int(np.log10(f_max / f_min)) + 1
+    frequencies = np.geomspace(f_min, f_max, num=num_frequencies)
+    power_density = lombscargle(times_days, centered, frequencies, normalize=True)
     return frequencies, power_density
+
+
+def _find_psd_peaks(
+    frequencies: np.ndarray,
+    power_density: np.ndarray,
+    prominence: float = 0.1,
+) -> list[tuple[float, float]]:
+    """Return (frequency, power) of the most prominent PSD peaks, sorted by power."""
+    positive = frequencies > 0.0
+    frequencies = frequencies[positive]
+    power_density = power_density[positive]
+    if frequencies.size == 0:
+        return []
+
+    peaks, properties = find_peaks(power_density, prominence=prominence)
+    if peaks.size == 0:
+        return []
+
+    peak_power = power_density[peaks]
+    order = np.argsort(peak_power)[::-1]
+    return [
+        (float(frequencies[peaks[i]]), float(peak_power[i]))
+        for i in order
+    ]
 
 
 def _plot_psd_series(
@@ -288,6 +368,11 @@ class ResidualsPSD(Plot):
         method = str(plot_cfg.get("method", "welch")).lower()
         window_type = _normalize_window_type(window_type, method)
         time_start_seconds, time_end_seconds = _parse_time_range(plot_cfg)
+        peak_cfg = plot_cfg.get("peaks", {})
+        peak_prominence = float(peak_cfg.get("prominence", 0.1))
+        annotate_peaks = bool(peak_cfg.get("annotate", True))
+        show_triton_period = bool(peak_cfg.get("show_triton_period", True))
+        show_average_error = bool(peak_cfg.get("show_average_error", True))
 
         fig_width = float(figure_cfg.get("width", DEFAULT_FIGURE_WIDTH))
         fig_height = float(figure_cfg.get("height", DEFAULT_FIGURE_HEIGHT))
@@ -334,14 +419,11 @@ class ResidualsPSD(Plot):
             ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
             dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
 
-            _, ra_uniform, ra_dt_days = _resample_uniform(obs_times_days, ra_residuals_arcsec)
-            _, dec_uniform, dec_dt_days = _resample_uniform(obs_times_days, dec_residuals_arcsec)
-
             ra_freq, ra_psd = _compute_psd(
-                ra_uniform, ra_dt_days, window_length_days, window_type, method
+                obs_times_days, ra_residuals_arcsec, window_length_days, window_type, method
             )
             dec_freq, dec_psd = _compute_psd(
-                dec_uniform, dec_dt_days, window_length_days, window_type, method
+                obs_times_days, dec_residuals_arcsec, window_length_days, window_type, method
             )
 
             positive_ra = ra_freq > 0.0
@@ -370,11 +452,69 @@ class ResidualsPSD(Plot):
                 line_width=line_width,
             )
 
+            if annotate_peaks:
+                for axis, freq, psd in ((axs[0], ra_freq, ra_psd), (axs[1], dec_freq, dec_psd)):
+                    for peak_freq, peak_power in _find_psd_peaks(
+                        freq, psd, prominence=peak_prominence
+                    )[:3]:
+                        axis.axvline(
+                            peak_freq,
+                            color=color,
+                            linestyle=":",
+                            linewidth=0.8,
+                            alpha=0.6,
+                        )
+                        axis.annotate(
+                            f"{_format_period_days(1.0 / peak_freq)} "
+                            f"({peak_freq:.4g} c/d)",
+                            xy=(peak_freq, peak_power),
+                            xytext=(0, 10),
+                            textcoords="offset points",
+                            ha="center",
+                            fontsize=8,
+                            color=color,
+                        )
+
+            if show_triton_period:
+                triton_frequency = 1.0 / TRITON_PERIOD_DAYS
+                for axis in axs:
+                    axis.axvline(
+                        triton_frequency,
+                        color="black",
+                        linewidth=1.2,
+                        linestyle="--",
+                        label=f"Triton period ({TRITON_PERIOD_DAYS:.3f} d)",
+                    )
+
         if not np.isfinite(min_frequency) or max_frequency <= 0.0:
             raise ValueError("Could not determine a valid PSD frequency range to plot.")
 
         _configure_psd_axis(axs[0], min_frequency, max_frequency, x_lim_cfg, axes_cfg)
         _configure_psd_axis(axs[1], min_frequency, max_frequency, x_lim_cfg, axes_cfg)
+
+        if show_average_error:
+            ra_rms = float(np.sqrt(np.mean(np.square(ra_residuals_arcsec))))
+            dec_rms = float(np.sqrt(np.mean(np.square(dec_residuals_arcsec))))
+            axs[0].text(
+                0.02,
+                0.98,
+                f"RA RMS = {ra_rms:.3f} arcsec",
+                transform=axs[0].transAxes,
+                ha="left",
+                va="top",
+                fontsize=9,
+                bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
+            )
+            axs[1].text(
+                0.02,
+                0.98,
+                f"Dec RMS = {dec_rms:.3f} arcsec",
+                transform=axs[1].transAxes,
+                ha="left",
+                va="top",
+                fontsize=9,
+                bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
+            )
 
         axs[0].set_title(titles_cfg.get("ra", "Right Ascension PSD"))
         axs[1].set_title(titles_cfg.get("dec", "Declination PSD"))

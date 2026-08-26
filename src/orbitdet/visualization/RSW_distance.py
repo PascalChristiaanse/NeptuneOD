@@ -65,11 +65,15 @@ class RSWDistance(Plot):
             prop_setup.dependent_variable.SingleDependentVariableSaveSettings
         ),
         central_body: str = "Neptune",
+        epochs: list[float] | np.ndarray | None = None,
+        scatter: bool = False,
     ):
         super().__init__(cfg)
         self.result = result
         self.position_dependent_variable = position_dependent_variable
         self.central_body = central_body
+        self.epochs = epochs
+        self.scatter = scatter
 
     def _make_figure(self):
         cfg = self.cfg
@@ -144,24 +148,52 @@ class RSWDistance(Plot):
 
         pos_value_dict = dep_var_dict[position_dependent_variable]
 
-        epochs = list(dep_var_dict.time_history)
+        full_epochs = list(dep_var_dict.time_history)
+        epochs = full_epochs
+        # Restrict to a subset of epochs (e.g. observation epochs) when requested,
+        # to avoid displaying interpolator error on sparse tabulated ephemerides.
+        # The fixed-step propagation output does not land exactly on the requested
+        # epochs, so the relative position and inertial state are interpolated onto
+        # them.
+        if self.epochs is not None:
+            plot_epochs = np.asarray(self.epochs, dtype=float).ravel()
+            in_bounds = (plot_epochs >= full_epochs[0]) & (plot_epochs <= full_epochs[-1])
+            if not np.any(in_bounds):
+                raise ValueError(
+                    "None of the requested epochs overlap with the propagation time history."
+                )
+            epochs = [float(e) for e in plot_epochs[in_bounds]]
         n_epochs = len(epochs)
         times = _seconds_since_j2000_to_datetimes(np.asarray(epochs))
 
         # --- get propagated state history ---
         state_history = sim_results.state_history
-        if len(state_history) != n_epochs:
-            raise ValueError(
-                f"Mismatch between state history ({len(state_history)} entries) and "
-                f"dependent variable history ({n_epochs} entries)."
-            )
 
         # --- decompose relative position into RSW components ---
+        exp_epochs = np.asarray(full_epochs)
+        inv_epochs = np.asarray(epochs)
+        # Build the full-epoch arrays we may need to interpolate.
+        state_array = np.vstack([np.asarray(state_history[e]).flatten() for e in full_epochs])
+        rel_pos_array = np.vstack(
+            [np.asarray(pos_value_dict[e]).flatten() for e in full_epochs]
+        )
+
         rsw_components = np.zeros((n_epochs, 3))
-        for i, epoch in enumerate(epochs):
-            inertial_state = np.asarray(state_history[epoch])
+        interpolate = len(epochs) != len(full_epochs) or not np.array_equal(
+            exp_epochs, inv_epochs
+        )
+        for i, epoch in enumerate(inv_epochs):
+            if interpolate:
+                inertial_state = np.array(
+                    [np.interp(epoch, exp_epochs, state_array[:, k]) for k in range(6)]
+                )
+                rel_pos = np.array(
+                    [np.interp(epoch, exp_epochs, rel_pos_array[:, k]) for k in range(3)]
+                )
+            else:
+                inertial_state = np.asarray(state_history[epoch])
+                rel_pos = np.asarray(pos_value_dict[epoch]).flatten()
             rot = fc.inertial_to_rsw_rotation_matrix(inertial_state)
-            rel_pos = np.asarray(pos_value_dict[epoch]).flatten()
             rsw_components[i, :] = rot @ rel_pos
 
         # --- plotting configuration ---
@@ -176,7 +208,10 @@ class RSWDistance(Plot):
         fig, axes = plt.subplots(3, 1, figsize=(fig_w, fig_h), sharex=True)
 
         for i, ax in enumerate(axes):
-            ax.plot(times, rsw_components[:, i])
+            if self.scatter:
+                ax.scatter(times, rsw_components[:, i], s=18, alpha=0.9)
+            else:
+                ax.plot(times, rsw_components[:, i])
             ax.set_ylabel(f"{component_names[i]} [{component_units[i]}]")
             ax.grid(True, alpha=0.3)
             ax.format_coord = _make_hover_formatter("Epoch", component_names[i])

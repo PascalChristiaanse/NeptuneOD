@@ -68,6 +68,8 @@ class DifferencedDependentVariables(Plot):
             prop_setup.dependent_variable.SingleDependentVariableSaveSettings
         ],
         comparison_names: list[str] | None = None,
+        epochs: list[float] | np.ndarray | None = None,
+        scatter: bool = False,
     ):
         super().__init__(cfg)
         self.reference_result = reference_result
@@ -75,6 +77,8 @@ class DifferencedDependentVariables(Plot):
         self.reference_dependent_variable = reference_dependent_variable
         self.comparison_dependent_variables = comparison_dependent_variables
         self.comparison_names = comparison_names
+        self.epochs = epochs
+        self.scatter = scatter
 
     def _make_figure(self):
         cfg = self.cfg
@@ -199,8 +203,44 @@ class DifferencedDependentVariables(Plot):
             }
             difference_dicts.append(diff)
 
+        full_time_history = list(reference_dv_dict.time_history)
+
+        # Restrict the comparison to a subset of epochs (e.g. observation epochs).
+        # The fixed-step propagation output does not land exactly on the
+        # observation epochs, so instead of removing propagation epochs we
+        # interpolate the dependent-variable differences onto the requested epochs.
+        # When comparing trajectories with sparse support (e.g. an interpolated ESA
+        # kernel vs. a tabulated archive kernel), evaluating the difference
+        # continuously shows mostly interpolator error rather than the physical
+        # discrepancy at the epochs where actual observations exist.
+        time_history = full_time_history
+        if self.epochs is not None:
+            plot_epochs = np.asarray(self.epochs, dtype=float).ravel()
+            in_bounds = (plot_epochs >= full_time_history[0]) & (
+                plot_epochs <= full_time_history[-1]
+            )
+            if not np.any(in_bounds):
+                raise ValueError(
+                    "None of the requested epochs overlap with the propagation time history."
+                )
+            plot_epochs = plot_epochs[in_bounds]
+            n_components = difference_dicts[0][full_time_history[0]].size
+            for diff in difference_dicts:
+                values = np.vstack(
+                    [np.asarray(diff[e]).flatten() for e in full_time_history]
+                )
+                interpolated = np.vstack(
+                    [
+                        np.interp(plot_epochs, full_time_history, values[:, c])
+                        for c in range(n_components)
+                    ]
+                ).T
+                diff.clear()
+                diff.update({float(e): interpolated[k] for k, e in enumerate(plot_epochs)})
+            time_history = [float(e) for e in plot_epochs]
+
         # Check how large the dependent variable is to determine how many plots to make
-        number_of_plots = difference_dicts[0][reference_dv_dict.time_history[0]].size
+        number_of_plots = difference_dicts[0][time_history[0]].size
 
         # Load plotting configuration
         plot_cfg = _cfg_get(cfg, "dependent_variable_differenced", default=None)
@@ -277,7 +317,6 @@ class DifferencedDependentVariables(Plot):
             pass
 
         # Plot each component with all comparisons overlaid
-        time_history = reference_dv_dict.time_history
         for i in range(number_of_plots):
             # Per-component title (configurable), with fallback to default
             component_title = _cfg_get(
@@ -305,13 +344,14 @@ class DifferencedDependentVariables(Plot):
                 axes[i].set_xlabel(x_label)
                 _configure_datetime_axis(axes[i])
 
-            # Plot each comparison as a separate line
+            # Plot each comparison as a separate line (or scatter when the epochs
+            # were restricted, e.g. to observation epochs)
             for diff_dict, name in zip(difference_dicts, comparison_names):
-                axes[i].plot(
-                    x_data,
-                    [np.atleast_1d(diff_dict[epoch])[i] for epoch in time_history],
-                    label=name,
-                )
+                vals = [np.atleast_1d(diff_dict[epoch])[i] for epoch in time_history]
+                if self.scatter:
+                    axes[i].scatter(x_data, vals, label=name, s=18, alpha=0.9)
+                else:
+                    axes[i].plot(x_data, vals, label=name)
             axes[i].set_title(component_title)
             axes[i].set_ylabel(y_labels[i])
             axes[i].grid()

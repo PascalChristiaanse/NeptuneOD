@@ -207,24 +207,6 @@ def aim_log_figure(
         logger.warning("No active Aim run — cannot log figure")
         return
 
-    # Interactive figure for the Figures tab
-    # Suppress noisy plotly conversion warnings for known-incompatible formatters
-    import warnings
-
-    from aim import Figure as AimFigure
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning, module="plotly")
-        try:
-            run.track(AimFigure(fig), name=name, step=step, context=context)
-        except Exception as exc:
-            logger.debug(
-                "Failed to create Aim interactive figure for '%s' — "
-                "logging static image only. Error: %s",
-                name,
-                exc,
-            )
-
     # Static image for the Images tab (rasterize via canvas)
     from aim.sdk.objects import Image as AimImage
 

@@ -12,6 +12,9 @@ hydra:
   mode: MULTIRUN
   launcher:
     n_jobs: 2
+  sweep:
+    dir: results
+    subdir: ${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}/${hydra.job.override_dirname}
   sweeper:
     params:
       parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity

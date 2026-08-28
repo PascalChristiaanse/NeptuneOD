@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/generate_prefit_residuals",
+    config_name="experiment/generate_prefit_residuals",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -61,6 +61,10 @@ def main(cfg: DictConfig):
     # Create observations
     observations, observation_models = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
+
+    # observations = obs.ObservationCollection([obs.SingleObservationSet.load_from_binary('Atanas_689_nm0008')])
+    # observations = obs.ObservationCollection([atanas])
+    # observations = obs.merge_observation_collections([observations, atanas])
 
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(

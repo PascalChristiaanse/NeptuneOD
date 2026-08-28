@@ -6,7 +6,6 @@ from . import (
     absolute_ccd_nsdb,
     relative_ccd_nsdb,
     relative_xy_nsdb,
-    relative_xy_radec_nsdb,
     simulated,
     voyager,
 )

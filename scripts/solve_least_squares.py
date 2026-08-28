@@ -201,11 +201,13 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
     config_path="../conf",
     config_name="config",
 )
-@enforce_initialization
+# @enforce_initialization Disabled to support submitit multiprocessing
 def main(cfg: DictConfig):
-    ctx: RuntimeContext = initialize(cfg)
+    import os
+    logger.info(f"Starting main() with on process PID {os.getpid()}")
 
     # Inject start and end epochs into the runtime context
+    ctx: RuntimeContext = initialize(cfg) 
     ctx.start_epoch = iso_string_to_epoch_time_object(cfg.start_date)
     ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
     ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)

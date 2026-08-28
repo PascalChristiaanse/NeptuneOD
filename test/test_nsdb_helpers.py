@@ -3,6 +3,8 @@ import pytest
 
 from orbitdet.observations.nsdb_helpers import (
     ISO_TIME_COLUMN,
+    group_rows_by_observatory,
+    resolve_observatory_codes,
     set_iso_time_column,
     set_ra_dec_columns,
     # set_relative_position_columns,
@@ -60,6 +62,80 @@ def test_set_ra_dec_columns_raises_when_components_are_missing(caplog):
             set_ra_dec_columns(dataframe)
 
     assert any("Could not infer right ascension" in record.message for record in caplog.records)
+
+
+def test_resolve_observatory_codes_single_observatory():
+    dataframe = pd.DataFrame({"Year": [2001, 2002, 2003]})
+    observatories = [{"code": 673, "name": "Table Mountain"}]
+
+    codes = resolve_observatory_codes(dataframe, observatories, {})
+
+    assert codes.tolist() == ["673", "673", "673"]
+
+
+def test_resolve_observatory_codes_multi_observatory():
+    dataframe = pd.DataFrame({"Year": [1963, 1964, 1965], "Telescope (T)": [1, 2, 1]})
+    observatories = [
+        {"code": 83, "name": "Golosseevo-Kiev"},
+        {"code": 188, "name": "Majdanak"},
+    ]
+    telescope_index = {"1": 83, "2": 188}
+
+    codes = resolve_observatory_codes(dataframe, observatories, telescope_index)
+
+    assert codes.tolist() == ["083", "188", "083"]
+
+
+def test_resolve_observatory_codes_multi_observatory_missing_column():
+    dataframe = pd.DataFrame({"Year": [1963, 1964]})
+    observatories = [
+        {"code": 83, "name": "Golosseevo-Kiev"},
+        {"code": 188, "name": "Majdanak"},
+    ]
+    telescope_index = {"1": 83, "2": 188}
+
+    with pytest.raises(ValueError, match="telescope index or observatory code column"):
+        resolve_observatory_codes(dataframe, observatories, telescope_index)
+
+
+def test_resolve_observatory_codes_multi_observatory_unknown_index():
+    dataframe = pd.DataFrame({"Year": [1963, 1964], "Telescope (T)": [1, 9]})
+    observatories = [
+        {"code": 83, "name": "Golosseevo-Kiev"},
+        {"code": 188, "name": "Majdanak"},
+    ]
+    telescope_index = {"1": 83, "2": 188}
+
+    with pytest.raises(ValueError, match="not present in telescope_index"):
+        resolve_observatory_codes(dataframe, observatories, telescope_index)
+
+
+def test_resolve_observatory_codes_observatory_code_column():
+    # nm0019 style: the data column directly holds observatory codes, and telescope_index
+    # is the identity mapping.
+    dataframe = pd.DataFrame(
+        {"Year": [2007, 2008, 2009], "Code of observatory (327 or 337)": [327, 337, 327]}
+    )
+    observatories = [
+        {"code": 327, "name": "Peking Observatory, Xinglong Station"},
+        {"code": 337, "name": "Sheshan, formerly Zo-Se"},
+    ]
+    telescope_index = {"327": 327, "337": 337}
+
+    codes = resolve_observatory_codes(dataframe, observatories, telescope_index)
+
+    assert codes.tolist() == ["327", "337", "327"]
+
+
+def test_group_rows_by_observatory():
+    dataframe = pd.DataFrame({"Year": [1963, 1964, 1965, 1966]})
+    codes = pd.Series(["083", "188", "083", "188"])
+
+    groups = group_rows_by_observatory(dataframe, codes)
+
+    assert [code for code, _ in groups] == ["083", "188"]
+    assert groups[0][1]["Year"].tolist() == [1963, 1965]
+    assert groups[1][1]["Year"].tolist() == [1964, 1966]
 
 
 # def test_set_relative_position_columns_from_nsdb_style_components():

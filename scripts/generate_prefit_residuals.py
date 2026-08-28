@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/generate_prefit_residuals",
+    config_name="experiment/generate_prefit_residuals",
 )
 @enforce_initialization
 def main(cfg: DictConfig):

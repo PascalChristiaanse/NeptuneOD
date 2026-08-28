@@ -130,6 +130,10 @@ class Residuals(Plot):
                 observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
                 info = {"code": observatory_code}
                 info["name"] = observatory_name
+                info["region"] = "Geocentric"  # default to geocentric if no code provided
+            elif int(observatory_code) < 0:
+                info = {"code": observatory_code}
+                info["name"] = observatory_name
                 info["region"] = "Spacecraft"
             else:
                 info = get_observatory_info(cfg, observatory_code)

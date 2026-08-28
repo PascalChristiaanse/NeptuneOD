@@ -4,6 +4,8 @@ import re
 import numpy as np
 import pandas as pd
 
+from .helpers import normalize_observatory_code
+
 ISO_TIME_COLUMN = "iso_time"
 RELATIVE_POSITION_X_COLUMN = "relative_position_x"
 RELATIVE_POSITION_Y_COLUMN = "relative_position_y"
@@ -430,3 +432,81 @@ def set_relative_position_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
     ) * _relative_position_scale(y_column)
 
     return (RELATIVE_POSITION_X_COLUMN, RELATIVE_POSITION_Y_COLUMN)
+
+
+def resolve_observatory_codes(
+    dataframe: pd.DataFrame,
+    observatories: list[dict],
+    telescope_index: dict,
+) -> pd.Series:
+    """Resolve the observatory code for each observation row.
+
+    For single-observatory datasets (no telescope index column), every row is assigned the
+    observatory code. For multi-observatory datasets, the telescope index data column (mapped
+    through ``telescope_index``) selects the observatory for each row.
+
+    Args:
+        dataframe: The DataFrame containing the observation data, with columns named according
+            to the format mapping.
+        observatories: The list of observatory entries from the dataset config, each with a
+            ``code``.
+        telescope_index: Mapping from the telescope index data column to the observatory code.
+
+    Returns:
+        A pandas Series of observatory codes (as strings) aligned with the dataframe index.
+    """
+    if not telescope_index:
+        # Single-observatory dataset: use the first (only) observatory.
+        code = observatories[0]["code"]
+        return pd.Series([normalize_observatory_code(code)] * len(dataframe), index=dataframe.index)
+
+    # Find the column that selects the observatory per row. Two cases:
+    #  - nm0083 style: a telescope index column (e.g. 'Telescope (T)') whose values are mapped
+    #    through telescope_index to observatory codes.
+    #  - nm0019 style: a column that directly holds observatory codes (e.g. 'Code of
+    #    observatory (327 or 337)'), where telescope_index is the identity mapping.
+    selector_column = None
+    for column_name in dataframe.columns:
+        normalized = _normalize_column_name(column_name)
+        if "telescope" in normalized or "observatory" in normalized:
+            selector_column = str(column_name)
+            break
+    if selector_column is None:
+        raise ValueError(
+            "Multi-observatory dataset requires a telescope index or observatory code "
+            "column, but none was found."
+        )
+
+    # Map selector values (as strings) to observatory codes.
+    index_to_code = {str(idx): code for idx, code in telescope_index.items()}
+    codes = dataframe[selector_column].map(lambda value: index_to_code.get(str(value).strip()))
+    if codes.isna().any():
+        raise ValueError(
+            "Some observation rows reference a telescope index or observatory code not "
+            "present in telescope_index."
+        )
+    return codes.map(normalize_observatory_code)
+
+
+def group_rows_by_observatory(
+    dataframe: pd.DataFrame,
+    observatory_codes: pd.Series,
+) -> list[tuple[str, pd.DataFrame]]:
+    """Group dataframe rows by observatory code.
+
+    Args:
+        dataframe: The DataFrame containing the observation data.
+        observatory_codes: A Series of observatory codes aligned with the dataframe index.
+
+    Returns:
+        A list of (observatory_code, subset_dataframe) tuples, one per distinct observatory,
+        preserving the order of first appearance.
+    """
+    groups: list[tuple[str, pd.DataFrame]] = []
+    seen: set[str] = set()
+    for code, group in dataframe.groupby(observatory_codes, sort=False):
+        if code in seen:
+            continue
+        seen.add(code)
+        groups.append((code, group))
+    return groups

@@ -4,6 +4,6 @@
 # Bundles the collection, dynamics, and kernels for this data selection.
 
 defaults:
-  - /collection: working
+  - /collection: atanas_triton_generated
   - /dynamics: classical
   - /kernels: classical

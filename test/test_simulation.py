@@ -59,6 +59,9 @@ def basic_config():
                     "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                 },
             },
+            "propagation": {
+                "set_integrated_result": True,
+            },
             "integrator": {
                 "type": "RKF78",
                 "fixed_step_size": 10.0,
@@ -96,6 +99,9 @@ def jacobson_config():
                     "central_body": "Neptune",
                     "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                 },
+            },
+            "propagation": {
+                "set_integrated_result": True,
             },
             "integrator": {
                 "type": "RKF78",
@@ -324,6 +330,9 @@ class TestGetPropagatorSettings:
                         "initial_state": None,
                     },
                 },
+                "propagation": {
+                    "set_integrated_result": True,
+                },
             }
         )
         mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
@@ -386,6 +395,9 @@ class TestGetPropagatorSettings:
                         "central_body": "Neptune",
                         "initial_state": [117647.0, 0.0, 0.0, 0.0, 4750.0, 0.0],
                     },
+                },
+                "propagation": {
+                    "set_integrated_result": True,
                 },
             }
         )

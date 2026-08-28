@@ -184,19 +184,20 @@ def aim_log_figure(
 ) -> None:
     """Log a matplotlib figure to the current Aim run.
 
-    Logs both an interactive **Figure** (Figures tab) and a static **Image**
-    (Images tab) so you can explore interactively *and* see thumbnails at a
-    glance.
+    Logs a static **Image** (Images tab) so you can see thumbnails at a glance.
 
-    If the interactive conversion fails (e.g. due to plotly/matplotlib
-    incompatibilities) the static image is still logged.
+    .. note::
+        This deliberately does **not** log an interactive Aim ``Figure``.
+        Interactive figures are ingested into the RocksDB-backed Aim repo and
+        trigger a runaway compaction / disk-write storm. Logging only the
+        static image keeps the Images tab populated without that cost.
 
     Parameters
     ----------
     fig : matplotlib.figure.Figure | plotly.graph_objects.Figure
         A matplotlib or Plotly figure to track.
     name : str
-        Name for the figure/image series.
+        Name for the image series.
     step : int, optional
         Global step.
     context : dict, optional
@@ -251,3 +252,35 @@ def aim_log_artifact(
         run.set_artifacts_uri("file://" + AIM_REPO_DIR)
 
     run.log_artifact(str(path), name)
+
+
+def aim_log_artifact_reference(
+    file_path: str | Path,
+    artifact_name: str | None = None,
+) -> None:
+    """Record a reference to a file on disk without ingesting it into Aim.
+
+    Unlike :func:`aim_log_artifact`, this does **not** copy the file into the
+    Aim repository's internal storage. Instead it stores the absolute path as a
+    run parameter, so you can easily locate the file later without the disk
+    cost of fully ingesting large objects (e.g. binary ``.tudat`` files).
+
+    Parameters
+    ----------
+    file_path : str | Path
+        Path to the file to reference.
+    artifact_name : str, optional
+        Display name inside Aim; defaults to the filename.
+    """
+    run = get_aim_run()
+    if run is None:
+        logger.warning("No active Aim run — cannot log artifact reference")
+        return
+
+    path = Path(file_path)
+    if not path.exists():
+        logger.warning("Artifact file not found, skipping reference: %s", path)
+        return
+
+    name = artifact_name or path.name
+    run[f"artifact_refs/{name}"] = str(path.resolve())

@@ -458,9 +458,7 @@ def resolve_observatory_codes(
     if not telescope_index:
         # Single-observatory dataset: use the first (only) observatory.
         code = observatories[0]["code"]
-        return pd.Series(
-            [normalize_observatory_code(code)] * len(dataframe), index=dataframe.index
-        )
+        return pd.Series([normalize_observatory_code(code)] * len(dataframe), index=dataframe.index)
 
     # Find the column that selects the observatory per row. Two cases:
     #  - nm0083 style: a telescope index column (e.g. 'Telescope (T)') whose values are mapped
@@ -481,9 +479,7 @@ def resolve_observatory_codes(
 
     # Map selector values (as strings) to observatory codes.
     index_to_code = {str(idx): code for idx, code in telescope_index.items()}
-    codes = dataframe[selector_column].map(
-        lambda value: index_to_code.get(str(value).strip())
-    )
+    codes = dataframe[selector_column].map(lambda value: index_to_code.get(str(value).strip()))
     if codes.isna().any():
         raise ValueError(
             "Some observation rows reference a telescope index or observatory code not "

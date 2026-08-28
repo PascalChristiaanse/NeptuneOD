@@ -410,10 +410,7 @@ class NSDBManager:
                 # A telescope continuation line may itself contain a colon, e.g.
                 # '188 - Z6: The 60-cm Zeiss Reflector'. Detect it by the leading
                 # observatory-code prefix while still inside the telescope field.
-                if (
-                    current_alias == "telescope"
-                    and re.match(r"^\d+\s*-\s*\S+", key)
-                ):
+                if current_alias == "telescope" and re.match(r"^\d+\s*-\s*\S+", key):
                     telescope_entries.append(line)
                     continue
 
@@ -465,9 +462,7 @@ class NSDBManager:
             if any(re.match(r"^\d+\s*-\s*\S+", e) for e in telescope_entries):
                 parsed["telescope"] = self._parse_telescope_entries(telescope_entries)
             else:
-                parsed["telescope"] = re.sub(
-                    r"\s+", " ", " ".join(telescope_entries)
-                ).strip()
+                parsed["telescope"] = re.sub(r"\s+", " ", " ".join(telescope_entries)).strip()
 
         # Expose "centre of frame" under both the British "centre_of_frame" and the
         # US/American "center_of_frame" spellings so consumers can use either key.

@@ -109,9 +109,7 @@ def convert_relative_xy_data(
     Returns:
         Tuple of (dataframe, relative_x_column, relative_y_column).
     """
-    data_file = pd.read_csv(
-        dataset_cfg.file, sep=r"\s+", header=None, comment="#", engine="python"
-    )
+    data_file = pd.read_csv(dataset_cfg.file, sep=r"\s+", header=None, comment="#", engine="python")
     _apply_format_columns(data_file, dataset_cfg.format_columns)
 
     # Station-independent preprocessing on the full dataframe.
@@ -168,9 +166,7 @@ def _topocentric_planet_direction(
     planet_body = system_of_bodies.get_body(planet_name)
     ground_station = earth.get_ground_station(station_name)
 
-    station_body_fixed = np.ravel(
-        ground_station.station_state.get_cartesian_position(epoch_tdb)
-    )
+    station_body_fixed = np.ravel(ground_station.station_state.get_cartesian_position(epoch_tdb))
     rotation = np.array(earth.rotation_model.body_fixed_to_inertial_rotation(epoch_tdb))
     station_inertial = np.ravel(earth.ephemeris.cartesian_position(epoch_tdb)) + (
         rotation @ station_body_fixed
@@ -184,9 +180,7 @@ def _topocentric_planet_direction(
     return direction / norm
 
 
-def _standard_to_relative_radec(
-    xi_rad, eta_rad, ra0, dec0
-) -> tuple[float, float]:
+def _standard_to_relative_radec(xi_rad, eta_rad, ra0, dec0) -> tuple[float, float]:
     """Project gnomonic standard coordinates into relative RA/Dec offsets.
 
     Given standard (tangent-plane) coordinates ``(xi, eta)`` measured about a
@@ -216,7 +210,7 @@ def _standard_to_relative_radec(
     sin_d0 = np.sin(dec0)
 
     del_alpha = np.arctan2(xi_rad, cos_d0 - eta_rad * sin_d0)
-    sin_dec = (sin_d0 + eta_rad * cos_d0) / np.sqrt(1.0 + xi_rad ** 2 + eta_rad ** 2)
+    sin_dec = (sin_d0 + eta_rad * cos_d0) / np.sqrt(1.0 + xi_rad**2 + eta_rad**2)
     del_dec = np.arcsin(np.clip(sin_dec, -1.0, 1.0)) - dec0
     return del_alpha, del_dec
 
@@ -323,9 +317,7 @@ def _build_relative_observation_set(
     dec_s_global = np.deg2rad(satellite_date["dec_deg"].to_numpy(dtype=float))
 
     # Relative spherical offset in the global frame (the model's convention).
-    del_alpha = np.arctan2(
-        np.sin(ra_s_global - ra_p_global), np.cos(ra_s_global - ra_p_global)
-    )
+    del_alpha = np.arctan2(np.sin(ra_s_global - ra_p_global), np.cos(ra_s_global - ra_p_global))
     del_dec = dec_s_global - dec_p_global
 
     data = [np.array([[a], [d]]) for a, d in zip(del_alpha.tolist(), del_dec.tolist())]
@@ -377,10 +369,8 @@ def create_relative_xy_nsdb_dataset(
     Returns:
         Tuple of (ObservationCollection, ObservationModelSettings) for the relative X/Y dataset.
     """
-    logger.info(
-        f"""Creating relative X/Y observation dataset: {dataset_cfg.identifier}."""
-    )
-    
+    logger.info(f"""Creating relative X/Y observation dataset: {dataset_cfg.identifier}.""")
+
     data_file, relative_x_column, relative_y_column = convert_relative_xy_data(cfg, dataset_cfg)
 
     # Fail if file contains multiple satellites, not implemented yet

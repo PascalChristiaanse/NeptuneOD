@@ -131,7 +131,7 @@ class Residuals(Plot):
                 info = {"code": observatory_code}
                 info["name"] = observatory_name
                 info["region"] = "Geocentric"  # default to geocentric if no code provided
-            elif int(observatory_code) < 0: 
+            elif int(observatory_code) < 0:
                 info = {"code": observatory_code}
                 info["name"] = observatory_name
                 info["region"] = "Spacecraft"

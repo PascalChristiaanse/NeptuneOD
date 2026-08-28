@@ -6,16 +6,21 @@
 defaults:
   - /experiment: classic_triton_state
   - _self_
-  - override /hydra/launcher: joblib
+  - override /hydra/launcher: submitit_local
 
 hydra:
   mode: MULTIRUN
   launcher:
-    n_jobs: 2
+    tasks_per_node: 1
+    nodes: 1
+    gpus_per_node: 0 # set if relevant
+    cpus_per_task: 1
+    timeout_min: 60
   sweep:
     dir: results
     subdir: ${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}/${hydra.job.override_dirname}
   sweeper:
+    max_batch_size: 2
     params:
-      parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity
+      parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity,state_plus_rotation,state_plus_gravity
       data: classical,classical_voyager

@@ -3,7 +3,7 @@
 # Uses the new observation collection architecture with Hydra defaults composition
 
 defaults:
-  - /collections/triton_nsdb_generated # Compose NSDB observation collection
+  - /collection: atanas_triton_generated # Compose NSDB observation collection
   - _self_ # Apply experiment config fields after collections
 
 seed: 42

@@ -62,10 +62,6 @@ def main(cfg: DictConfig):
     observations, observation_models = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
-    # observations = obs.ObservationCollection([obs.SingleObservationSet.load_from_binary('Atanas_689_nm0008')])
-    # observations = obs.ObservationCollection([atanas])
-    # observations = obs.merge_observation_collections([observations, atanas])
-
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies

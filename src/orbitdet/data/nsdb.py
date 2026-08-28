@@ -351,6 +351,7 @@ class NSDBManager:
 
         field_map = {
             "reference frame": "reference_frame",
+            "center of frame": "center_of_frame",
             "centre of frame": "centre_of_frame",
             "epoch of equinox": "epoch_of_equinox",
             "time scale": "time_scale",
@@ -400,5 +401,10 @@ class NSDBManager:
             if current_alias and "-" * 5 not in line:
                 joined = f"{parsed[current_alias]} {line}".strip()
                 parsed[current_alias] = re.sub(r"\s+", " ", joined)
+
+        # Expose "centre of frame" under both the British "centre_of_frame" and the
+        # US/American "center_of_frame" spellings so consumers can use either key.
+        if "centre_of_frame" in parsed and "center_of_frame" not in parsed:
+            parsed["center_of_frame"] = parsed["centre_of_frame"]
 
         return parsed

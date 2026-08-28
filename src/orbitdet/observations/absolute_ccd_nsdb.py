@@ -104,9 +104,14 @@ def create_absolute_ccd_dataset(
     link_ends[obs_model_setup.links.transmitter] = obs_model_setup.links.body_origin_link_end_id(
         target
     )
-    link_ends[obs_model_setup.links.receiver] = (
-        obs_model_setup.links.body_reference_point_link_end_id("Earth", station_name)
-    )
+    if str(dataset_cfg.center_of_frame).lower() == "geocentric":
+        link_ends[obs_model_setup.links.receiver] = obs_model_setup.links.body_origin_link_end_id(
+            "Earth"
+        )
+    else:
+        link_ends[obs_model_setup.links.receiver] = (
+            obs_model_setup.links.body_reference_point_link_end_id("Earth", station_name)
+        )
     link_definition = obs_model_setup.links.LinkDefinition(link_ends)
     observation_model = obs_model_setup.model_settings.angular_position(link_definition)
 

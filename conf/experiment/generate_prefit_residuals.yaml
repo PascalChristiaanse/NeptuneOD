@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - /collection@collection: atanas_triton_generated_extended
+  - /collection: atanas_triton_generated
   - /dynamics: prefit
   - /kernels: classical
   - /logging: default

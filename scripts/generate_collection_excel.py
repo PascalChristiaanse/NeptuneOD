@@ -127,7 +127,7 @@ def _build_workbook_tables(cfg: DictConfig) -> tuple[pd.DataFrame, pd.DataFrame]
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/generate_collection_excel",
+    config_name="generator/generate_collection_excel",
 )
 def main(cfg: DictConfig):
     initialize(cfg)

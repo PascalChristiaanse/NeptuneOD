@@ -1,0 +1,9 @@
+# @package _global_
+
+# Data variant: classical NSDB data only (no Voyager).
+# Bundles the collection, dynamics, and kernels for this data selection.
+
+defaults:
+  - /collection: working
+  - /dynamics: classical
+  - /kernels: classical

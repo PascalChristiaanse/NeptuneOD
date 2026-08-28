@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - /collection@collection: atanas_triton_generated_extended
+  - /dynamics: prefit
+  - /kernels: classical
+  - /logging: default
+  - _self_ # Apply experiment config fields after collections
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 1990-12-30T12:00:00
+end_date: 2026-1-2T12:00:00

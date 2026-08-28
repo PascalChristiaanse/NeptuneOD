@@ -1,0 +1,9 @@
+# @package _global_
+
+# Combined collection: classical NSDB data + Voyager 2 data.
+
+defaults:
+  - /collection/working
+  - /collection/voyager_collection
+
+name: "Classical + Voyager"

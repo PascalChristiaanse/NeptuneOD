@@ -1,0 +1,16 @@
+# @package _global_
+
+# Kernel and data file settings for the classical (non-Voyager) experiments.
+
+kernel_folder: "data/kernels"
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  nep105.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"

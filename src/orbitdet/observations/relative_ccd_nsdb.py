@@ -1,6 +1,7 @@
 """Relative CCD NSDB observation dataset factory."""
 
 import logging
+from typing import Any
 
 import pandas as pd
 import tudatpy.dynamics.environment as env
@@ -11,9 +12,13 @@ from omegaconf import DictConfig
 from .helpers import (
     add_observatory_to_SOB,
     convert_time_to_seconds_since_j2000_TDB,
-    normalize_observatory_code,
 )
-from .nsdb_helpers import set_iso_time_column, set_relative_position_columns
+from .nsdb_helpers import (
+    group_rows_by_observatory,
+    resolve_observatory_codes,
+    set_iso_time_column,
+    set_relative_position_columns,
+)
 from .registry import register_dataset_factory
 
 logger = logging.getLogger(__name__)
@@ -23,12 +28,70 @@ logger = logging.getLogger(__name__)
 RELATIVE_ANGULAR_POSITION_TYPE = obs_model_setup.model_settings.ObservableType(9)
 
 
+def _build_relative_observation_set(
+    cfg: DictConfig,
+    dataset_cfg: DictConfig,
+    system_of_bodies: env.SystemOfBodies,
+    data_file: pd.DataFrame,
+    station_name: str,
+    relative_x_column: str,
+    relative_y_column: str,
+) -> tuple[obs.SingleObservationSet, obs_model_setup.model_settings.ObservationModelSettings]:
+    """Build a single relative-angular observation set for one observatory station."""
+    # Ensure observatory exists in the system of bodies
+    add_observatory_to_SOB(cfg, system_of_bodies, station_name)
+
+    # Convert times to seconds since J2000 epoch TDB for Tudat using station position
+    convert_time_to_seconds_since_j2000_TDB(
+        data_file, station_name, system_of_bodies, dataset_cfg.time_scale
+    )
+
+    valid_rows = data_file[["epoch_TDB", relative_x_column, relative_y_column]].dropna()
+    times = valid_rows["epoch_TDB"].tolist()
+    data = [
+        row[[relative_x_column, relative_y_column]].to_numpy(dtype=float).reshape(2, 1)
+        for _, row in valid_rows.iterrows()
+    ]
+
+    # Setup link ends
+    link_ends = dict()
+    target = list(dataset_cfg.satellites.keys())[0]
+    relative_to = dataset_cfg.relative_to.designation.split(" - ")[1]
+    link_ends[obs_model_setup.links.transmitter] = obs_model_setup.links.body_origin_link_end_id(
+        relative_to
+    )
+    link_ends[obs_model_setup.links.transmitter2] = obs_model_setup.links.body_origin_link_end_id(
+        target
+    )
+
+    if str(dataset_cfg.center_of_frame).lower() == "geocentric":
+        link_ends[obs_model_setup.links.receiver] = obs_model_setup.links.body_origin_link_end_id(
+            "Earth"
+        )
+    else:
+        link_ends[obs_model_setup.links.receiver] = (
+            obs_model_setup.links.body_reference_point_link_end_id("Earth", station_name)
+        )
+    link_definition = obs_model_setup.links.LinkDefinition(link_ends)
+    observation_model = obs_model_setup.model_settings.relative_angular_position(link_definition)
+
+    observation_set = obs.create_single_observation_set(
+        RELATIVE_ANGULAR_POSITION_TYPE,
+        link_ends,
+        data,
+        times,
+        obs_model_setup.links.LinkEndType.receiver,
+    )
+
+    return (observation_set, observation_model)
+
+
 @register_dataset_factory("relative_differential_CCD_nsdb")
 # @register_dataset_factory("relative_CCD_nsdb")
 # @register_dataset_factory("relative_X,Y_CCD_nsdb")
 def create_relative_differential_CCD_nsdb_dataset(
     cfg: DictConfig, dataset_cfg: DictConfig, system_of_bodies: env.SystemOfBodies
-) -> tuple[obs.ObservationCollection, obs_model_setup.model_settings.ObservationModelSettings]:
+) -> tuple[obs.ObservationCollection, list[Any]]:
     """Create a dataset from relative CCD observations in differential RA/Dec coordinates from NSDB.
 
     Args:
@@ -73,59 +136,37 @@ def create_relative_differential_CCD_nsdb_dataset(
         if pos is not None and 0 <= pos < len(col_names):
             col_names[pos] = name if name is not None else col_names[pos]
 
-    # Ensure observatory exists in the system of bodies
-    station_name = normalize_observatory_code(dataset_cfg.observatory.code)
-    add_observatory_to_SOB(cfg, system_of_bodies, station_name)
-
-    # Convert times to seconds since J2000 epoch TDB for Tudat using station position
     data_file.columns = col_names
-    set_iso_time_column(data_file)
-    convert_time_to_seconds_since_j2000_TDB(
-        data_file, station_name, system_of_bodies, dataset_cfg.time_scale
-    )
 
-    # extract data for observation set
+    # Station-independent preprocessing on the full dataframe.
+    set_iso_time_column(data_file)
     relative_x_column, relative_y_column = set_relative_position_columns(data_file)
-    valid_rows = data_file[["epoch_TDB", relative_x_column, relative_y_column]].dropna()
-    times = valid_rows["epoch_TDB"].tolist()
-    data = [
-        row[[relative_x_column, relative_y_column]].to_numpy(dtype=float).reshape(2, 1)
-        for _, row in valid_rows.iterrows()
-    ]
 
     # Fail if file contains multiple satellites, not implemented yet
     if len(list(dataset_cfg.satellites.keys())) > 1:
         raise NotImplementedError("Multiple satellites in one NSDB file not supported yet.")
 
-    # Setup link ends
-    link_ends = dict()
-    target = list(dataset_cfg.satellites.keys())[0]
-    relative_to = dataset_cfg.relative_to.designation.split(" - ")[1]
-    link_ends[obs_model_setup.links.transmitter] = obs_model_setup.links.body_origin_link_end_id(
-        relative_to
-    )
-    link_ends[obs_model_setup.links.transmitter2] = obs_model_setup.links.body_origin_link_end_id(
-        target
-    )
+    observatories = list(dataset_cfg.observatory)
+    telescope_index = dict(dataset_cfg.get("telescope_index", {}) or {})
+    observatory_codes = resolve_observatory_codes(data_file, observatories, telescope_index)
 
-    if str(dataset_cfg.center_of_frame).lower() == "geocentric":
-        link_ends[obs_model_setup.links.receiver] = obs_model_setup.links.body_origin_link_end_id(
-            "Earth"
+    observation_sets = []
+    observation_models = []
+    for station_name, group in group_rows_by_observatory(data_file, observatory_codes):
+        observation_set, observation_model = _build_relative_observation_set(
+            cfg,
+            dataset_cfg,
+            system_of_bodies,
+            group,
+            station_name,
+            relative_x_column,
+            relative_y_column,
         )
-    else:
-        link_ends[obs_model_setup.links.receiver] = (
-            obs_model_setup.links.body_reference_point_link_end_id("Earth", station_name)
-        )
-    link_definition = obs_model_setup.links.LinkDefinition(link_ends)
-    observation_model = obs_model_setup.model_settings.relative_angular_position(link_definition)
+        observation_sets.append(observation_set)
+        observation_models.append(observation_model)
 
-    observation_set = obs.create_single_observation_set(
-        RELATIVE_ANGULAR_POSITION_TYPE,
-        link_ends,
-        data,
-        times,
-        obs_model_setup.links.LinkEndType.receiver,
-    )
-    logger.warning("fix RELATIVE_ANGULAR_POSITION_TYPE workaround in tudatpy")
+    if len(observation_sets) == 1:
+        return observation_sets[0], observation_models[0]
 
-    return (observation_set, observation_model)
+    collection = obs.ObservationCollection(observation_sets)
+    return collection, observation_models

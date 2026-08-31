@@ -27,8 +27,8 @@ def _read_utf8_with_question_marks(path: Path) -> str:
 
 @hydra.main(
     version_base=None,
-    config_path="../conf/dataset_instructions",
-    config_name="triton_nsdb",
+    config_path="../conf/generator",
+    config_name="atanas_triton_2",
 )
 def main(cfg: DictConfig):
     initialize(cfg)
@@ -66,7 +66,7 @@ def main(cfg: DictConfig):
     # Generate a collection config that references the generated dataset configs
     try:
         repo_root = Path(__file__).resolve().parents[1]
-        coll_folder = repo_root / "conf" / "collections"
+        coll_folder = repo_root / "conf" / "collection"
         coll_folder.mkdir(parents=True, exist_ok=True)
 
         lines = ["# @package _global_"]

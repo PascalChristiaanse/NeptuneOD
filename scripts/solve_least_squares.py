@@ -346,9 +346,7 @@ def main(cfg: DictConfig):
         else:
             logger.warning("Unable to find estimation log file at %s", estimation_log_path)
         # Exit program cleanly with error code
-        import sys
-
-        sys.exit(1)
+        raise
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
     save_tudat_object(estimation_output, estimation_log_path.with_suffix(".tudat"))

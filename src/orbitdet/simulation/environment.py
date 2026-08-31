@@ -365,6 +365,7 @@ def _setup_gravity_neptune_jacobson2009(
     l_max = 4
     Cbar = np.zeros((l_max + 1, l_max + 1))
     Sbar = np.zeros_like(Cbar)
+    Cbar[0, 0] = 1.0  # C̄₀₀ = 1 represents central point-mass gravity
     Cbar[2, 0] = C20
     Cbar[4, 0] = C40
 

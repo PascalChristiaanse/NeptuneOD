@@ -15,9 +15,9 @@ defaults:
   - /figures/residual_scatter
   - /figures/dependent_variable
   - /figures/dependent_variable_differenced@dependent_variable_differenced
-  # - /figures/parameter_correlation_heatmap
-  # - /figures/parameter_history_per_iteration
-  # - /figures/covariance_ellipses
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
 
 seed: 42
 
@@ -31,4 +31,4 @@ hydra:
 # Time settings
 start_date: 1963-1-1T12:00:00
 end_date: 2025-1-1T12:00:00
-initial_epoch: 2006-10-1T12:00:00
+initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton

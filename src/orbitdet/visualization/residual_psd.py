@@ -226,8 +226,12 @@ def _configure_psd_axis(
     period_axis = ax.secondary_xaxis(
         "top",
         functions=(
-            lambda frequency: np.divide(1.0, frequency, where=frequency != 0),
-            lambda period: np.divide(1.0, period, where=period != 0),
+            lambda frequency: np.divide(
+                1.0, frequency, where=frequency != 0, out=np.full_like(frequency, np.inf, dtype=float)
+            ),
+            lambda period: np.divide(
+                1.0, period, where=period != 0, out=np.full_like(period, np.inf, dtype=float)
+            ),
         ),
     )
     period_axis.set_xlabel(axes_cfg.get("period_label", "Period [days/cycle]"))
@@ -334,16 +338,24 @@ class ResidualsPSD(Plot):
             ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
             dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
 
-            _, ra_uniform, ra_dt_days = _resample_uniform(obs_times_days, ra_residuals_arcsec)
-            _, dec_uniform, dec_dt_days = _resample_uniform(obs_times_days, dec_residuals_arcsec)
-
-            ra_freq, ra_psd = _compute_psd(
-                ra_uniform, ra_dt_days, window_length_days, window_type, method
-            )
-            dec_freq, dec_psd = _compute_psd(
-                dec_uniform, dec_dt_days, window_length_days, window_type, method
-            )
-
+            try:
+                _, ra_uniform, ra_dt_days = _resample_uniform(
+                    obs_times_days, ra_residuals_arcsec
+                )
+                _, dec_uniform, dec_dt_days = _resample_uniform(
+                    obs_times_days, dec_residuals_arcsec
+                )
+                ra_freq, ra_psd = _compute_psd(
+                    ra_uniform, ra_dt_days, window_length_days, window_type, method
+                )
+                dec_freq, dec_psd = _compute_psd(
+                    dec_uniform, dec_dt_days, window_length_days, window_type, method
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "Skipping %s because PSD computation failed: %s", info["name"], str(exc)
+                )
+                continue
             positive_ra = ra_freq > 0.0
             positive_dec = dec_freq > 0.0
             if np.any(positive_ra):

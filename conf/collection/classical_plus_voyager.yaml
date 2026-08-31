@@ -3,7 +3,7 @@
 # Combined collection: classical NSDB data + Voyager 2 data.
 
 defaults:
-  - /collection/working
+  - /collection/atanas_triton_generated
   - /collection/voyager_collection
 
 name: "Classical + Voyager"

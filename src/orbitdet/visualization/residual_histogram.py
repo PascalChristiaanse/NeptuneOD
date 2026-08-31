@@ -117,7 +117,7 @@ class ResidualHistogram(Plot):
             finite_dec = dec_residuals_arcsec[np.isfinite(dec_residuals_arcsec)]
 
             # --- RA histogram ---
-            if finite_ra.size > 0:
+            if finite_ra.size > 1:
                 n_ra, bins_ra, patches_ra = axs[0].hist(
                     finite_ra,
                     bins=n_bins,
@@ -152,7 +152,7 @@ class ResidualHistogram(Plot):
                     )
 
             # --- DEC histogram ---
-            if finite_dec.size > 0:
+            if finite_dec.size > 1:
                 n_dec, bins_dec, patches_dec = axs[1].hist(
                     finite_dec,
                     bins=n_bins,

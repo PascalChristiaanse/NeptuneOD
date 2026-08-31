@@ -37,7 +37,7 @@ def _principal_angle_rad(angle_rad: np.ndarray) -> np.ndarray:
 def _compute_qq_data(values_arcsec: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Compute theoretical and sample quantiles for a Q-Q plot against a normal distribution."""
     finite_values = values_arcsec[np.isfinite(values_arcsec)]
-    if finite_values.size == 0:
+    if finite_values.size < 2:
         return np.array([]), np.array([])
 
     standardized = (finite_values - np.mean(finite_values)) / np.std(finite_values, ddof=1)

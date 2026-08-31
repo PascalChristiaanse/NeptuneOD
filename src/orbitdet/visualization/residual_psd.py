@@ -227,10 +227,16 @@ def _configure_psd_axis(
         "top",
         functions=(
             lambda frequency: np.divide(
-                1.0, frequency, where=frequency != 0, out=np.full_like(frequency, np.inf, dtype=float)
+                1.0,
+                frequency,
+                where=frequency != 0,
+                out=np.full_like(frequency, np.inf, dtype=float),
             ),
             lambda period: np.divide(
-                1.0, period, where=period != 0, out=np.full_like(period, np.inf, dtype=float)
+                1.0,
+                period,
+                where=period != 0,
+                out=np.full_like(period, np.inf, dtype=float),
             ),
         ),
     )
@@ -339,9 +345,7 @@ class ResidualsPSD(Plot):
             dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
 
             try:
-                _, ra_uniform, ra_dt_days = _resample_uniform(
-                    obs_times_days, ra_residuals_arcsec
-                )
+                _, ra_uniform, ra_dt_days = _resample_uniform(obs_times_days, ra_residuals_arcsec)
                 _, dec_uniform, dec_dt_days = _resample_uniform(
                     obs_times_days, dec_residuals_arcsec
                 )

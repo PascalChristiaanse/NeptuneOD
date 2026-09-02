@@ -1,0 +1,17 @@
+RSW_distance:
+  output_file: "rsw_distance.pdf"
+  central_body: "Neptune"
+  figure:
+    width: 16.54
+    height: 11.0
+  titles:
+    r: "Radial (R)"
+    s: "Transverse (S)"
+    w: "Cross-track (W)"
+    norm: "L2 Norm of RSW"
+    suptitle: "RSW Distance for {body1} w.r.t. {body2} (centered on {central_body})"
+  axes:
+    x_label: "Epoch"
+    y_label: "Distance [m]"
+    hover_x_label: "Epoch"
+    hover_y_label: "Distance [m]"

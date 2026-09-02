@@ -18,7 +18,8 @@ defaults:
   - /figures/parameter_correlation_heatmap
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses
-
+  - /figures/RSW_distance
+  
 seed: 42
 
 # Hydra settings

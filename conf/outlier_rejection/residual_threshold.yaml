@@ -1,0 +1,10 @@
+# @package _global_
+
+# Outlier rejection: residual threshold (default).
+# Removes observations whose RA or DEC residual exceeds 1.5 arcsec.
+
+outlier_rejection:
+  enabled: true
+  strategies:
+    - type: residual_threshold
+      threshold_arcsec: 1.5

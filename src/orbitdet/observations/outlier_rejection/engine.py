@@ -3,6 +3,10 @@
 The :class:`OutlierEngine` applies a sequence of :class:`OutlierStrategy`
 instances to every observation set in a collection, returning a filtered
 collection plus per-set rejection metadata.
+
+Each strategy can optionally be restricted to specific observation sets
+via a ``sets`` filter.  Strategies without a ``sets`` filter are applied
+to **all** sets.
 """
 
 from __future__ import annotations
@@ -15,9 +19,68 @@ import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
 from .base import OutlierStrategy
-from .registry import get_strategy_class, list_registered_strategies
+from .registry import get_strategy_class
 
 logger = logging.getLogger(__name__)
+
+
+def get_set_identifier(observation_set: obs.SingleObservationSet) -> str:
+    """Return a human-readable identifier for an observation set.
+
+    The identifier is derived from the receiver link end:
+    - Ground stations: the observatory code (e.g. ``"689"``).
+    - Spacecraft: the body name (e.g. ``"Voyager 2"``).
+    - Geocentric (no reference point): ``"Geocentric"``.
+
+    Parameters
+    ----------
+    observation_set : SingleObservationSet
+        The observation set to identify.
+
+    Returns
+    -------
+    str
+        A string identifier for the set.
+    """
+    from tudatpy.estimation.observable_models_setup import links
+
+    link_ends = observation_set.link_definition.link_ends
+    receiver = link_ends.get(links.receiver)
+    if receiver is None:
+        return str(observation_set)
+
+    reference_point = receiver.reference_point
+    if reference_point == "":
+        return receiver.body_name
+    try:
+        code = int(reference_point)
+        if code < 0:
+            return receiver.body_name
+    except (ValueError, TypeError):
+        pass
+    return reference_point
+
+
+class _ScopedStrategy:
+    """A strategy paired with an optional set filter.
+
+    Parameters
+    ----------
+    strategy : OutlierStrategy
+        The strategy instance.
+    set_filter : set[str] | None
+        If not None, the strategy is only applied to observation sets whose
+        :func:`get_set_identifier` is in this set.  If None, the strategy
+        applies to all sets.
+    """
+
+    def __init__(self, strategy: OutlierStrategy, set_filter: set[str] | None):
+        self.strategy = strategy
+        self.set_filter = set_filter
+
+    def applies_to(self, set_id: str) -> bool:
+        """Check whether this strategy applies to the given set identifier."""
+        return self.set_filter is None or set_id in self.set_filter
 
 
 class OutlierEngine:
@@ -33,12 +96,12 @@ class OutlierEngine:
     def __init__(self, strategies: list[OutlierStrategy]):
         if not strategies:
             raise ValueError("At least one outlier strategy is required.")
-        self._strategies = list(strategies)
+        self._strategies = [_ScopedStrategy(s, None) for s in strategies]
 
     @property
     def strategies(self) -> list[OutlierStrategy]:
         """The ordered list of strategies managed by this engine (read-only)."""
-        return list(self._strategies)
+        return [s.strategy for s in self._strategies]
 
     # ------------------------------------------------------------------
     # Public API
@@ -80,7 +143,7 @@ class OutlierEngine:
 
         Like :meth:`apply` but additionally returns a second
         ``ObservationCollection`` containing only the observations that were
-        rejected by the final strategy in the chain.
+        rejected by any strategy in the chain.
 
         Parameters
         ----------
@@ -110,24 +173,40 @@ class OutlierEngine:
         per_set_metadata: dict[str, Any] = {}
 
         for obs_set in all_sets:
-            set_id = _get_set_id(obs_set)
+            set_id = get_set_identifier(obs_set)
             current_set = obs_set
             set_metadata: dict[str, Any] = {"set_id": set_id, "strategies": []}
 
-            for strategy in self._strategies:
-                strategy_name = strategy.__class__.__name__
+            for scoped in self._strategies:
+                if not scoped.applies_to(set_id):
+                    logger.debug(
+                        "Skipping strategy '%s' for set '%s' (not in filter)",
+                        scoped.strategy.__class__.__name__,
+                        set_id,
+                    )
+                    continue
+
+                strategy_name = scoped.strategy.__class__.__name__
                 logger.debug(
                     "Applying strategy '%s' to set '%s'", strategy_name, set_id
                 )
-                current_set, strategy_meta = strategy.apply(current_set, bodies)
+                current_set, strategy_meta = scoped.strategy.apply(current_set, bodies)
                 set_metadata["strategies"].append(strategy_meta)
 
             # Aggregate totals for this set
-            n_accepted = set_metadata["strategies"][-1]["n_accepted"]
-            n_rejected = sum(
-                s["n_rejected"] for s in set_metadata["strategies"]
-            )
-            n_total = set_metadata["strategies"][0]["n_total"]
+            if set_metadata["strategies"]:
+                n_accepted = set_metadata["strategies"][-1]["n_accepted"]
+                n_rejected = sum(
+                    s["n_rejected"] for s in set_metadata["strategies"]
+                )
+                n_total = set_metadata["strategies"][0]["n_total"]
+            else:
+                # No strategies applied to this set — keep all observations
+                epochs_all = _get_epochs_float(obs_set)
+                n_accepted = len(epochs_all)
+                n_rejected = 0
+                n_total = len(epochs_all)
+
             set_metadata["n_accepted"] = n_accepted
             set_metadata["n_rejected"] = n_rejected
             set_metadata["n_total"] = n_total
@@ -135,8 +214,7 @@ class OutlierEngine:
             filtered_sets.append(current_set)
 
             # Build rejected set: observations present in the original set
-            # but absent from the accepted (filtered) set.  This is more
-            # reliable than trying to invert the filter logic.
+            # but absent from the accepted (filtered) set.
             rejected_set = _build_rejected_set(obs_set, current_set)
             rejected_sets.append(rejected_set)
 
@@ -214,7 +292,7 @@ class OutlierEngine:
                 "Outlier rejection config must have a non-empty 'strategies' list."
             )
 
-        strategies: list[OutlierStrategy] = []
+        scoped_strategies: list[_ScopedStrategy] = []
         for entry in strategies_cfg:
             strategy_type = OmegaConf.select(entry, "type")
             if not strategy_type:
@@ -224,11 +302,17 @@ class OutlierEngine:
 
             cls_strategy = get_strategy_class(strategy_type)
 
-            # Build kwargs from the config entry (excluding 'type')
+            # Build kwargs from the config entry (excluding 'type' and 'sets')
             kwargs = {}
+            set_filter: set[str] | None = None
             for key, value in entry.items():
-                if key != "type":
-                    kwargs[key] = value
+                if key == "type":
+                    continue
+                if key == "sets":
+                    # Convert to a set of strings for fast lookup
+                    set_filter = {str(s) for s in value}
+                    continue
+                kwargs[key] = value
 
             # Special handling: convert OmegaConf list to plain Python list
             # for epoch_filter's epochs_to_remove parameter.
@@ -236,9 +320,12 @@ class OutlierEngine:
                 kwargs["epochs_to_remove"] = list(kwargs.pop("epochs"))
 
             strategy_instance = cls_strategy(**kwargs)
-            strategies.append(strategy_instance)
+            scoped_strategies.append(_ScopedStrategy(strategy_instance, set_filter))
 
-        return cls(strategies)
+        # Build an engine with the scoped strategies
+        engine = cls.__new__(cls)
+        engine._strategies = scoped_strategies
+        return engine
 
 
 # ---------------------------------------------------------------------------
@@ -246,17 +333,11 @@ class OutlierEngine:
 # ---------------------------------------------------------------------------
 
 
-def _get_set_id(observation_set: obs.SingleObservationSet) -> str:
-    """Extract a human-readable identifier for an observation set.
-
-    Tudat's ``SingleObservationSet`` does not expose a ``set_id`` attribute
-    directly in the Python bindings.  We fall back to a string representation
-    of the link definition.
-    """
-    try:
-        return str(observation_set)
-    except Exception:
-        return f"set_{id(observation_set)}"
+def _get_epochs_float(
+    observation_set: obs.SingleObservationSet,
+) -> list[float]:
+    """Extract observation epochs as a list of floats (seconds since J2000)."""
+    return [epoch.to_float() for epoch in observation_set.observation_times]
 
 
 def _build_rejected_set(

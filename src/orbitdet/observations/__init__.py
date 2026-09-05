@@ -16,6 +16,16 @@ from .configs import (
 )
 from .factory import create_observation_dataset
 from .helpers import get_observatory_info
+from .outlier_rejection import (
+    OutlierEngine,
+    OutlierRejectionConfig,
+    OutlierStrategy,
+    OutlierStrategyConfig,
+    get_set_identifier,
+    get_strategy_class,
+    list_registered_strategies,
+    register_outlier_strategy,
+)
 from .registry import get_factory, list_registered_types, register_dataset_factory
 
 __all__ = [
@@ -38,4 +48,14 @@ __all__ = [
     "voyager",
     # Helper functions
     "get_observatory_info",
+    # Outlier rejection
+    "OutlierStrategy",
+    "OutlierEngine",
+    "OutlierRejectionConfig",
+    "OutlierStrategyConfig",
+    "get_set_identifier",
+    "register_outlier_strategy",
+    "get_strategy_class",
+    "list_registered_strategies",
 ]
+

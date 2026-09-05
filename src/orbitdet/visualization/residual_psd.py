@@ -312,6 +312,9 @@ class ResidualsPSD(Plot):
         max_frequency = 0.0
 
         for set_index, obs_set in enumerate(observation_sets):
+            if len(obs_set.observation_times) == 0:
+                continue
+
             observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
             target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
             info = get_observatory_info(cfg, observatory_code)

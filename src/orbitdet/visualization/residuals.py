@@ -1,3 +1,5 @@
+import logging
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,6 +11,8 @@ from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot
+
+logger = logging.getLogger(__name__)
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -167,6 +171,10 @@ class Residuals(Plot):
         label_prefix: str,
     ):
         """Plot RA and DEC residuals for one observation set on the given axes."""
+        if len(obs_set.observation_times) == 0:
+            logger.debug("Skipping empty observation set '%s'", label_prefix)
+            return
+
         obs_times_sec_j2000 = np.array(
             [epoch.to_float() for epoch in obs_set.observation_times]
         )

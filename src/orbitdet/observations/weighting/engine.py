@@ -1,0 +1,209 @@
+"""Engine that orchestrates weighting over an ObservationCollection.
+
+The :class:`WeightEngine` applies a :class:`WeightStrategy` to every
+observation set in a collection, optionally partitioned by grouping levels,
+and assigns the resulting weights via ``set_tabulated_weights``.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import tudatpy.dynamics.environment as env
+import tudatpy.estimation.observations as obs
+from omegaconf import DictConfig, OmegaConf
+
+from .base import WeightStrategy
+from .grouping import build_group_list
+from .registry import get_strategy_class
+
+logger = logging.getLogger(__name__)
+
+
+class WeightEngine:
+    """Orchestrates weighting over an ObservationCollection.
+
+    Parameters
+    ----------
+    strategy : WeightStrategy
+        The weighting strategy to apply.
+    grouping : DictConfig | None
+        Grouping configuration (defines levels like sections, timeframes).
+        If None, each set is treated as a single group.
+    min_sigma_arcsec : float
+        Floor on sigma in arcseconds.
+    """
+
+    def __init__(
+        self,
+        strategy: WeightStrategy,
+        grouping: DictConfig | None = None,
+        min_sigma_arcsec: float = 0.01,
+    ):
+        self._strategy = strategy
+        self._grouping = grouping
+        self._min_sigma_arcsec = min_sigma_arcsec
+
+    @property
+    def strategy(self) -> WeightStrategy:
+        """The weighting strategy (read-only)."""
+        return self._strategy
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def apply(
+        self,
+        collection: obs.ObservationCollection,
+        bodies: env.SystemOfBodies,
+        output_dir: str | Path | None = None,
+    ) -> tuple[obs.ObservationCollection, pd.DataFrame]:
+        """Compute and assign weights to all observation sets.
+
+        Parameters
+        ----------
+        collection : ObservationCollection
+            The observation collection to weight.  Residuals must be populated.
+        bodies : SystemOfBodies
+            The system of bodies (passed through to strategies).
+        output_dir : str | Path, optional
+            If provided, the per-observation weights DataFrame is saved to
+            ``<output_dir>/observation_weights.csv``.
+
+        Returns
+        -------
+        tuple[ObservationCollection, pd.DataFrame]
+            - The weighted ``ObservationCollection`` (modified in place).
+            - A DataFrame with per-observation weight metadata.
+        """
+        all_sets = collection.get_single_observation_sets()
+        logger.info(
+            "WeightEngine: applying '%s' strategy to %d observation set(s)",
+            self._strategy.__class__.__name__,
+            len(all_sets),
+        )
+
+        all_dfs: list[pd.DataFrame] = []
+
+        for obs_set in all_sets:
+            set_id = _get_set_id(obs_set)
+            times = np.array([t.to_float() for t in obs_set.observation_times])
+            n_obs = len(times)
+
+            if n_obs == 0:
+                logger.debug("WeightEngine: skipping empty set '%s'", set_id)
+                continue
+
+            # Build groups from the grouping config
+            groups = build_group_list(times, set_id, self._grouping)
+            logger.debug(
+                "WeightEngine [%s]: %d groups across levels: %s",
+                set_id,
+                len(groups),
+                {g.level for g in groups},
+            )
+
+            # Compute weights
+            weights_array, weights_df = self._strategy.compute_weights(
+                obs_set, groups, set_id, self._min_sigma_arcsec,
+            )
+
+            if len(weights_array) == 0:
+                logger.warning("WeightEngine: no weights computed for set '%s'", set_id)
+                continue
+
+            # Assign weights via Tudat's set_tabulated_weights
+            try:
+                obs_set.set_tabulated_weights(weights_array)
+            except Exception as exc:
+                logger.error(
+                    "WeightEngine: failed to set weights for set '%s': %s", set_id, exc
+                )
+                raise
+
+            all_dfs.append(weights_df)
+
+        if all_dfs:
+            combined_df = pd.concat(all_dfs, ignore_index=True)
+            logger.info(
+                "WeightEngine: assigned weights to %d observations",
+                len(combined_df),
+            )
+
+            # Save to CSV if output_dir is provided
+            if output_dir is not None:
+                output_path = Path(output_dir) / "observation_weights.csv"
+                combined_df.to_csv(output_path, index=False)
+                logger.info("WeightEngine: weights saved to %s", output_path)
+        else:
+            combined_df = pd.DataFrame()
+
+        return collection, combined_df
+
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_config(cls, cfg: DictConfig) -> WeightEngine:
+        """Build an engine from a Hydra configuration node.
+
+        The config should have the following structure::
+
+            weighting:
+              enabled: true
+              strategy: id_v2
+              min_sigma_arcsec: 0.01
+              grouping:
+                levels:
+                  - type: timeframe
+                    gap_threshold_hours: 4.0
+
+        Parameters
+        ----------
+        cfg : DictConfig
+            The configuration node (typically ``cfg.weighting``).
+
+        Returns
+        -------
+        WeightEngine
+            An engine with the configured strategy and grouping.
+        """
+        strategy_name = OmegaConf.select(cfg, "strategy", default="id_v2")
+        min_sigma = float(OmegaConf.select(cfg, "min_sigma_arcsec", default=0.01))
+        grouping = OmegaConf.select(cfg, "grouping")
+
+        strategy_cls = get_strategy_class(strategy_name)
+        strategy_instance = strategy_cls()
+
+        return cls(strategy_instance, grouping=grouping, min_sigma_arcsec=min_sigma)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_set_id(observation_set: obs.SingleObservationSet) -> str:
+    """Extract a human-readable identifier for an observation set."""
+    from tudatpy.estimation.observable_models_setup import links
+
+    link_ends = observation_set.link_definition.link_ends
+    receiver = link_ends.get(links.receiver)
+    if receiver is None:
+        return str(observation_set)
+
+    reference_point = receiver.reference_point
+    if reference_point == "":
+        return receiver.body_name
+    try:
+        code = int(reference_point)
+        if code < 0:
+            return receiver.body_name
+    except (ValueError, TypeError):
+        pass
+    return reference_point

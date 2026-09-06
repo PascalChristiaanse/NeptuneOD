@@ -22,11 +22,22 @@ from .outlier_rejection import (
     OutlierStrategy,
     OutlierStrategyConfig,
     get_set_identifier,
-    get_strategy_class,
-    list_registered_strategies,
+    get_strategy_class as get_outlier_strategy_class,
+    list_registered_strategies as list_registered_outlier_strategies,
     register_outlier_strategy,
 )
 from .registry import get_factory, list_registered_types, register_dataset_factory
+from .weighting import (
+    Group,
+    GroupList,
+    WeightEngine,
+    WeightStrategy,
+    WeightingConfig,
+    build_group_list,
+    get_strategy_class as get_weight_strategy_class,
+    list_registered_strategies as list_registered_weight_strategies,
+    register_weight_strategy,
+)
 
 __all__ = [
     # Config dataclasses
@@ -55,7 +66,17 @@ __all__ = [
     "OutlierStrategyConfig",
     "get_set_identifier",
     "register_outlier_strategy",
-    "get_strategy_class",
-    "list_registered_strategies",
+    "get_outlier_strategy_class",
+    "list_registered_outlier_strategies",
+    # Weighting
+    "WeightStrategy",
+    "WeightEngine",
+    "WeightingConfig",
+    "Group",
+    "GroupList",
+    "build_group_list",
+    "register_weight_strategy",
+    "get_weight_strategy_class",
+    "list_registered_weight_strategies",
 ]
 

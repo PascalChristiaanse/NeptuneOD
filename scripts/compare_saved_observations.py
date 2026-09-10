@@ -83,7 +83,7 @@ def main(cfg: DictConfig):
     logger.info(f"Built {len(fresh_by_id)} fresh sets from {len(datasets_cfg)} dataset configs")
 
     # Build combined collection + simulators for residual computation
-    full_collection, observation_models = create_observation_collection(cfg, bodies)
+    full_collection, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
     simulators = obs_sim_setup.create_observation_simulators(observation_models, bodies)
 
     # Compute residuals for each fresh set

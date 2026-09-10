@@ -68,7 +68,7 @@ def main(cfg: DictConfig):
     logger.info("Environment created successfully.")
 
     # Create observations
-    observations, observation_models = create_observation_collection(cfg, bodies)
+    observations, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Add range dependent variable to compute lighttime post simulation

@@ -62,6 +62,7 @@ class WeightEngine:
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
         output_dir: str | Path | None = None,
+        dataset_metadata: dict[str, list[dict]] | None = None,
     ) -> tuple[obs.ObservationCollection, pd.DataFrame]:
         """Compute and assign weights to all observation sets.
 
@@ -74,6 +75,12 @@ class WeightEngine:
         output_dir : str | Path, optional
             If provided, the per-observation weights DataFrame is saved to
             ``<output_dir>/observation_weights.csv``.
+        dataset_metadata : dict[str, list[dict]], optional
+            Mapping from set_id to a list of metadata dicts (one per dataset
+            config that produced observations for this observatory). Each dict
+            has keys ``name`` (source author), ``dataset_id`` (e.g. ``nm0008``),
+            ``observatory_code``, ``ra_type``, and ``dec_type``.
+            Metadata entries are consumed FIFO per set_id.
 
         Returns
         -------
@@ -89,6 +96,9 @@ class WeightEngine:
         )
 
         all_dfs: list[pd.DataFrame] = []
+        meta_queues: dict[str, list[dict]] = {}
+        if dataset_metadata:
+            meta_queues = {k: list(v) for k, v in dataset_metadata.items()}
 
         for obs_set in all_sets:
             set_id = _get_set_id(obs_set)
@@ -125,6 +135,26 @@ class WeightEngine:
                     "WeightEngine: failed to set weights for set '%s': %s", set_id, exc
                 )
                 raise
+
+            # Enrich with dataset metadata — pop FIFO per set_id
+            meta_queue = meta_queues.get(set_id, [])
+            if meta_queue:
+                meta = meta_queue.pop(0)
+            else:
+                meta = None
+
+            if meta:
+                weights_df["source_name"] = meta.get("name", set_id)
+                weights_df["dataset_id"] = meta.get("dataset_id", set_id)
+                weights_df["observatory_code"] = meta.get("observatory_code", set_id)
+                weights_df["ra_type"] = meta.get("ra_type", "")
+                weights_df["dec_type"] = meta.get("dec_type", "")
+            else:
+                weights_df["source_name"] = set_id
+                weights_df["dataset_id"] = set_id
+                weights_df["observatory_code"] = set_id
+                weights_df["ra_type"] = ""
+                weights_df["dec_type"] = ""
 
             all_dfs.append(weights_df)
 

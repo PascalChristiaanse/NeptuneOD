@@ -1,0 +1,25 @@
+# @package _global_
+
+# Weighting: fixed sigmas for Voyager pre/post encounter.
+# This reproduces the approach from Jacobson et al. (1991) where Voyager 2
+# observations are split at closest approach and given different weights.
+#
+# Pre-encounter: 0.03 arcsec per observation (narrow-angle camera, resolved disk)
+# Post-encounter: 0.05 arcsec per observation (centerfinding issues)
+# Ground-based: fallback to residual-driven RMSE
+
+weighting:
+  enabled: true
+  strategy: fixed
+  min_sigma_arcsec: 0.001
+  grouping:
+    levels:
+      - type: section
+        sections:
+          - {name: "pre_encounter", start: -1e30, end: 618600000.0}
+          - {name: "post_encounter", start: 618600000.0, end: 1e30}
+      - type: timeframe
+        gap_threshold_hours: 4.0
+    fixed_sigmas:
+      "Voyager 2_pre_encounter": {ra: 0.03, dec: 0.03}
+      "Voyager 2_post_encounter": {ra: 0.05, dec: 0.05}

@@ -1,0 +1,9 @@
+weight_groups:
+  figure:
+    width: 16.54
+    height: 12.0
+  styling:
+    cmap: "tab10"
+    marker_size: 20
+    alpha: 0.6
+  group_level: "timeframe"

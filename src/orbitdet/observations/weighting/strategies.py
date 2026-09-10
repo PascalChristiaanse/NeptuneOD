@@ -62,11 +62,17 @@ def _build_weights_df(
     strategy_name: str,
     set_id: str,
     level: str,
+    observable_type: str = "astrometric",
 ) -> pd.DataFrame:
     """Build a per-observation metadata DataFrame.
 
     Each row corresponds to one observation and carries the group assignment
     at the specified level, the RA/DEC residuals, and the assigned weights.
+
+    Parameters
+    ----------
+    observable_type : str
+        Human-readable type (e.g. ``"absolute"``, ``"relative"``).
     """
     # Build a group-id array at the finest granularity
     group_ids = np.full(n_obs, "", dtype=object)
@@ -93,6 +99,7 @@ def _build_weights_df(
             "set_id": set_id,
             "strategy": strategy_name,
             "group_level": level,
+            "observable_type": observable_type,
             "group_id": group_ids,
             "parent_id": parent_ids,
             "parent_level": parent_levels,
@@ -161,6 +168,7 @@ class IDv2Weight(WeightStrategy):
             df = _build_weights_df(
                 n_obs, times, residuals_rad, groups, np.full(n_obs, w_ra),
                 np.full(n_obs, w_dec), "id_v2", set_id, "set",
+                observable_type=_observable_type_str(observation_set),
             )
             return weights_array, df
 
@@ -190,6 +198,7 @@ class IDv2Weight(WeightStrategy):
             n_obs, times, residuals_rad, groups,
             weights_ra_arr, weights_dec_arr,
             "id_v2", set_id, "timeframe",
+            observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
             "IDv2Weight [%s]: RA σ=%.2e rad → w=%.2e, DEC σ=%.2e rad → w=%.2e across %d timeframe(s)",
@@ -256,6 +265,7 @@ class HybridGeometricWeight(WeightStrategy):
                 n_obs, times, residuals_rad, groups,
                 weights_ra_arr, weights_dec_arr,
                 "hybrid_geometric", set_id, "set",
+                observable_type=_observable_type_str(observation_set),
             )
             logger.debug(
                 "HybridGeoWeight [%s]: no timeframes, using set-level only "
@@ -289,6 +299,7 @@ class HybridGeometricWeight(WeightStrategy):
             n_obs, times, residuals_rad, groups,
             weights_ra_arr, weights_dec_arr,
             "hybrid_geometric", set_id, "timeframe",
+            observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
             "HybridGeoWeight [%s]: %d timeframe(s), "
@@ -318,3 +329,18 @@ def _interleave_weights(
     result[0::2] = weights_ra
     result[1::2] = weights_dec
     return result
+
+
+def _observable_type_str(observation_set: obs.SingleObservationSet) -> str:
+    """Return a human-readable string for the observable type.
+
+    Maps Tudat's ``ObservableType`` enum to ``"absolute"`` or ``"relative"``.
+    """
+    from tudatpy.estimation.observable_models_setup import model_settings as obs_model_settings
+
+    obs_type = observation_set.observable_type
+    # relative_angular_position_type = 9 in TudatPy
+    if obs_type == obs_model_settings.ObservableType(9):
+        return "relative"
+    # angular_position_type = 1 (absolute)
+    return "absolute"

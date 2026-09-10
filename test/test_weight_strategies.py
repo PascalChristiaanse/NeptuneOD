@@ -16,6 +16,7 @@ import pytest
 
 from orbitdet.observations.weighting.grouping import Group, GroupList
 from orbitdet.observations.weighting.strategies import (
+    FixedWeight,
     IDv2Weight,
     _build_weights_df,
     _interleave_weights,
@@ -127,8 +128,8 @@ class TestBuildWeightsDf:
 
         assert len(df) == 3
         assert list(df.columns) == [
-            "set_id", "strategy", "group_level", "group_id",
-            "parent_id", "parent_level", "time",
+            "set_id", "strategy", "group_level", "observable_type",
+            "group_id", "parent_id", "parent_level", "time",
             "ra_residual_rad", "dec_residual_rad",
             "ra_residual_arcsec", "dec_residual_arcsec",
             "group_ra_rms_arcsec", "group_dec_rms_arcsec",
@@ -194,12 +195,24 @@ class TestBuildWeightsDf:
 def _make_mock_obs_set(
     residuals: np.ndarray,
     times: list[float],
+    observable_type: int = 1,
 ) -> SimpleNamespace:
-    """Create a mock SingleObservationSet with residuals and times."""
+    """Create a mock SingleObservationSet with residuals and times.
+
+    Parameters
+    ----------
+    residuals : np.ndarray
+        (n_obs, 2) array of RA/DEC residuals in radians.
+    times : list[float]
+        Observation times in seconds since J2000.
+    observable_type : int
+        Tudat ObservableType enum value (1 = absolute, 9 = relative).
+    """
     mock_times = [SimpleNamespace(to_float=lambda t=t: t) for t in times]
     return SimpleNamespace(
         residuals=residuals,
         observation_times=mock_times,
+        observable_type=observable_type,
     )
 
 
@@ -375,8 +388,8 @@ class TestIDv2Weight:
         _, df = strategy.compute_weights(obs_set, groups, "obs1")
 
         expected_columns = {
-            "set_id", "strategy", "group_level", "group_id",
-            "parent_id", "parent_level", "time",
+            "set_id", "strategy", "group_level", "observable_type",
+            "group_id", "parent_id", "parent_level", "time",
             "ra_residual_rad", "dec_residual_rad",
             "ra_residual_arcsec", "dec_residual_arcsec",
             "group_ra_rms_arcsec", "group_dec_rms_arcsec",
@@ -523,11 +536,207 @@ class TestHybridGeometricWeight:
         _, df = strategy.compute_weights(obs_set, groups, "obs1")
 
         expected_columns = {
-            "set_id", "strategy", "group_level", "group_id",
-            "parent_id", "parent_level", "time",
+            "set_id", "strategy", "group_level", "observable_type",
+            "group_id", "parent_id", "parent_level", "time",
             "ra_residual_rad", "dec_residual_rad",
             "ra_residual_arcsec", "dec_residual_arcsec",
             "group_ra_rms_arcsec", "group_dec_rms_arcsec",
             "weight_ra", "weight_dec",
         }
         assert set(df.columns) == expected_columns
+
+
+# ===========================================================================
+# FixedWeight strategy
+# ===========================================================================
+
+
+class TestFixedWeight:
+    """Tests for the FixedWeight strategy.
+
+    FixedWeight assigns user-specified sigmas.  Tests cover per-set sigmas,
+    per-group sigmas, fallback to residual-driven RMSE, and sigma flooring.
+    """
+
+    def _make_obs_set(self, residuals, times):
+        mock_times = [SimpleNamespace(to_float=lambda t=t: t) for t in times]
+        return SimpleNamespace(
+            residuals=residuals,
+            observation_times=mock_times,
+            observable_type=1,
+        )
+
+    def _make_set_groups(self, n_obs: int, set_id: str = "obs1") -> GroupList:
+        return GroupList([
+            Group(
+                indices=np.arange(n_obs, dtype=int),
+                group_id=set_id,
+                level="set",
+            ),
+        ])
+
+    def _make_section_groups(self, n_obs: int, set_id: str = "obs1",
+                              section_name: str = "early") -> GroupList:
+        return GroupList([
+            Group(
+                indices=np.arange(n_obs, dtype=int),
+                group_id=f"{set_id}_{section_name}",
+                level="section",
+            ),
+        ])
+
+    def test_fixed_per_set_sigma(self):
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
+        times = [0.0, 100.0]
+        obs_set = self._make_obs_set(residuals, times)
+        groups = self._make_set_groups(2)
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {"obs1": {"ra": 0.1, "dec": 0.2}}
+
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.001,
+        )
+
+        ra_sigma_rad = 0.1 * np.pi / (180 * 3600)
+        dec_sigma_rad = 0.2 * np.pi / (180 * 3600)
+        expected_w_ra = 1.0 / ra_sigma_rad**2
+        expected_w_dec = 1.0 / dec_sigma_rad**2
+
+        np.testing.assert_allclose(weights_array[0], expected_w_ra)
+        np.testing.assert_allclose(weights_array[1], expected_w_dec)
+        np.testing.assert_allclose(weights_array[2], expected_w_ra)
+        np.testing.assert_allclose(weights_array[3], expected_w_dec)
+
+    def test_fixed_per_group_sigma_overrides_set(self):
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6], [5e-6, 6e-6]])
+        times = [0.0, 100.0, 200.0]
+        obs_set = self._make_obs_set(residuals, times)
+
+        groups = GroupList([
+            Group(indices=np.array([0, 1], dtype=int), group_id="obs1_tf_0000", level="timeframe"),
+            Group(indices=np.array([2], dtype=int), group_id="obs1_tf_0001", level="timeframe"),
+        ])
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {
+            "obs1": {"ra": 1.0, "dec": 1.0},
+            "obs1_tf_0001": {"ra": 0.05, "dec": 0.05},
+        }
+
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.001,
+        )
+
+        w_set = 1.0 / (1.0 * np.pi / (180 * 3600))**2
+        w_group = 1.0 / (0.05 * np.pi / (180 * 3600))**2
+
+        np.testing.assert_allclose(weights_array[0], w_set)
+        np.testing.assert_allclose(weights_array[2], w_set)
+        np.testing.assert_allclose(weights_array[4], w_group)
+
+    def test_fallback_to_residual_rmse(self):
+        residuals = np.array([[2e-6, 4e-6], [6e-6, 8e-6]])
+        times = [0.0, 100.0]
+        obs_set = self._make_obs_set(residuals, times)
+        groups = self._make_set_groups(2)
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {}
+
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.01,
+        )
+
+        ra_sigma = max(np.sqrt(np.mean(np.square(residuals[:, 0]))), 0.01 * np.pi / (180 * 3600))
+        dec_sigma = max(np.sqrt(np.mean(np.square(residuals[:, 1]))), 0.01 * np.pi / (180 * 3600))
+        expected_w_ra = 1.0 / ra_sigma**2
+        expected_w_dec = 1.0 / dec_sigma**2
+
+        np.testing.assert_allclose(weights_array[0], expected_w_ra)
+        np.testing.assert_allclose(weights_array[1], expected_w_dec)
+
+    def test_min_sigma_floor_applied(self):
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
+        times = [0.0, 100.0]
+        obs_set = self._make_obs_set(residuals, times)
+        groups = self._make_set_groups(2)
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {"obs1": {"ra": 1e-9, "dec": 1e-9}}
+
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.1,
+        )
+
+        min_sigma_rad = 0.1 * np.pi / (180 * 3600)
+        expected_w = 1.0 / min_sigma_rad**2
+        np.testing.assert_allclose(weights_array[0], expected_w)
+
+    def test_section_groups_match_section_id(self):
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
+        times = [0.0, 100.0]
+        obs_set = self._make_obs_set(residuals, times)
+        groups = self._make_section_groups(2, section_name="pre_encounter")
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {"obs1_pre_encounter": {"ra": 0.03, "dec": 0.03}}
+
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.001,
+        )
+
+        sigma_rad = 0.03 * np.pi / (180 * 3600)
+        expected_w = 1.0 / sigma_rad**2
+        np.testing.assert_allclose(weights_array[0], expected_w)
+        np.testing.assert_allclose(weights_array[1], expected_w)
+
+    def test_single_value_sigma_syntax(self):
+        residuals = np.array([[1e-6, 2e-6]])
+        times = [0.0]
+        obs_set = self._make_obs_set(residuals, times)
+        groups = self._make_set_groups(1)
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {"obs1": {"sigma": 0.5}}
+
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.001,
+        )
+
+        sigma_rad = 0.5 * np.pi / (180 * 3600)
+        expected_w = 1.0 / sigma_rad**2
+        np.testing.assert_allclose(weights_array[0], expected_w)
+
+    def test_dataframe_columns(self):
+        residuals = np.array([[1e-6, 2e-6]])
+        times = [0.0]
+        obs_set = self._make_obs_set(residuals, times)
+        groups = self._make_set_groups(1)
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {"obs1": {"ra": 0.1, "dec": 0.1}}
+
+        _, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        expected_columns = {
+            "set_id", "strategy", "group_level", "observable_type",
+            "group_id", "parent_id", "parent_level", "time",
+            "ra_residual_rad", "dec_residual_rad",
+            "ra_residual_arcsec", "dec_residual_arcsec",
+            "group_ra_rms_arcsec", "group_dec_rms_arcsec",
+            "weight_ra", "weight_dec",
+        }
+        assert set(df.columns) == expected_columns
+        assert df["strategy"].iloc[0] == "fixed"
+
+    def test_empty_observation_set(self):
+        obs_set = self._make_obs_set(np.empty((0, 2)), [])
+        groups = GroupList()
+
+        strategy = FixedWeight()
+        strategy._fixed_sigmas = {}
+        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        assert len(weights_array) == 0
+        assert df.empty

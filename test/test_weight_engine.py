@@ -136,6 +136,7 @@ def _make_mock_single_obs_set(
     times: list[float],
     body_name: str = "Earth",
     reference_point: str = "689",
+    observable_type: int = 1,
 ) -> SimpleNamespace:
     """Create a mock SingleObservationSet."""
     link_ends = {RECEIVER_KEY: SimpleNamespace(
@@ -146,6 +147,7 @@ def _make_mock_single_obs_set(
     return SimpleNamespace(
         residuals=residuals,
         observation_times=mock_times,
+        observable_type=observable_type,
         link_definition=SimpleNamespace(link_ends=link_ends),
         set_tabulated_weights=MagicMock(),
     )
@@ -305,3 +307,49 @@ class TestWeightEngineApply:
 
         assert "WeightEngine" in caplog.text
         assert "IDv2Weight" in caplog.text or "id_v2" in caplog.text
+
+    def test_fixed_strategy_from_config(self):
+        """Fixed strategy with fixed_sigmas injected via from_config."""
+        cfg = OmegaConf.create({
+            "strategy": "fixed",
+            "grouping": {
+                "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
+                "fixed_sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
+            },
+        })
+        engine = WeightEngine.from_config(cfg)
+        assert engine.strategy.__class__.__name__ == "FixedWeight"
+        assert engine._strategy._fixed_sigmas["689"]["ra"] == 0.15
+        assert engine._strategy._fixed_sigmas["689"]["dec"] == 0.15
+
+    def test_fixed_strategy_applies_weights(self):
+        """Fixed strategy should set tabulated weights via the engine."""
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
+        times = [0.0, 3600.0]
+        obs_set = _make_mock_single_obs_set("689", residuals, times, reference_point="689")
+        collection = _make_mock_collection([obs_set])
+
+        cfg = OmegaConf.create({
+            "strategy": "fixed",
+            "grouping": {
+                "fixed_sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
+            },
+        })
+        engine = WeightEngine.from_config(cfg)
+        bodies = MagicMock()
+
+        result_collection, weights_df = engine.apply(collection, bodies)
+
+        obs_set.set_tabulated_weights.assert_called_once()
+        call_args = obs_set.set_tabulated_weights.call_args[0][0]
+        assert len(call_args) == 4
+
+        ra_sigma_rad = 0.1 * np.pi / (180 * 3600)
+        dec_sigma_rad = 0.2 * np.pi / (180 * 3600)
+        expected_w_ra = 1.0 / ra_sigma_rad**2
+        expected_w_dec = 1.0 / dec_sigma_rad**2
+
+        np.testing.assert_allclose(call_args[0], expected_w_ra)
+        np.testing.assert_allclose(call_args[1], expected_w_dec)
+        assert len(weights_df) == 2
+        assert weights_df["strategy"].iloc[0] == "fixed"

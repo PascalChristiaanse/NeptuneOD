@@ -7,14 +7,13 @@ via the :func:`register_weight_strategy` decorator.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
 from .base import WeightStrategy
-from .grouping import GroupList
+from .grouping import Group, GroupList
 from .registry import register_weight_strategy
 
 logger = logging.getLogger(__name__)
@@ -131,8 +130,10 @@ class IDv2Weight(WeightStrategy):
     2. For each timeframe :math:`t`:
        :math:`\\sigma_{\\text{RA},t} = \\text{RMS}(r_{\\text{RA},i\\in t})`,
        :math:`\\sigma_{\\text{DEC},t} = \\text{RMS}(r_{\\text{DEC},i\\in t})`
-    3. Descale: :math:`\\sigma_{\\text{RA},t,\\text{descaled}} = \\sigma_{\\text{RA},t} \\cdot \\sqrt{n_t}`
-    4. ID v2 RMSE: :math:`\\sigma_{\\text{RA,id\\_v2}} = \\text{RMS}(\\sigma_{\\text{RA},t,\\text{descaled}})`
+    3. Descale:
+       :math:`\\sigma_{\\text{RA},t,\\text{descaled}} = \\sigma_{\\text{RA},t} \\cdot \\sqrt{n_t}`
+    4. ID v2 RMSE:
+       :math:`\\sigma_{\\text{RA,id\\_v2}} = \\text{RMS}(\\sigma_{\\text{RA},t,\\text{descaled}})`
     5. Weight: :math:`w_{\\text{RA}} = 1 / \\sigma_{\\text{RA,id\\_v2}}^2`
 
     This accounts for the number of observations per night, unlike the plain
@@ -162,12 +163,17 @@ class IDv2Weight(WeightStrategy):
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
             w_ra = 1.0 / ra_sigma**2
             w_dec = 1.0 / dec_sigma**2
-            weights_array = _interleave_weights(
-                np.full(n_obs, w_ra), np.full(n_obs, w_dec)
-            )
+            weights_array = _interleave_weights(np.full(n_obs, w_ra), np.full(n_obs, w_dec))
             df = _build_weights_df(
-                n_obs, times, residuals_rad, groups, np.full(n_obs, w_ra),
-                np.full(n_obs, w_dec), "id_v2", set_id, "set",
+                n_obs,
+                times,
+                residuals_rad,
+                groups,
+                np.full(n_obs, w_ra),
+                np.full(n_obs, w_dec),
+                "id_v2",
+                set_id,
+                "set",
                 observable_type=_observable_type_str(observation_set),
             )
             return weights_array, df
@@ -195,14 +201,26 @@ class IDv2Weight(WeightStrategy):
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "id_v2", set_id, "timeframe",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "id_v2",
+            set_id,
+            "timeframe",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
-            "IDv2Weight [%s]: RA σ=%.2e rad → w=%.2e, DEC σ=%.2e rad → w=%.2e across %d timeframe(s)",
-            set_id, id_v2_ra_sigma, w_ra, id_v2_dec_sigma, w_dec, len(tf_groups),
+            "IDv2Weight [%s]: RA σ=%.2e rad → w=%.2e, "
+            "DEC σ=%.2e rad → w=%.2e across %d timeframe(s)",
+            set_id,
+            id_v2_ra_sigma,
+            w_ra,
+            id_v2_dec_sigma,
+            w_dec,
+            len(tf_groups),
         )
         return weights_array, df
 
@@ -262,15 +280,22 @@ class HybridGeometricWeight(WeightStrategy):
             weights_dec_arr = np.full(n_obs, w_dec)
             weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
             df = _build_weights_df(
-                n_obs, times, residuals_rad, groups,
-                weights_ra_arr, weights_dec_arr,
-                "hybrid_geometric", set_id, "set",
+                n_obs,
+                times,
+                residuals_rad,
+                groups,
+                weights_ra_arr,
+                weights_dec_arr,
+                "hybrid_geometric",
+                set_id,
+                "set",
                 observable_type=_observable_type_str(observation_set),
             )
             logger.debug(
-                "HybridGeoWeight [%s]: no timeframes, using set-level only "
-                "(RA σ=%.2e, DEC σ=%.2e)",
-                set_id, ra_set_sigma, dec_set_sigma,
+                "HybridGeoWeight [%s]: no timeframes, using set-level only (RA σ=%.2e, DEC σ=%.2e)",
+                set_id,
+                ra_set_sigma,
+                dec_set_sigma,
             )
             return weights_array, df
 
@@ -296,16 +321,25 @@ class HybridGeometricWeight(WeightStrategy):
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "hybrid_geometric", set_id, "timeframe",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "hybrid_geometric",
+            set_id,
+            "timeframe",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
-            "HybridGeoWeight [%s]: %d timeframe(s), "
-            "set RA σ=%.2e w=%.2e, DEC σ=%.2e w=%.2e",
-            set_id, len(tf_groups),
-            ra_set_sigma, w_ra_set, dec_set_sigma, w_dec_set,
+            "HybridGeoWeight [%s]: %d timeframe(s), set RA σ=%.2e w=%.2e, DEC σ=%.2e w=%.2e",
+            set_id,
+            len(tf_groups),
+            ra_set_sigma,
+            w_ra_set,
+            dec_set_sigma,
+            w_dec_set,
         )
         return weights_array, df
 
@@ -354,14 +388,24 @@ class IDWeight(WeightStrategy):
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "id", set_id, "set",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "id",
+            set_id,
+            "set",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
             "IDWeight [%s]: RA σ=%.2e rad → w=%.2e, DEC σ=%.2e rad → w=%.2e",
-            set_id, ra_sigma, w_ra, dec_sigma, w_dec,
+            set_id,
+            ra_sigma,
+            w_ra,
+            dec_sigma,
+            w_dec,
         )
         return weights_array, df
 
@@ -452,23 +496,34 @@ class TFWeight(WeightStrategy):
         tf_groups = groups.by_level("timeframe")
         if not tf_groups:
             # Fallback: no timeframes — use set-level as a single timeframe
-            tf_groups = [Group(indices=np.arange(n_obs, dtype=int),
-                               group_id=set_id, level="timeframe")]
+            tf_groups = [
+                Group(indices=np.arange(n_obs, dtype=int), group_id=set_id, level="timeframe")
+            ]
 
         weights_ra_arr, weights_dec_arr = _descaled_tf_rmse_and_weights(
-            residuals_rad, tf_groups, min_sigma_rad,
+            residuals_rad,
+            tf_groups,
+            min_sigma_rad,
         )
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "timeframe", set_id, "timeframe",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "timeframe",
+            set_id,
+            "timeframe",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
             "TFWeight [%s]: %d timeframe(s), min_sigma=%.2e arcsec",
-            set_id, len(tf_groups), min_sigma_arcsec,
+            set_id,
+            len(tf_groups),
+            min_sigma_arcsec,
         )
         return weights_array, df
 
@@ -506,23 +561,33 @@ class TFFreeWeight(WeightStrategy):
 
         tf_groups = groups.by_level("timeframe")
         if not tf_groups:
-            tf_groups = [Group(indices=np.arange(n_obs, dtype=int),
-                               group_id=set_id, level="timeframe")]
+            tf_groups = [
+                Group(indices=np.arange(n_obs, dtype=int), group_id=set_id, level="timeframe")
+            ]
 
         weights_ra_arr, weights_dec_arr = _descaled_tf_rmse_and_weights(
-            residuals_rad, tf_groups, min_sigma_rad=0.0,
+            residuals_rad,
+            tf_groups,
+            min_sigma_rad=0.0,
         )
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "timeframe_free", set_id, "timeframe",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "timeframe_free",
+            set_id,
+            "timeframe",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
             "TFFreeWeight [%s]: %d timeframe(s), no sigma cap",
-            set_id, len(tf_groups),
+            set_id,
+            len(tf_groups),
         )
         return weights_array, df
 
@@ -603,20 +668,26 @@ class HybridGeometricV2Weight(WeightStrategy):
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
             w_ra = 1.0 / ra_sigma**2
             w_dec = 1.0 / dec_sigma**2
-            weights_array = _interleave_weights(
-                np.full(n_obs, w_ra), np.full(n_obs, w_dec)
-            )
+            weights_array = _interleave_weights(np.full(n_obs, w_ra), np.full(n_obs, w_dec))
             df = _build_weights_df(
-                n_obs, times, residuals_rad, groups,
-                np.full(n_obs, w_ra), np.full(n_obs, w_dec),
-                "hybrid_geometric_v2", set_id, "set",
+                n_obs,
+                times,
+                residuals_rad,
+                groups,
+                np.full(n_obs, w_ra),
+                np.full(n_obs, w_dec),
+                "hybrid_geometric_v2",
+                set_id,
+                "set",
                 observable_type=_observable_type_str(observation_set),
             )
             return weights_array, df
 
         # ID v2 file-level weight
         ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(
-            residuals_rad, tf_groups, min_sigma_rad,
+            residuals_rad,
+            tf_groups,
+            min_sigma_rad,
         )
         w_ra_file = 1.0 / ra_id_v2_sigma**2
         w_dec_file = 1.0 / dec_id_v2_sigma**2
@@ -640,15 +711,23 @@ class HybridGeometricV2Weight(WeightStrategy):
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "hybrid_geometric_v2", set_id, "timeframe",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "hybrid_geometric_v2",
+            set_id,
+            "timeframe",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
-            "HybridGeometricV2Weight [%s]: %d timeframe(s), "
-            "IDv2 RA σ=%.2e DEC σ=%.2e",
-            set_id, len(tf_groups), ra_id_v2_sigma, dec_id_v2_sigma,
+            "HybridGeometricV2Weight [%s]: %d timeframe(s), IDv2 RA σ=%.2e DEC σ=%.2e",
+            set_id,
+            len(tf_groups),
+            ra_id_v2_sigma,
+            dec_id_v2_sigma,
         )
         return weights_array, df
 
@@ -697,20 +776,26 @@ class HybridArithmeticWeight(WeightStrategy):
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
             w_ra = 1.0 / ra_sigma**2
             w_dec = 1.0 / dec_sigma**2
-            weights_array = _interleave_weights(
-                np.full(n_obs, w_ra), np.full(n_obs, w_dec)
-            )
+            weights_array = _interleave_weights(np.full(n_obs, w_ra), np.full(n_obs, w_dec))
             df = _build_weights_df(
-                n_obs, times, residuals_rad, groups,
-                np.full(n_obs, w_ra), np.full(n_obs, w_dec),
-                "hybrid_arithmetic", set_id, "set",
+                n_obs,
+                times,
+                residuals_rad,
+                groups,
+                np.full(n_obs, w_ra),
+                np.full(n_obs, w_dec),
+                "hybrid_arithmetic",
+                set_id,
+                "set",
                 observable_type=_observable_type_str(observation_set),
             )
             return weights_array, df
 
         # ID v2 file-level weight
         ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(
-            residuals_rad, tf_groups, min_sigma_rad,
+            residuals_rad,
+            tf_groups,
+            min_sigma_rad,
         )
         w_ra_file = 1.0 / ra_id_v2_sigma**2
         w_dec_file = 1.0 / dec_id_v2_sigma**2
@@ -734,15 +819,23 @@ class HybridArithmeticWeight(WeightStrategy):
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "hybrid_arithmetic", set_id, "timeframe",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "hybrid_arithmetic",
+            set_id,
+            "timeframe",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
-            "HybridArithmeticWeight [%s]: %d timeframe(s), "
-            "IDv2 RA σ=%.2e DEC σ=%.2e",
-            set_id, len(tf_groups), ra_id_v2_sigma, dec_id_v2_sigma,
+            "HybridArithmeticWeight [%s]: %d timeframe(s), IDv2 RA σ=%.2e DEC σ=%.2e",
+            set_id,
+            len(tf_groups),
+            ra_id_v2_sigma,
+            dec_id_v2_sigma,
         )
         return weights_array, df
 
@@ -861,14 +954,21 @@ class FixedWeight(WeightStrategy):
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
 
         df = _build_weights_df(
-            n_obs, times, residuals_rad, groups,
-            weights_ra_arr, weights_dec_arr,
-            "fixed", set_id, "set",
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            weights_ra_arr,
+            weights_dec_arr,
+            "fixed",
+            set_id,
+            "set",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
             "FixedWeight [%s]: used_fixed=%s",
-            set_id, used_fixed,
+            set_id,
+            used_fixed,
         )
         return weights_array, df
 

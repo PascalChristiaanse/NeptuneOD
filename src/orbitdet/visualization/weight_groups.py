@@ -14,7 +14,6 @@ The input is the per-observation weights CSV written by
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -116,8 +115,9 @@ class WeightGroups(Plot):
                 label=group_id,
             )
             t_start, t_end = group_spans[group_id]
-            ax.axvspan(t_start[0], t_end[0], color=group_to_color[group_id],
-                       alpha=span_alpha, zorder=0)
+            ax.axvspan(
+                t_start[0], t_end[0], color=group_to_color[group_id], alpha=span_alpha, zorder=0
+            )
         ax.set_ylabel("RA residual [arcsec]")
         ax.grid(True, alpha=0.3)
 
@@ -134,8 +134,9 @@ class WeightGroups(Plot):
                 label=group_id,
             )
             t_start, t_end = group_spans[group_id]
-            ax.axvspan(t_start[0], t_end[0], color=group_to_color[group_id],
-                       alpha=span_alpha, zorder=0)
+            ax.axvspan(
+                t_start[0], t_end[0], color=group_to_color[group_id], alpha=span_alpha, zorder=0
+            )
         ax.set_ylabel("DEC residual [arcsec]")
         ax.set_xlabel("Epoch")
         ax.grid(True, alpha=0.3)
@@ -148,8 +149,11 @@ class WeightGroups(Plot):
             fontsize="small",
         )
 
+        strategy_label = (
+            df['strategy'].iloc[0] if 'strategy' in df.columns else 'unknown'
+        )
         fig.suptitle(
-            f"Weighting strategy: {df['strategy'].iloc[0] if 'strategy' in df.columns else 'unknown'}",
+            f"Weighting strategy: {strategy_label}",
             fontsize=14,
         )
 

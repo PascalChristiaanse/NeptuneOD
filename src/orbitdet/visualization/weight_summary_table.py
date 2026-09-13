@@ -5,10 +5,12 @@ Produces two table variants from a weights DataFrame:
 1. **Per-source** (``build_source``): one row per academic source, with RA and
    DEC statistics side by side, matching the format used in the literature::
 
-    +----------------------------+------+------+-------------+-----------+------+-------------+-----------+
-    | Source                     | Obs  | N    | RA type     | RA RMSE   | N    | DEC type    | DEC RMSE  |
-    +----------------------------+------+------+-------------+-----------+------+-------------+-----------+
-    | Veiga et al. (1996)        | 874  | 51   | Δα cos δ    | 0.′′080   | 51   | Δδ          | 0.′′046   |
+    +----------------------------+------+------+-------------+-----------+------+
+    | Source                     | Obs  | N    | RA type     | RA RMSE   | N    |
+    |                            |      |      | DEC type    | DEC RMSE  |
+    +----------------------------+------+------+-------------+-----------+------+
+    | Veiga et al. (1996)        | 874  | 51   | Δα cos δ    | 0.′′080   | 51   |
+    |                            |      |      | Δδ          | 0.′′046   |
 
 2. **Per-group** (``build_group``): one row per time-based group (e.g. per
    observing night), with the same columns plus the group identifier.
@@ -154,9 +156,9 @@ class WeightSummaryTable:
 
         for _, row in table.iterrows():
             lines.append(
-                f"{row['source']:<40}  {row['dataset_id']:>7}  {row['observatory_code']:>5}  {row['n_obs']:>5}  "
-                f"{row['ra_type']:<20}  {row['ra_rms_arcsec']:>8.4f}  {row['n_obs']:>5}  "
-                f"{row['dec_type']:<20}  {row['dec_rms_arcsec']:>8.4f}"
+                f"{row['source']:<40}  {row['dataset_id']:>7}  {row['observatory_code']:>5}  "
+                f"{row['n_obs']:>5}  {row['ra_type']:<20}  {row['ra_rms_arcsec']:>8.4f}  "
+                f"{row['n_obs']:>5}  {row['dec_type']:<20}  {row['dec_rms_arcsec']:>8.4f}"
             )
 
         lines.append("=" * 140)
@@ -181,8 +183,8 @@ class WeightSummaryTable:
 
         for _, row in table.iterrows():
             lines.append(
-                f"{row['source']:<40}  {row['dataset_id']:>7}  {row['observatory_code']:>5}  {row['group_id']:<18}  "
-                f"{row['n_obs']:>5}  {row['ra_type']:<20}  "
+                f"{row['source']:<40}  {row['dataset_id']:>7}  {row['observatory_code']:>5}  "
+                f"{row['group_id']:<18}  {row['n_obs']:>5}  {row['ra_type']:<20}  "
                 f"{row['ra_rms_arcsec']:>8.4f}  {row['dec_type']:<20}  "
                 f"{row['dec_rms_arcsec']:>8.4f}"
             )
@@ -215,9 +217,9 @@ class WeightSummaryTable:
         for _, row in table.iterrows():
             source_escaped = str(row["source"]).replace("&", r"\&")
             lines.append(
-                f"{source_escaped} & {row['dataset_id']} & {row['observatory_code']} & {row['n_obs']} & "
-                f"{row['ra_type']} & {row['ra_rms_arcsec']:.4f} & {row['n_obs']} & "
-                f"{row['dec_type']} & {row['dec_rms_arcsec']:.4f} \\\\"
+                f"{source_escaped} & {row['dataset_id']} & {row['observatory_code']} & "
+                f"{row['n_obs']} & {row['ra_type']} & {row['ra_rms_arcsec']:.4f} & "
+                f"{row['n_obs']} & {row['dec_type']} & {row['dec_rms_arcsec']:.4f} \\\\"
             )
 
         total_obs = table["n_obs"].sum()
@@ -255,9 +257,10 @@ class WeightSummaryTable:
         for _, row in table.iterrows():
             source_escaped = str(row["source"]).replace("&", r"\&")
             lines.append(
-                f"{source_escaped} & {row['dataset_id']} & {row['observatory_code']} & {row['group_id']} & "
-                f"{row['n_obs']} & {row['ra_type']} & {row['ra_rms_arcsec']:.4f} & "
-                f"{row['n_obs']} & {row['dec_type']} & {row['dec_rms_arcsec']:.4f} \\\\"
+                f"{source_escaped} & {row['dataset_id']} & {row['observatory_code']} & "
+                f"{row['group_id']} & {row['n_obs']} & {row['ra_type']} & "
+                f"{row['ra_rms_arcsec']:.4f} & {row['n_obs']} & {row['dec_type']} & "
+                f"{row['dec_rms_arcsec']:.4f} \\\\"
             )
 
         total_obs = table["n_obs"].sum()

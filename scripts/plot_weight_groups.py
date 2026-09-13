@@ -31,7 +31,7 @@ import pandas as pd
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
+from orbitdet.reproducibility import enforce_initialization, initialize
 from orbitdet.visualization import WeightGroups, WeightSummaryTable
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 )
 @enforce_initialization
 def main(cfg: DictConfig):
-    ctx: RuntimeContext = initialize(cfg)
+    initialize(cfg)
 
     # Determine the weights CSV path
     weights_csv = OmegaConf.select(cfg, "weights_csv", default=None)

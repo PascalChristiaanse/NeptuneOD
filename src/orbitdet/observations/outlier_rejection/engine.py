@@ -18,47 +18,11 @@ import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
+from ..utils import get_set_identifier
 from .base import OutlierStrategy
 from .registry import get_strategy_class
 
 logger = logging.getLogger(__name__)
-
-
-def get_set_identifier(observation_set: obs.SingleObservationSet) -> str:
-    """Return a human-readable identifier for an observation set.
-
-    The identifier is derived from the receiver link end:
-    - Ground stations: the observatory code (e.g. ``"689"``).
-    - Spacecraft: the body name (e.g. ``"Voyager 2"``).
-    - Geocentric (no reference point): ``"Geocentric"``.
-
-    Parameters
-    ----------
-    observation_set : SingleObservationSet
-        The observation set to identify.
-
-    Returns
-    -------
-    str
-        A string identifier for the set.
-    """
-    from tudatpy.estimation.observable_models_setup import links
-
-    link_ends = observation_set.link_definition.link_ends
-    receiver = link_ends.get(links.receiver)
-    if receiver is None:
-        return str(observation_set)
-
-    reference_point = receiver.reference_point
-    if reference_point == "":
-        return receiver.body_name
-    try:
-        code = int(reference_point)
-        if code < 0:
-            return receiver.body_name
-    except (ValueError, TypeError):
-        pass
-    return reference_point
 
 
 class _ScopedStrategy:
@@ -88,15 +52,30 @@ class OutlierEngine:
 
     Parameters
     ----------
-    strategies : list[OutlierStrategy]
-        Ordered list of strategies to apply.  Each strategy is applied in
-        sequence to every observation set in the collection.
+    strategies : list[_ScopedStrategy]
+        Ordered list of scoped strategies to apply.  Each strategy is applied
+        in sequence to every observation set in the collection.
     """
 
-    def __init__(self, strategies: list[OutlierStrategy]):
+    def __init__(self, strategies: list[_ScopedStrategy]):
         if not strategies:
             raise ValueError("At least one outlier strategy is required.")
-        self._strategies = [_ScopedStrategy(s, None) for s in strategies]
+        self._strategies = list(strategies)
+
+    @classmethod
+    def from_strategies(cls, strategies: list[OutlierStrategy]) -> OutlierEngine:
+        """Build an engine from a list of plain strategies (no set filters).
+
+        Parameters
+        ----------
+        strategies : list[OutlierStrategy]
+            Ordered list of strategies.  Each applies to all observation sets.
+
+        Returns
+        -------
+        OutlierEngine
+        """
+        return cls([_ScopedStrategy(s, None) for s in strategies])
 
     @property
     def strategies(self) -> list[OutlierStrategy]:
@@ -314,10 +293,7 @@ class OutlierEngine:
             strategy_instance = cls_strategy(**kwargs)
             scoped_strategies.append(_ScopedStrategy(strategy_instance, set_filter))
 
-        # Build an engine with the scoped strategies
-        engine = cls.__new__(cls)
-        engine._strategies = scoped_strategies
-        return engine
+        return cls(scoped_strategies)
 
 
 # ---------------------------------------------------------------------------

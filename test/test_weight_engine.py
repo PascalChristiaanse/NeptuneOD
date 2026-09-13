@@ -12,7 +12,8 @@ import pandas as pd
 import pytest
 from omegaconf import OmegaConf
 
-from orbitdet.observations.weighting.engine import WeightEngine, _get_set_id
+from orbitdet.observations.utils import get_set_identifier
+from orbitdet.observations.weighting.engine import WeightEngine
 
 RECEIVER_KEY = "receiver"
 
@@ -48,19 +49,19 @@ class TestGetSetId:
 
     def test_ground_station_with_numeric_code(self):
         obs_set = self._make_obs_set(body_name="Earth", reference_point="689")
-        assert _get_set_id(obs_set) == "689"
+        assert get_set_identifier(obs_set) == "689"
 
     def test_ground_station_with_negative_code(self):
         obs_set = self._make_obs_set(body_name="Earth", reference_point="-1")
-        assert _get_set_id(obs_set) == "Earth"
+        assert get_set_identifier(obs_set) == "Earth"
 
     def test_spacecraft_empty_reference_point(self):
         obs_set = self._make_obs_set(body_name="Voyager 2", reference_point="")
-        assert _get_set_id(obs_set) == "Voyager 2"
+        assert get_set_identifier(obs_set) == "Voyager 2"
 
     def test_no_receiver_fallback(self):
         obs_set = SimpleNamespace(link_definition=SimpleNamespace(link_ends={}))
-        result = _get_set_id(obs_set)
+        result = get_set_identifier(obs_set)
         assert isinstance(result, str)
         assert len(result) > 0
 

@@ -19,6 +19,7 @@ from omegaconf import DictConfig, OmegaConf
 from .base import WeightStrategy
 from .grouping import build_group_list
 from .registry import get_strategy_class
+from ..utils import get_set_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class WeightEngine:
             meta_queues = {k: list(v) for k, v in dataset_metadata.items()}
 
         for obs_set in all_sets:
-            set_id = _get_set_id(obs_set)
+            set_id = get_set_identifier(obs_set)
             times = np.array([t.to_float() for t in obs_set.observation_times])
             n_obs = len(times)
 
@@ -209,13 +210,17 @@ class WeightEngine:
         grouping = OmegaConf.select(cfg, "grouping")
 
         strategy_cls = get_strategy_class(strategy_name)
-        strategy_instance = strategy_cls()
 
-        # Fixed strategy: inject fixed_sigmas from the grouping config
-        if strategy_name == "fixed" and grouping is not None:
-            fixed_sigmas = OmegaConf.select(grouping, "fixed_sigmas")
-            if fixed_sigmas is not None:
-                strategy_instance._fixed_sigmas = dict(fixed_sigmas)
+        # Build strategy instance, passing strategy-specific kwargs
+        if strategy_name == "fixed":
+            fixed_sigmas = {}
+            if grouping is not None:
+                fs = OmegaConf.select(grouping, "fixed_sigmas")
+                if fs is not None:
+                    fixed_sigmas = dict(fs)
+            strategy_instance = strategy_cls(fixed_sigmas=fixed_sigmas)
+        else:
+            strategy_instance = strategy_cls()
 
         return cls(strategy_instance, grouping=grouping, min_sigma_arcsec=min_sigma)
 
@@ -223,24 +228,3 @@ class WeightEngine:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _get_set_id(observation_set: obs.SingleObservationSet) -> str:
-    """Extract a human-readable identifier for an observation set."""
-    from tudatpy.estimation.observable_models_setup import links
-
-    link_ends = observation_set.link_definition.link_ends
-    receiver = link_ends.get(links.receiver)
-    if receiver is None:
-        return str(observation_set)
-
-    reference_point = receiver.reference_point
-    if reference_point == "":
-        return receiver.body_name
-    try:
-        code = int(reference_point)
-        if code < 0:
-            return receiver.body_name
-    except (ValueError, TypeError):
-        pass
-    return reference_point

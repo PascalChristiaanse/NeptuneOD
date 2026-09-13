@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/atanas2026_simulated",
+    config_name="experiment/atanas2026_simulated",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -56,7 +56,7 @@ def main(cfg: DictConfig):
 
     logger.info("Generating observations from collection...")
 
-    observations, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
+    observations, observation_models, _ = create_observation_collection(cfg, bodies)
 
     # observations, observation_models = generate_observations(cfg, ctx, bodies)
     logger.info("Observations generated successfully.")

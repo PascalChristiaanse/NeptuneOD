@@ -8,7 +8,7 @@ import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from .factory import create_observation_dataset
-from .outlier_rejection.engine import get_set_identifier
+from .utils import get_set_identifier
 
 logger = logging.getLogger(__name__)
 

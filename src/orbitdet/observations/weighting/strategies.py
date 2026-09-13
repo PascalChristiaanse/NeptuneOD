@@ -997,13 +997,25 @@ def _interleave_weights(
 def _observable_type_str(observation_set: obs.SingleObservationSet) -> str:
     """Return a human-readable string for the observable type.
 
-    Maps Tudat's ``ObservableType`` enum to ``"absolute"`` or ``"relative"``.
+    Maps Tudat's ``ObservableType`` enum to a short label.
+
+    Currently supported:
+        - ``angular_position`` (type 1) → ``"absolute"``
+        - ``relative_angular_position`` (type 9) → ``"relative"``
+
+    Extend ``_OBSERVABLE_TYPE_LABELS`` to add new types.
     """
     from tudatpy.estimation.observable_models_setup import model_settings as obs_model_settings
 
+    _OBSERVABLE_TYPE_LABELS: dict[int, str] = {
+        1: "absolute",  # angular_position_type
+        9: "relative",  # relative_angular_position_type
+    }
+
     obs_type = observation_set.observable_type
-    # relative_angular_position_type = 9 in TudatPy
-    if obs_type == obs_model_settings.ObservableType(9):
-        return "relative"
-    # angular_position_type = 1 (absolute)
+    for type_id, label in _OBSERVABLE_TYPE_LABELS.items():
+        if obs_type == obs_model_settings.ObservableType(type_id):
+            return label
+    # Fallback for unrecognised types
+    logger.debug("Unrecognised observable type %s, falling back to 'absolute'", obs_type)
     return "absolute"

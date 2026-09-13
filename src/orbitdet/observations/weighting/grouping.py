@@ -243,8 +243,9 @@ def build_group_list(
 ) -> GroupList:
     """Build a :class:`GroupList` from a grouping configuration.
 
-    The config specifies a list of partitioning **levels** applied bottom-up.
-    Each level refines the previous one (or starts from the set level).
+    The config specifies a list of partitioning **levels** applied top-down
+    (coarse-to-fine).  Each level refines the previous one (or starts from
+    the set level).
 
     Configuration structure::
 
@@ -287,8 +288,8 @@ def build_group_list(
     gl = GroupList()
     set_group = partition_by_set(n_obs, set_id)
 
-    # Process levels bottom-up, tracking the current set of children
-    # at each level.
+    # Process levels top-down (coarse-to-fine), tracking the current set of
+    # children at each level.
     current_base_groups: list[Group] = set_group  # groups from previous level
 
     for level_entry in levels_cfg:

@@ -231,14 +231,14 @@ class TestOutlierEngineConstruction:
 
     def test_single_strategy(self):
         strategy = _make_mock_strategy()
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         assert len(engine.strategies) == 1
         assert engine.strategies[0] is strategy
 
     def test_multiple_strategies(self):
         s1 = _make_mock_strategy("S1")
         s2 = _make_mock_strategy("S2")
-        engine = OutlierEngine([s1, s2])
+        engine = OutlierEngine.from_strategies([s1, s2])
         assert len(engine.strategies) == 2
 
 
@@ -321,7 +321,7 @@ class TestOutlierEngineApply:
         obs_set = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([obs_set])
         strategy = _make_mock_strategy()
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         filtered, metadata = engine.apply(collection, bodies)
@@ -336,7 +336,7 @@ class TestOutlierEngineApply:
         obs_set = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([obs_set])
         strategy = _make_mock_rejecting_strategy(reject_indices=[0])
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         filtered, metadata = engine.apply(collection, bodies)
@@ -351,7 +351,7 @@ class TestOutlierEngineApply:
         set2 = _make_mock_obs_set("690", n_obs=3, reference_point="690")
         collection = _make_mock_collection([set1, set2])
         strategy = _make_mock_strategy()
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         filtered, metadata = engine.apply(collection, bodies)
@@ -366,7 +366,7 @@ class TestOutlierEngineApply:
         collection = _make_mock_collection([obs_set])
         s1 = _make_mock_rejecting_strategy("S1", reject_indices=[0])
         s2 = _make_mock_rejecting_strategy("S2", reject_indices=[0])  # rejects first of remaining
-        engine = OutlierEngine([s1, s2])
+        engine = OutlierEngine.from_strategies([s1, s2])
         bodies = MagicMock()
 
         filtered, metadata = engine.apply(collection, bodies)
@@ -383,7 +383,7 @@ class TestOutlierEngineApply:
 
         # Only apply to Voyager 2
         strategy = _make_mock_rejecting_strategy("VoyagerOnly", reject_indices=[0, 1])
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         # Manually set the scoped strategy with a filter
         engine._strategies = [_ScopedStrategy(strategy, set_filter={"Voyager 2"})]
         bodies = MagicMock()
@@ -402,7 +402,7 @@ class TestOutlierEngineApply:
         set2 = _make_mock_obs_set("690", n_obs=3, reference_point="690")
         collection = _make_mock_collection([set1, set2])
         strategy = _make_mock_strategy()
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         filtered, metadata = engine.apply(collection, bodies)
@@ -423,7 +423,7 @@ class TestOutlierEngineApplyWithRejected:
         obs_set = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([obs_set])
         strategy = _make_mock_rejecting_strategy(reject_indices=[0])
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         accepted, rejected, summary = engine.apply_with_rejected(collection, bodies)
@@ -435,7 +435,7 @@ class TestOutlierEngineApplyWithRejected:
         obs_set = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([obs_set])
         strategy = _make_mock_rejecting_strategy(reject_indices=[0, 1])
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         accepted, rejected, summary = engine.apply_with_rejected(collection, bodies)
@@ -447,7 +447,7 @@ class TestOutlierEngineApplyWithRejected:
         obs_set = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([obs_set])
         strategy = _make_mock_strategy()
-        engine = OutlierEngine([strategy])
+        engine = OutlierEngine.from_strategies([strategy])
         bodies = MagicMock()
 
         accepted, rejected, summary = engine.apply_with_rejected(collection, bodies)

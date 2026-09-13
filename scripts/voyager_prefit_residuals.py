@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/voyager_prefits",
+    config_name="experiment/voyager_prefits",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -68,7 +68,7 @@ def main(cfg: DictConfig):
     logger.info("Environment created successfully.")
 
     # Create observations
-    observations, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
+    observations, observation_models, _ = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Add range dependent variable to compute lighttime post simulation

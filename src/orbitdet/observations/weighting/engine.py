@@ -16,10 +16,10 @@ import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
+from ..utils import get_set_identifier
 from .base import WeightStrategy
 from .grouping import build_group_list
 from .registry import get_strategy_class
-from ..utils import get_set_identifier
 
 logger = logging.getLogger(__name__)
 

@@ -149,9 +149,7 @@ class WeightGroups(Plot):
             fontsize="small",
         )
 
-        strategy_label = (
-            df['strategy'].iloc[0] if 'strategy' in df.columns else 'unknown'
-        )
+        strategy_label = df["strategy"].iloc[0] if "strategy" in df.columns else "unknown"
         fig.suptitle(
             f"Weighting strategy: {strategy_label}",
             fontsize=14,

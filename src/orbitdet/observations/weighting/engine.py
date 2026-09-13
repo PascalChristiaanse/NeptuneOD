@@ -211,6 +211,12 @@ class WeightEngine:
         strategy_cls = get_strategy_class(strategy_name)
         strategy_instance = strategy_cls()
 
+        # Fixed strategy: inject fixed_sigmas from the grouping config
+        if strategy_name == "fixed" and grouping is not None:
+            fixed_sigmas = OmegaConf.select(grouping, "fixed_sigmas")
+            if fixed_sigmas is not None:
+                strategy_instance._fixed_sigmas = dict(fixed_sigmas)
+
         return cls(strategy_instance, grouping=grouping, min_sigma_arcsec=min_sigma)
 
 

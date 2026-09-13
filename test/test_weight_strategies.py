@@ -17,7 +17,12 @@ import pytest
 from orbitdet.observations.weighting.grouping import Group, GroupList
 from orbitdet.observations.weighting.strategies import (
     FixedWeight,
+    IDWeight,
     IDv2Weight,
+    TFWeight,
+    TFFreeWeight,
+    HybridGeometricV2Weight,
+    HybridArithmeticWeight,
     _build_weights_df,
     _interleave_weights,
     _residuals_array,
@@ -544,6 +549,249 @@ class TestHybridGeometricWeight:
             "weight_ra", "weight_dec",
         }
         assert set(df.columns) == expected_columns
+
+
+# ===========================================================================
+# IDWeight (plain per-file) strategy
+# ===========================================================================
+
+
+class TestIDWeight:
+    def test_basic(self):
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
+        times = [0.0, 100.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(2)
+
+        strategy = IDWeight()
+        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        ra_sigma = np.sqrt(np.mean(np.square(residuals[:, 0])))
+        dec_sigma = np.sqrt(np.mean(np.square(residuals[:, 1])))
+        expected_w_ra = 1.0 / ra_sigma**2
+        expected_w_dec = 1.0 / dec_sigma**2
+
+        np.testing.assert_allclose(weights_array[0], expected_w_ra)
+        np.testing.assert_allclose(weights_array[1], expected_w_dec)
+        assert weights_array[0] == weights_array[2]  # constant per file
+        assert df["strategy"].iloc[0] == "id"
+
+    def test_min_sigma_floor(self):
+        residuals = np.array([[1e-12, 1e-12]])
+        times = [0.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(1)
+
+        strategy = IDWeight()
+        weights_array, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.1,
+        )
+
+        min_sigma_rad = 0.1 * np.pi / (180 * 3600)
+        expected_w = 1.0 / min_sigma_rad**2
+        np.testing.assert_allclose(weights_array[0], expected_w)
+
+    def test_empty(self):
+        obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
+        groups = GroupList()
+        strategy = IDWeight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        assert len(w) == 0
+        assert df.empty
+
+
+# ===========================================================================
+# TFWeight (per-timeframe, descaled) strategy
+# ===========================================================================
+
+
+class TestTFWeight:
+    def test_single_timeframe(self):
+        residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
+        times = [0.0, 100.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(2)
+
+        strategy = TFWeight()
+        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        # Descaled TF RMSE: RMS * sqrt(2)
+        n = 2
+        ra_rms = np.sqrt(np.mean(np.square(residuals[:, 0])))
+        dec_rms = np.sqrt(np.mean(np.square(residuals[:, 1])))
+        ra_descaled = ra_rms * np.sqrt(n)
+        dec_descaled = dec_rms * np.sqrt(n)
+        expected_w_ra = 1.0 / ra_descaled**2
+        expected_w_dec = 1.0 / dec_descaled**2
+
+        np.testing.assert_allclose(weights_array[0], expected_w_ra)
+        np.testing.assert_allclose(weights_array[1], expected_w_dec)
+        assert df["strategy"].iloc[0] == "timeframe"
+
+    def test_two_timeframes(self):
+        residuals = np.array([
+            [1e-6, 2e-6], [3e-6, 4e-6],
+            [5e-6, 6e-6],
+        ])
+        times = [0.0, 100.0, 100000.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(3, split_indices=[2])
+
+        strategy = TFWeight()
+        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        # TF0: 2 obs
+        ra_tf0 = np.sqrt(np.mean(np.square(residuals[0:2, 0]))) * np.sqrt(2)
+        dec_tf0 = np.sqrt(np.mean(np.square(residuals[0:2, 1]))) * np.sqrt(2)
+        # TF1: 1 obs
+        ra_tf1 = np.sqrt(np.mean(np.square(residuals[2:3, 0]))) * np.sqrt(1)
+        dec_tf1 = np.sqrt(np.mean(np.square(residuals[2:3, 1]))) * np.sqrt(1)
+
+        np.testing.assert_allclose(weights_array[0], 1.0 / ra_tf0**2)
+        np.testing.assert_allclose(weights_array[4], 1.0 / ra_tf1**2)
+
+    def test_min_sigma_floor(self):
+        residuals = np.array([[1e-12, 1e-12], [1e-12, 1e-12]])
+        times = [0.0, 100.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(2)
+
+        strategy = TFWeight()
+        w, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.1,
+        )
+
+        min_sigma_rad = 0.1 * np.pi / (180 * 3600)
+        # floored sigma * sqrt(2)
+        descaled = min_sigma_rad * np.sqrt(2)
+        expected_w = 1.0 / descaled**2
+        np.testing.assert_allclose(w[0], expected_w)
+
+    def test_empty(self):
+        obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
+        groups = GroupList()
+        strategy = TFWeight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        assert len(w) == 0
+        assert df.empty
+
+
+# ===========================================================================
+# TFFreeWeight (per-timeframe free, no sigma cap) strategy
+# ===========================================================================
+
+
+class TestTFFreeWeight:
+    def test_no_sigma_floor(self):
+        """Even with tiny residuals, no floor is applied."""
+        residuals = np.array([[1e-12, 1e-12], [3e-12, 4e-12]])
+        times = [0.0, 100.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(2)
+
+        strategy = TFFreeWeight()
+        w, df = strategy.compute_weights(
+            obs_set, groups, "obs1", min_sigma_arcsec=0.1,
+        )
+
+        # No floor applied, even though min_sigma_arcsec=0.1
+        ra_rms = np.sqrt(np.mean(np.square(residuals[:, 0])))
+        expected = 1.0 / (ra_rms * np.sqrt(2))**2
+        np.testing.assert_allclose(w[0], expected)
+        assert df["strategy"].iloc[0] == "timeframe_free"
+
+    def test_empty(self):
+        obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
+        groups = GroupList()
+        strategy = TFFreeWeight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        assert len(w) == 0
+        assert df.empty
+
+
+# ===========================================================================
+# HybridGeometricV2Weight (thesis-faithful) strategy
+# ===========================================================================
+
+
+class TestHybridGeometricV2Weight:
+    def test_combines_idv2_and_descaled_tf(self):
+        """Hybrid G+v2 = sqrt(ID_v2 * TF_descaled)."""
+        residuals = np.array([
+            [1e-6, 2e-6], [3e-6, 4e-6],  # TF0
+            [1e-7, 2e-7],                   # TF1
+        ])
+        times = [0.0, 100.0, 100000.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(3, split_indices=[2])
+
+        strategy = HybridGeometricV2Weight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        # ID v2 sigma: RMS of descaled TF RMSEs
+        tf0_ra = np.sqrt(np.mean(np.square(residuals[0:2, 0]))) * np.sqrt(2)
+        tf1_ra = np.sqrt(np.mean(np.square(residuals[2:3, 0]))) * np.sqrt(1)
+        id_v2_ra = np.sqrt((tf0_ra**2 + tf1_ra**2) / 2)
+        w_ra_file = 1.0 / id_v2_ra**2
+
+        # Descaled TF0 weight
+        w_ra_tf0 = 1.0 / tf0_ra**2
+        expected_w_ra_tf0 = np.sqrt(w_ra_file * w_ra_tf0)
+
+        np.testing.assert_allclose(w[0], expected_w_ra_tf0)
+        assert df["strategy"].iloc[0] == "hybrid_geometric_v2"
+
+    def test_fallback_no_timeframes(self):
+        residuals = np.array([[1e-6, 2e-6]])
+        times = [0.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = GroupList()
+        strategy = HybridGeometricV2Weight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        assert len(w) == 2
+        assert df["group_level"].iloc[0] == "set"
+
+
+# ===========================================================================
+# HybridArithmeticWeight (thesis-faithful) strategy
+# ===========================================================================
+
+
+class TestHybridArithmeticWeight:
+    def test_combines_idv2_and_descaled_tf(self):
+        """Hybrid A+v2 = (ID_v2 + TF_descaled) / 2."""
+        residuals = np.array([
+            [1e-6, 2e-6], [3e-6, 4e-6],
+            [1e-7, 2e-7],
+        ])
+        times = [0.0, 100.0, 100000.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = _make_timeframe_groups(3, split_indices=[2])
+
+        strategy = HybridArithmeticWeight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+
+        # ID v2 sigma
+        tf0_ra = np.sqrt(np.mean(np.square(residuals[0:2, 0]))) * np.sqrt(2)
+        tf1_ra = np.sqrt(np.mean(np.square(residuals[2:3, 0]))) * np.sqrt(1)
+        id_v2_ra = np.sqrt((tf0_ra**2 + tf1_ra**2) / 2)
+        w_ra_file = 1.0 / id_v2_ra**2
+
+        w_ra_tf0 = 1.0 / tf0_ra**2
+        expected_w_ra_tf0 = (w_ra_file + w_ra_tf0) / 2.0
+
+        np.testing.assert_allclose(w[0], expected_w_ra_tf0)
+        assert df["strategy"].iloc[0] == "hybrid_arithmetic"
+
+    def test_fallback_no_timeframes(self):
+        residuals = np.array([[1e-6, 2e-6]])
+        times = [0.0]
+        obs_set = _make_mock_obs_set(residuals, times)
+        groups = GroupList()
+        strategy = HybridArithmeticWeight()
+        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        assert len(w) == 2
+        assert df["group_level"].iloc[0] == "set"
 
 
 # ===========================================================================

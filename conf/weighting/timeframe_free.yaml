@@ -1,0 +1,22 @@
+# @package _global_
+
+# Weighting: per-timeframe free (TF free).
+# Identical to the per-timeframe scheme but imposes NO lower bound on the
+# per-timeframe RMSE, so weights can become arbitrarily large.
+#
+# Thesis (§6.1): "per timeframe free imposes no upper limit on individual
+# timeframe weights... Removing the weight cap allows certain timeframes to
+# receive extremely high weights, skewing the solution towards those
+# observations... causes the formal errors to collapse."
+#
+# min_sigma_arcsec is ignored by this strategy (effectively 0).
+
+weighting:
+  enabled: true
+  strategy: timeframe_free
+  min_sigma_arcsec: 0.0   # ignored — no sigma floor
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 4.0
+        min_obs_per_frame: 1

@@ -8,7 +8,6 @@ import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
-from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import estimation_analysis as est_an
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
@@ -16,7 +15,7 @@ from tudatpy.util import redirect_std
 
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
-from orbitdet.observations import create_observation_collection, OutlierEngine, WeightEngine
+from orbitdet.observations import OutlierEngine, WeightEngine, create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
     aim_log_artifact_reference,
@@ -301,10 +300,13 @@ def main(cfg: DictConfig):
             rejection_metadata["n_total_observations"],
         )
         # Save rejection metadata to JSON
-        from hydra.core.hydra_config import HydraConfig
         import json
 
-        rejection_path = Path(HydraConfig.get().runtime.output_dir) / "outlier_rejection_metadata.json"
+        from hydra.core.hydra_config import HydraConfig
+
+        rejection_path = (
+            Path(HydraConfig.get().runtime.output_dir) / "outlier_rejection_metadata.json"
+        )
         with open(rejection_path, "w") as f:
             json.dump(rejection_metadata, f, indent=2, default=str)
         logger.info("Outlier rejection metadata saved to %s", rejection_path)
@@ -319,7 +321,9 @@ def main(cfg: DictConfig):
         from hydra.core.hydra_config import HydraConfig
 
         output_dir = Path(HydraConfig.get().runtime.output_dir)
-        observations, weights_df = weight_engine.apply(observations, bodies, output_dir=output_dir, dataset_metadata=dataset_metadata)
+        observations, weights_df = weight_engine.apply(
+            observations, bodies, output_dir=output_dir, dataset_metadata=dataset_metadata
+        )
         logger.info(
             "Weighting complete: %s strategy applied, %d observations weighted",
             weighting_cfg.get("strategy", "unknown"),
@@ -329,7 +333,7 @@ def main(cfg: DictConfig):
         logger.info("Weighting disabled.")
 
     # Plot weight groups if weighting was applied
-    if weighting_cfg is not None and weighting_cfg.get("enabled", False): 
+    if weighting_cfg is not None and weighting_cfg.get("enabled", False):
         from orbitdet.visualization import WeightGroups, WeightSummaryTable
 
         fig_weight_groups, _ = WeightGroups(cfg, weights_df).plot()

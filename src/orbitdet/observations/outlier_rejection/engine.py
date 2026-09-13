@@ -187,18 +187,14 @@ class OutlierEngine:
                     continue
 
                 strategy_name = scoped.strategy.__class__.__name__
-                logger.debug(
-                    "Applying strategy '%s' to set '%s'", strategy_name, set_id
-                )
+                logger.debug("Applying strategy '%s' to set '%s'", strategy_name, set_id)
                 current_set, strategy_meta = scoped.strategy.apply(current_set, bodies)
                 set_metadata["strategies"].append(strategy_meta)
 
             # Aggregate totals for this set
             if set_metadata["strategies"]:
                 n_accepted = set_metadata["strategies"][-1]["n_accepted"]
-                n_rejected = sum(
-                    s["n_rejected"] for s in set_metadata["strategies"]
-                )
+                n_rejected = sum(s["n_rejected"] for s in set_metadata["strategies"])
                 n_total = set_metadata["strategies"][0]["n_total"]
             else:
                 # No strategies applied to this set — keep all observations
@@ -288,17 +284,13 @@ class OutlierEngine:
         """
         strategies_cfg = OmegaConf.select(cfg, "strategies")
         if not strategies_cfg:
-            raise ValueError(
-                "Outlier rejection config must have a non-empty 'strategies' list."
-            )
+            raise ValueError("Outlier rejection config must have a non-empty 'strategies' list.")
 
         scoped_strategies: list[_ScopedStrategy] = []
         for entry in strategies_cfg:
             strategy_type = OmegaConf.select(entry, "type")
             if not strategy_type:
-                raise ValueError(
-                    "Each outlier strategy entry must have a 'type' field."
-                )
+                raise ValueError("Each outlier strategy entry must have a 'type' field.")
 
             cls_strategy = get_strategy_class(strategy_type)
 

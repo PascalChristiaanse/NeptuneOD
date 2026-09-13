@@ -5,7 +5,7 @@ It depends on Tudat objects that must be mocked.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from omegaconf import OmegaConf
@@ -16,7 +16,6 @@ from orbitdet.observations.outlier_rejection.engine import (
     _ScopedStrategy,
     get_set_identifier,
 )
-
 
 # ===========================================================================
 # Constants and helpers
@@ -29,6 +28,7 @@ RECEIVER_KEY = "receiver"
 def _patch_links_receiver(monkeypatch):
     """Patch tudatpy's links.receiver so get_set_identifier works with mocks."""
     import tudatpy.estimation.observable_models_setup
+
     monkeypatch.setattr(
         tudatpy.estimation.observable_models_setup.links,
         "receiver",
@@ -73,10 +73,12 @@ def _make_mock_obs_set(
     reference_point: str = "689",
 ) -> SimpleNamespace:
     """Create a mock SingleObservationSet."""
-    link_ends = {RECEIVER_KEY: SimpleNamespace(
-        body_name=body_name,
-        reference_point=reference_point,
-    )}
+    link_ends = {
+        RECEIVER_KEY: SimpleNamespace(
+            body_name=body_name,
+            reference_point=reference_point,
+        )
+    }
     mock_times = [_make_mock_time(float(i * 100.0)) for i in range(n_obs)]
     return SimpleNamespace(
         residuals=MagicMock(),
@@ -98,7 +100,6 @@ def _make_mock_strategy(name: str = "MockStrategy") -> MagicMock:
 
     def apply_side_effect(obs_set, bodies):
         n = len(obs_set.observation_times)
-        epochs = [t.to_float() for t in obs_set.observation_times]
         return obs_set, {
             "strategy": name,
             "n_accepted": n,
@@ -149,27 +150,36 @@ def _make_mock_rejecting_strategy(
 
 class TestGetSetIdentifier:
     def test_ground_station_with_numeric_code(self):
-        link_ends = {RECEIVER_KEY: SimpleNamespace(
-            body_name="Earth", reference_point="689",
-        )}
+        link_ends = {
+            RECEIVER_KEY: SimpleNamespace(
+                body_name="Earth",
+                reference_point="689",
+            )
+        }
         obs_set = SimpleNamespace(
             link_definition=SimpleNamespace(link_ends=link_ends),
         )
         assert get_set_identifier(obs_set) == "689"
 
     def test_ground_station_with_negative_code(self):
-        link_ends = {RECEIVER_KEY: SimpleNamespace(
-            body_name="Earth", reference_point="-1",
-        )}
+        link_ends = {
+            RECEIVER_KEY: SimpleNamespace(
+                body_name="Earth",
+                reference_point="-1",
+            )
+        }
         obs_set = SimpleNamespace(
             link_definition=SimpleNamespace(link_ends=link_ends),
         )
         assert get_set_identifier(obs_set) == "Earth"
 
     def test_spacecraft_empty_reference_point(self):
-        link_ends = {RECEIVER_KEY: SimpleNamespace(
-            body_name="Voyager 2", reference_point="",
-        )}
+        link_ends = {
+            RECEIVER_KEY: SimpleNamespace(
+                body_name="Voyager 2",
+                reference_point="",
+            )
+        }
         obs_set = SimpleNamespace(
             link_definition=SimpleNamespace(link_ends=link_ends),
         )
@@ -239,29 +249,35 @@ class TestOutlierEngineConstruction:
 
 class TestOutlierEngineFromConfig:
     def test_single_strategy(self):
-        cfg = OmegaConf.create({
-            "strategies": [{"type": "residual_threshold", "threshold_arcsec": 1.5}],
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategies": [{"type": "residual_threshold", "threshold_arcsec": 1.5}],
+            }
+        )
         engine = OutlierEngine.from_config(cfg)
         assert len(engine.strategies) == 1
 
     def test_multiple_strategies(self):
-        cfg = OmegaConf.create({
-            "strategies": [
-                {"type": "residual_threshold", "threshold_arcsec": 1.5},
-                {"type": "epoch_filter", "epochs": [100.0, 200.0]},
-            ],
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategies": [
+                    {"type": "residual_threshold", "threshold_arcsec": 1.5},
+                    {"type": "epoch_filter", "epochs": [100.0, 200.0]},
+                ],
+            }
+        )
         engine = OutlierEngine.from_config(cfg)
         assert len(engine.strategies) == 2
 
     def test_with_set_filter(self):
-        cfg = OmegaConf.create({
-            "strategies": [
-                {"type": "residual_threshold", "threshold_arcsec": 0.5, "sets": ["Voyager 2"]},
-                {"type": "residual_threshold", "threshold_arcsec": 1.5},
-            ],
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategies": [
+                    {"type": "residual_threshold", "threshold_arcsec": 0.5, "sets": ["Voyager 2"]},
+                    {"type": "residual_threshold", "threshold_arcsec": 1.5},
+                ],
+            }
+        )
         engine = OutlierEngine.from_config(cfg)
         assert len(engine.strategies) == 2
 
@@ -276,16 +292,20 @@ class TestOutlierEngineFromConfig:
             OutlierEngine.from_config(cfg)
 
     def test_missing_type_field_raises(self):
-        cfg = OmegaConf.create({
-            "strategies": [{"threshold_arcsec": 1.5}],
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategies": [{"threshold_arcsec": 1.5}],
+            }
+        )
         with pytest.raises(ValueError, match="must have a 'type' field"):
             OutlierEngine.from_config(cfg)
 
     def test_unknown_strategy_raises(self):
-        cfg = OmegaConf.create({
-            "strategies": [{"type": "nonexistent"}],
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategies": [{"type": "nonexistent"}],
+            }
+        )
         with pytest.raises(ValueError, match="No outlier strategy registered"):
             OutlierEngine.from_config(cfg)
 
@@ -357,8 +377,7 @@ class TestOutlierEngineApply:
 
     def test_strategy_with_set_filter_applies_only_to_matching(self):
         """A strategy with a set filter should only apply to matching sets."""
-        set1 = _make_mock_obs_set("Voyager 2", n_obs=3,
-                                  body_name="Voyager 2", reference_point="")
+        set1 = _make_mock_obs_set("Voyager 2", n_obs=3, body_name="Voyager 2", reference_point="")
         set2 = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([set1, set2])
 

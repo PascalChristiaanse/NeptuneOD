@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -120,7 +119,10 @@ class WeightEngine:
 
             # Compute weights
             weights_array, weights_df = self._strategy.compute_weights(
-                obs_set, groups, set_id, self._min_sigma_arcsec,
+                obs_set,
+                groups,
+                set_id,
+                self._min_sigma_arcsec,
             )
 
             if len(weights_array) == 0:
@@ -131,9 +133,7 @@ class WeightEngine:
             try:
                 obs_set.set_tabulated_weights(weights_array)
             except Exception as exc:
-                logger.error(
-                    "WeightEngine: failed to set weights for set '%s': %s", set_id, exc
-                )
+                logger.error("WeightEngine: failed to set weights for set '%s': %s", set_id, exc)
                 raise
 
             # Enrich with dataset metadata — pop FIFO per set_id
@@ -223,6 +223,7 @@ class WeightEngine:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_set_id(observation_set: obs.SingleObservationSet) -> str:
     """Extract a human-readable identifier for an observation set."""

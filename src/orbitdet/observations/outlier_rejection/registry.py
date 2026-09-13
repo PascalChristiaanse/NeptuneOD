@@ -53,9 +53,7 @@ def register_outlier_strategy(strategy_type: str) -> Callable:
                 f"conflicts with existing registration."
             )
         if not issubclass(cls, OutlierStrategy):
-            raise TypeError(
-                f"Class {cls.__name__} must inherit from OutlierStrategy."
-            )
+            raise TypeError(f"Class {cls.__name__} must inherit from OutlierStrategy.")
         _STRATEGY_REGISTRY[strategy_type] = cls
         logger.debug("Registered outlier strategy '%s' -> %s", strategy_type, cls.__qualname__)
         return cls

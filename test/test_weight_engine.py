@@ -4,9 +4,8 @@ The WeightEngine orchestrates weighting over an ObservationCollection.
 It depends on Tudat objects that must be mocked.
 """
 
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -15,7 +14,6 @@ from omegaconf import OmegaConf
 
 from orbitdet.observations.weighting.engine import WeightEngine, _get_set_id
 
-
 RECEIVER_KEY = "receiver"
 
 
@@ -23,6 +21,7 @@ RECEIVER_KEY = "receiver"
 def _patch_links_receiver(monkeypatch):
     """Patch tudatpy's links.receiver so _get_set_id works with our mocks."""
     import tudatpy.estimation.observable_models_setup
+
     monkeypatch.setattr(
         tudatpy.estimation.observable_models_setup.links,
         "receiver",
@@ -38,10 +37,12 @@ def _patch_links_receiver(monkeypatch):
 class TestGetSetId:
     def _make_obs_set(self, body_name="Earth", reference_point=""):
         """Create a mock observation set with link definition."""
-        link_ends = {RECEIVER_KEY: SimpleNamespace(
-            body_name=body_name,
-            reference_point=reference_point,
-        )}
+        link_ends = {
+            RECEIVER_KEY: SimpleNamespace(
+                body_name=body_name,
+                reference_point=reference_point,
+            )
+        }
         link_def = SimpleNamespace(link_ends=link_ends)
         return SimpleNamespace(link_definition=link_def)
 
@@ -71,20 +72,24 @@ class TestGetSetId:
 
 class TestWeightEngineFromConfig:
     def test_id_v2_strategy(self):
-        cfg = OmegaConf.create({
-            "strategy": "id_v2",
-            "min_sigma_arcsec": 0.01,
-            "grouping": {
-                "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
-            },
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategy": "id_v2",
+                "min_sigma_arcsec": 0.01,
+                "grouping": {
+                    "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
+                },
+            }
+        )
         engine = WeightEngine.from_config(cfg)
         assert engine.strategy.__class__.__name__ == "IDv2Weight"
 
     def test_hybrid_geometric_strategy(self):
-        cfg = OmegaConf.create({
-            "strategy": "hybrid_geometric",
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategy": "hybrid_geometric",
+            }
+        )
         engine = WeightEngine.from_config(cfg)
         assert engine.strategy.__class__.__name__ == "HybridGeometricWeight"
 
@@ -100,10 +105,12 @@ class TestWeightEngineFromConfig:
         assert engine is not None
 
     def test_grouping_passed_through(self):
-        cfg = OmegaConf.create({
-            "strategy": "id_v2",
-            "grouping": {"levels": [{"type": "section", "sections": []}]},
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategy": "id_v2",
+                "grouping": {"levels": [{"type": "section", "sections": []}]},
+            }
+        )
         engine = WeightEngine.from_config(cfg)
         assert engine is not None
 
@@ -139,10 +146,12 @@ def _make_mock_single_obs_set(
     observable_type: int = 1,
 ) -> SimpleNamespace:
     """Create a mock SingleObservationSet."""
-    link_ends = {RECEIVER_KEY: SimpleNamespace(
-        body_name=body_name,
-        reference_point=reference_point,
-    )}
+    link_ends = {
+        RECEIVER_KEY: SimpleNamespace(
+            body_name=body_name,
+            reference_point=reference_point,
+        )
+    }
     mock_times = [_make_mock_time(t) for t in times]
     return SimpleNamespace(
         residuals=residuals,
@@ -168,10 +177,12 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times)
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({
-            "strategy": "id_v2",
-            "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategy": "id_v2",
+                "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
+            }
+        )
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -191,8 +202,9 @@ class TestWeightEngineApply:
     def test_multiple_sets(self):
         """Multiple sets are each processed independently."""
         set1 = _make_mock_single_obs_set("689", np.array([[1e-6, 2e-6]]), [0.0])
-        set2 = _make_mock_single_obs_set("690", np.array([[3e-6, 4e-6]]), [100.0],
-                                          reference_point="690")
+        set2 = _make_mock_single_obs_set(
+            "690", np.array([[3e-6, 4e-6]]), [100.0], reference_point="690"
+        )
         collection = _make_mock_collection([set1, set2])
 
         cfg = OmegaConf.create({"strategy": "id_v2"})
@@ -208,7 +220,9 @@ class TestWeightEngineApply:
     def test_empty_set_skipped(self):
         """Empty observation sets should be skipped gracefully."""
         obs_set = _make_mock_single_obs_set(
-            "689", np.empty((0, 2)), [],
+            "689",
+            np.empty((0, 2)),
+            [],
         )
         obs_set.observation_times = []  # empty
         collection = _make_mock_collection([obs_set])
@@ -292,6 +306,7 @@ class TestWeightEngineApply:
     def test_logger_output(self, caplog):
         """Check that the engine logs key information."""
         import logging
+
         caplog.set_level(logging.INFO)
 
         residuals = np.array([[1e-6, 2e-6]])
@@ -310,13 +325,15 @@ class TestWeightEngineApply:
 
     def test_fixed_strategy_from_config(self):
         """Fixed strategy with fixed_sigmas injected via from_config."""
-        cfg = OmegaConf.create({
-            "strategy": "fixed",
-            "grouping": {
-                "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
-                "fixed_sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
-            },
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategy": "fixed",
+                "grouping": {
+                    "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
+                    "fixed_sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
+                },
+            }
+        )
         engine = WeightEngine.from_config(cfg)
         assert engine.strategy.__class__.__name__ == "FixedWeight"
         assert engine._strategy._fixed_sigmas["689"]["ra"] == 0.15
@@ -329,12 +346,14 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times, reference_point="689")
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({
-            "strategy": "fixed",
-            "grouping": {
-                "fixed_sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
-            },
-        })
+        cfg = OmegaConf.create(
+            {
+                "strategy": "fixed",
+                "grouping": {
+                    "fixed_sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
+                },
+            }
+        )
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 

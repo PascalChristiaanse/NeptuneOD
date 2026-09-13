@@ -6,7 +6,7 @@ mocked here to simulate filtering behavior.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -15,7 +15,6 @@ from orbitdet.observations.outlier_rejection.strategies import (
     EpochFilterOutlier,
     ResidualThresholdOutlier,
 )
-
 
 # ===========================================================================
 # Mock helpers
@@ -98,12 +97,14 @@ def _patch_tudat_filtering(monkeypatch):
     filter_calls = []
 
     def mock_observation_filter(filter_type, value, filter_out=True, use_opposite_condition=False):
-        filter_calls.append({
-            "type": filter_type,
-            "value": value,
-            "filter_out": filter_out,
-            "use_opposite_condition": use_opposite_condition,
-        })
+        filter_calls.append(
+            {
+                "type": filter_type,
+                "value": value,
+                "filter_out": filter_out,
+                "use_opposite_condition": use_opposite_condition,
+            }
+        )
         return SimpleNamespace(
             filter_type=filter_type,
             value=value,
@@ -114,12 +115,14 @@ def _patch_tudat_filtering(monkeypatch):
     def mock_create_filtered_observation_set(obs_set, filter_obj):
         if filter_obj.filter_type.name == "residual_filtering":
             return _filter_by_residual_threshold(
-                obs_set, filter_obj.value,
+                obs_set,
+                filter_obj.value,
                 opposite=filter_obj.use_opposite_condition,
             )
         elif filter_obj.filter_type.name == "epochs_filtering":
             return _filter_by_epochs(
-                obs_set, filter_obj.value,
+                obs_set,
+                filter_obj.value,
                 opposite=filter_obj.use_opposite_condition,
             )
         return obs_set
@@ -131,13 +134,21 @@ def _patch_tudat_filtering(monkeypatch):
     )
 
     # Patch at the module level where strategies.py imports them
-    monkeypatch.setattr(s, "obs_proc", SimpleNamespace(
-        observation_filter=mock_observation_filter,
-        ObservationFilterType=mock_filter_type,
-    ))
-    monkeypatch.setattr(s, "obs", SimpleNamespace(
-        create_filtered_observation_set=mock_create_filtered_observation_set,
-    ))
+    monkeypatch.setattr(
+        s,
+        "obs_proc",
+        SimpleNamespace(
+            observation_filter=mock_observation_filter,
+            ObservationFilterType=mock_filter_type,
+        ),
+    )
+    monkeypatch.setattr(
+        s,
+        "obs",
+        SimpleNamespace(
+            create_filtered_observation_set=mock_create_filtered_observation_set,
+        ),
+    )
 
 
 # ===========================================================================
@@ -163,11 +174,13 @@ class TestResidualThresholdOutlier:
 
     def test_some_above_threshold(self):
         """Observations with residual > threshold are rejected."""
-        residuals = np.array([
-            [0.1e-6, 0.2e-6],        # below threshold
-            [5.0e-5, 6.0e-5],        # above threshold (~10 arcsec)
-            [0.3e-6, 0.4e-6],        # below threshold
-        ])
+        residuals = np.array(
+            [
+                [0.1e-6, 0.2e-6],  # below threshold
+                [5.0e-5, 6.0e-5],  # above threshold (~10 arcsec)
+                [0.3e-6, 0.4e-6],  # below threshold
+            ]
+        )
         times = [0.0, 100.0, 200.0]
         obs_set = _make_mock_obs_set(residuals, times)
         bodies = MagicMock()
@@ -182,10 +195,12 @@ class TestResidualThresholdOutlier:
 
     def test_all_above_threshold(self):
         """All residuals above threshold → all rejected."""
-        residuals = np.array([
-            [5.0e-5, 6.0e-5],
-            [7.0e-5, 8.0e-5],
-        ])
+        residuals = np.array(
+            [
+                [5.0e-5, 6.0e-5],
+                [7.0e-5, 8.0e-5],
+            ]
+        )
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
         bodies = MagicMock()
@@ -223,12 +238,14 @@ class TestResidualThresholdOutlier:
 
     def test_rejected_epochs_are_correct(self):
         """Only the epochs of rejected observations should be listed."""
-        residuals = np.array([
-            [1e-7, 2e-7],     # OK
-            [5e-5, 6e-5],     # bad (~10 arcsec)
-            [1e-7, 2e-7],     # OK
-            [7e-5, 8e-5],     # bad (~14 arcsec)
-        ])
+        residuals = np.array(
+            [
+                [1e-7, 2e-7],  # OK
+                [5e-5, 6e-5],  # bad (~10 arcsec)
+                [1e-7, 2e-7],  # OK
+                [7e-5, 8e-5],  # bad (~14 arcsec)
+            ]
+        )
         times = [0.0, 100.0, 200.0, 300.0]
         obs_set = _make_mock_obs_set(residuals, times)
         bodies = MagicMock()

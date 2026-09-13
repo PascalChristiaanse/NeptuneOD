@@ -17,7 +17,6 @@ at coarser levels.
 
 from __future__ import annotations
 
-import bisect
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -312,9 +311,7 @@ def build_group_list(
                 t_start = OmegaConf.select(sc, "start")
                 t_end = OmegaConf.select(sc, "end")
                 if name is None or t_start is None or t_end is None:
-                    raise ValueError(
-                        "Each section must have 'name', 'start', and 'end' fields."
-                    )
+                    raise ValueError("Each section must have 'name', 'start', and 'end' fields.")
                 section_bounds.append((name, float(t_start), float(t_end)))
 
             section_groups = partition_by_sections(times, section_bounds, set_id)

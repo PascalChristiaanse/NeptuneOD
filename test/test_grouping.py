@@ -9,11 +9,10 @@ from orbitdet.observations.weighting.grouping import (
     GroupList,
     _split_by_gap,
     build_group_list,
-    partition_by_set,
     partition_by_sections,
+    partition_by_set,
     partition_by_timeframes,
 )
-
 
 # ===========================================================================
 # Group data structure
@@ -88,10 +87,12 @@ class TestGroupList:
         assert len(gl) == 2
 
     def test_iteration(self):
-        gl = GroupList([
-            Group(indices=np.array([0], dtype=int), group_id="a"),
-            Group(indices=np.array([1], dtype=int), group_id="b"),
-        ])
+        gl = GroupList(
+            [
+                Group(indices=np.array([0], dtype=int), group_id="a"),
+                Group(indices=np.array([1], dtype=int), group_id="b"),
+            ]
+        )
         ids = [g.group_id for g in gl]
         assert ids == ["a", "b"]
 
@@ -118,12 +119,16 @@ class TestGroupList:
 
     def test_by_parent(self):
         child = Group(
-            indices=np.array([0], dtype=int), group_id="child",
-            parent_level="set", parent_id="parent_set",
+            indices=np.array([0], dtype=int),
+            group_id="child",
+            parent_level="set",
+            parent_id="parent_set",
         )
         other = Group(
-            indices=np.array([1], dtype=int), group_id="other",
-            parent_level="set", parent_id="other_set",
+            indices=np.array([1], dtype=int),
+            group_id="other",
+            parent_level="set",
+            parent_id="other_set",
         )
         gl = GroupList([child, other])
 
@@ -365,9 +370,11 @@ class TestBuildGroupList:
 
     def test_single_timeframe_level(self):
         times = np.array([0.0, 3600.0, 100000.0])
-        config = OmegaConf.create({
-            "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         assert len(gl) == 2
         assert gl[0].level == "timeframe"
@@ -378,15 +385,19 @@ class TestBuildGroupList:
 
     def test_single_section_level(self):
         times = np.array([0.0, 100.0, 500.0, 600.0])
-        config = OmegaConf.create({
-            "levels": [{
-                "type": "section",
-                "sections": [
-                    {"name": "early", "start": 0.0, "end": 400.0},
-                    {"name": "late", "start": 400.0, "end": 1000.0},
+        config = OmegaConf.create(
+            {
+                "levels": [
+                    {
+                        "type": "section",
+                        "sections": [
+                            {"name": "early", "start": 0.0, "end": 400.0},
+                            {"name": "late", "start": 400.0, "end": 1000.0},
+                        ],
+                    }
                 ],
-            }],
-        })
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         assert len(gl) == 2
         assert gl[0].level == "section"
@@ -396,18 +407,20 @@ class TestBuildGroupList:
     def test_section_then_timeframe_hierarchy(self):
         """Sections are coarser; timeframes should have section parent references."""
         times = np.array([0.0, 100.0, 500.0, 600.0, 100000.0, 100100.0])
-        config = OmegaConf.create({
-            "levels": [
-                {
-                    "type": "section",
-                    "sections": [
-                        {"name": "early", "start": 0.0, "end": 1000.0},
-                        {"name": "late", "start": 100000.0, "end": 200000.0},
-                    ],
-                },
-                {"type": "timeframe", "gap_threshold_hours": 4.0},
-            ],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [
+                    {
+                        "type": "section",
+                        "sections": [
+                            {"name": "early", "start": 0.0, "end": 1000.0},
+                            {"name": "late", "start": 100000.0, "end": 200000.0},
+                        ],
+                    },
+                    {"type": "timeframe", "gap_threshold_hours": 4.0},
+                ],
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         # Should have 2 sections + 2 timeframes = 4 groups
         assert len(gl) == 4
@@ -424,14 +437,18 @@ class TestBuildGroupList:
 
     def test_unassigned_observations_get_other_section(self):
         times = np.array([0.0, 100.0, 10000.0])
-        config = OmegaConf.create({
-            "levels": [{
-                "type": "section",
-                "sections": [
-                    {"name": "early", "start": 0.0, "end": 200.0},
+        config = OmegaConf.create(
+            {
+                "levels": [
+                    {
+                        "type": "section",
+                        "sections": [
+                            {"name": "early", "start": 0.0, "end": 200.0},
+                        ],
+                    }
                 ],
-            }],
-        })
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         sections = gl.by_level("section")
         # Should have 'early' and 'other'
@@ -442,75 +459,91 @@ class TestBuildGroupList:
 
     def test_missing_type_field_raises_error(self):
         times = np.array([0.0, 100.0])
-        config = OmegaConf.create({
-            "levels": [{"gap_threshold_hours": 4.0}],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [{"gap_threshold_hours": 4.0}],
+            }
+        )
         with pytest.raises(ValueError, match="must have a 'type' field"):
             build_group_list(times, "obs1", config)
 
     def test_unknown_level_type_raises_error(self):
         times = np.array([0.0, 100.0])
-        config = OmegaConf.create({
-            "levels": [{"type": "unknown_type"}],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [{"type": "unknown_type"}],
+            }
+        )
         with pytest.raises(ValueError, match="Unknown grouping level type"):
             build_group_list(times, "obs1", config)
 
     def test_section_without_sections_list_raises_error(self):
         times = np.array([0.0, 100.0])
-        config = OmegaConf.create({
-            "levels": [{"type": "section"}],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [{"type": "section"}],
+            }
+        )
         with pytest.raises(ValueError, match="requires a 'sections' list"):
             build_group_list(times, "obs1", config)
 
     def test_section_missing_fields_raises_error(self):
         times = np.array([0.0, 100.0])
-        config = OmegaConf.create({
-            "levels": [{
-                "type": "section",
-                "sections": [{"name": "bad", "start": 0.0}],  # missing 'end'
-            }],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [
+                    {
+                        "type": "section",
+                        "sections": [{"name": "bad", "start": 0.0}],  # missing 'end'
+                    }
+                ],
+            }
+        )
         with pytest.raises(ValueError, match="must have 'name', 'start', and 'end'"):
             build_group_list(times, "obs1", config)
 
     def test_set_level_type_is_ignored(self):
         """An explicit 'set' level type should be a no-op."""
         times = np.array([0.0, 100.0, 200.0])
-        config = OmegaConf.create({
-            "levels": [
-                {"type": "set"},
-                {"type": "timeframe", "gap_threshold_hours": 4.0},
-            ],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [
+                    {"type": "set"},
+                    {"type": "timeframe", "gap_threshold_hours": 4.0},
+                ],
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         assert len(gl) == 1  # single timeframe (no gaps)
         assert gl[0].level == "timeframe"
 
     def test_empty_times(self):
         times = np.array([])
-        config = OmegaConf.create({
-            "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         assert len(gl) == 0
 
     def test_timeframe_with_section_parent(self):
         """Timeframes nested under sections should have correct parent refs."""
         times = np.array([0.0, 100.0, 500.0, 600.0])
-        config = OmegaConf.create({
-            "levels": [
-                {
-                    "type": "section",
-                    "sections": [
-                        {"name": "early", "start": 0.0, "end": 400.0},
-                        {"name": "late", "start": 400.0, "end": 1000.0},
-                    ],
-                },
-                {"type": "timeframe", "gap_threshold_hours": 4.0},
-            ],
-        })
+        config = OmegaConf.create(
+            {
+                "levels": [
+                    {
+                        "type": "section",
+                        "sections": [
+                            {"name": "early", "start": 0.0, "end": 400.0},
+                            {"name": "late", "start": 400.0, "end": 1000.0},
+                        ],
+                    },
+                    {"type": "timeframe", "gap_threshold_hours": 4.0},
+                ],
+            }
+        )
         gl = build_group_list(times, "obs1", config)
         tfs = gl.by_level("timeframe")
         for tf in tfs:

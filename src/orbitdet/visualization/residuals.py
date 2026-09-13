@@ -175,9 +175,7 @@ class Residuals(Plot):
             logger.debug("Skipping empty observation set '%s'", label_prefix)
             return
 
-        obs_times_sec_j2000 = np.array(
-            [epoch.to_float() for epoch in obs_set.observation_times]
-        )
+        obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
         obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
         residuals = np.array(obs_set.residuals)
 

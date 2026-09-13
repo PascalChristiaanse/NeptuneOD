@@ -1,0 +1,23 @@
+# @package _global_
+
+# Weighting: scaled hybrid arithmetic (Hybrid A+v2).
+# Arithmetic mean of the ID v2 (scaled per-file) weight and the descaled
+# per-timeframe weight:
+#   w_tf = (w_id_v2 + w_tf_descaled) / 2
+#
+# This is "scaled hybrid arith." from thesis Table 6.2.
+# In practice the arithmetic mean is dominated by the per-timeframe component
+# (typically orders of magnitude larger), making it less balanced than the
+# geometric variant.
+#
+# See thesis §3.2.2 "Hybrid Weighting Schemes" for details.
+
+weighting:
+  enabled: true
+  strategy: hybrid_arithmetic
+  min_sigma_arcsec: 0.01
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 4.0
+        min_obs_per_frame: 1

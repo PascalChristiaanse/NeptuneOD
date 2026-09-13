@@ -59,7 +59,7 @@ def main(cfg: DictConfig):
     logger.info("Environment created successfully.")
 
     # Create observations
-    observations, observation_models = create_observation_collection(cfg, bodies)
+    observations, observation_models, _ = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Create observation simulators for pre-fit residuals

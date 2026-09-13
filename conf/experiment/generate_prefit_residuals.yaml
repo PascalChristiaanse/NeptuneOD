@@ -5,6 +5,7 @@ defaults:
   - /dynamics: prefit
   - /kernels: classical
   - /logging: default
+  - /outlier_rejection: residual_threshold
   - _self_ # Apply experiment config fields after collections
 
 seed: 42

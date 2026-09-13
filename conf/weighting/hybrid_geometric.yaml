@@ -1,0 +1,25 @@
+# @package _global_
+
+# Weighting: hybrid geometric.
+# Geometric mean of set-level (file-wide) and timeframe-level (per-night) weights.
+# This blends a global per-file weight with a local per-night weight.
+#
+# Example with Voyager pre/post encounter sections:
+#   grouping:
+#     levels:
+#       - type: section
+#         sections:
+#           - {name: "pre_encounter", start: -1e30, end: 618600000.0}
+#           - {name: "post_encounter", start: 618600000.0, end: 1e30}
+#       - type: timeframe
+#         gap_threshold_hours: 4.0
+
+weighting:
+  enabled: true
+  strategy: hybrid_geometric
+  min_sigma_arcsec: 0.01
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1

@@ -8,7 +8,6 @@ import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
-from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import estimation_analysis as est_an
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
@@ -16,7 +15,7 @@ from tudatpy.util import redirect_std
 
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
-from orbitdet.observations import create_observation_collection
+from orbitdet.observations import OutlierEngine, WeightEngine, create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
     aim_log_artifact_reference,
@@ -201,7 +200,7 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="config",
+    config_name="experiment/classic_triton_state",
 )
 # @enforce_initialization Disabled to support submitit multiprocessing
 def main(cfg: DictConfig):
@@ -268,7 +267,7 @@ def main(cfg: DictConfig):
     logger.info("Propagator settings created successfully.")
 
     logger.info("Generating observations from collection...")
-    observations, observation_models = create_observation_collection(cfg, bodies)
+    observations, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Create observation simulators for pre-fit residuals
@@ -277,16 +276,91 @@ def main(cfg: DictConfig):
     )
     logger.info("Observation simulators created successfully.")
 
-    if prop.processing_settings.set_integrated_result:
-        logger.info(
-            "Prefit residuals will be computed using the integrated result from the propagator."
-        )
-        sim.create_dynamics_simulator(bodies, prop)
+    # if prop.processing_settings.set_integrated_result:
+    #     logger.info(
+    #         "Prefit residuals will be computed using the integrated result from the propagator."
+    #     )
+    #     sim.create_dynamics_simulator(bodies, prop)
 
     # Populate residuals in SingleObservationSets
     obs.compute_residuals_and_dependent_variables(
         observations, ephemeris_observation_simulators, bodies
     )
+
+    # === Outlier rejection ===
+    outlier_cfg = OmegaConf.select(cfg, "outlier_rejection")
+    if outlier_cfg is not None and outlier_cfg.get("enabled", False):
+        logger.info("Applying outlier rejection...")
+        outlier_engine = OutlierEngine.from_config(outlier_cfg)
+        observations, rejection_metadata = outlier_engine.apply(observations, bodies)
+        logger.info(
+            "Outlier rejection complete: %d accepted, %d rejected out of %d",
+            rejection_metadata["n_accepted"],
+            rejection_metadata["n_rejected"],
+            rejection_metadata["n_total_observations"],
+        )
+        # Save rejection metadata to JSON
+        import json
+
+        from hydra.core.hydra_config import HydraConfig
+
+        rejection_path = (
+            Path(HydraConfig.get().runtime.output_dir) / "outlier_rejection_metadata.json"
+        )
+        with open(rejection_path, "w") as f:
+            json.dump(rejection_metadata, f, indent=2, default=str)
+        logger.info("Outlier rejection metadata saved to %s", rejection_path)
+    else:
+        logger.info("Outlier rejection disabled.")
+
+    # === Weighting ===
+    weighting_cfg = OmegaConf.select(cfg, "weighting")
+    if weighting_cfg is not None and weighting_cfg.get("enabled", False):
+        logger.info("Applying weighting...")
+        weight_engine = WeightEngine.from_config(weighting_cfg)
+        from hydra.core.hydra_config import HydraConfig
+
+        output_dir = Path(HydraConfig.get().runtime.output_dir)
+        observations, weights_df = weight_engine.apply(
+            observations, bodies, output_dir=output_dir, dataset_metadata=dataset_metadata
+        )
+        logger.info(
+            "Weighting complete: %s strategy applied, %d observations weighted",
+            weighting_cfg.get("strategy", "unknown"),
+            len(weights_df) if not weights_df.empty else 0,
+        )
+    else:
+        logger.info("Weighting disabled.")
+
+    # Plot weight groups if weighting was applied
+    if weighting_cfg is not None and weighting_cfg.get("enabled", False):
+        from orbitdet.visualization import WeightGroups, WeightSummaryTable
+
+        fig_weight_groups, _ = WeightGroups(cfg, weights_df).plot()
+        logger.info("Weight groups figure saved.")
+
+        # Build and save the per-source summary table
+        table_builder = WeightSummaryTable(cfg, weights_df)
+        src_table = table_builder.build_source()
+        grp_table = table_builder.build_group()
+        print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
+        print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
+
+        src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
+        grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)
+        logger.info("Weight summary tables saved to %s", output_dir)
+
+        with open(output_dir / "weight_summary_source.tex", "w") as f:
+            f.write(table_builder.to_latex_source(src_table))
+        with open(output_dir / "weight_summary_group.tex", "w") as f:
+            f.write(table_builder.to_latex_group(grp_table))
+        logger.info("LaTeX weight summary tables saved to %s", output_dir)
+
+        # Save as Excel with two sheets
+        with pd.ExcelWriter(output_dir / "weight_summary.xlsx") as writer:
+            src_table.to_excel(writer, sheet_name="Per source", index=False)
+            grp_table.to_excel(writer, sheet_name="Per group", index=False)
+        logger.info("Excel weight summary tables saved to %s", output_dir)
 
     # Plot and save pre-fit residuals before estimation modifies them
     from orbitdet.visualization import Residuals

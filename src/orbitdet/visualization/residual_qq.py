@@ -109,6 +109,9 @@ class ResidualQQ(Plot):
         ]  # cycle through marker types if more sets than colors
 
         for set_index, obs_set in enumerate(observation_sets):
+            if len(obs_set.observation_times) == 0:
+                continue
+
             observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
             if observatory_code == "":
                 # Missing reference points imply spacecraft which use receiver name instead for info

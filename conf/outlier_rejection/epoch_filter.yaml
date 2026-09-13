@@ -1,0 +1,11 @@
+# @package _global_
+
+# Outlier rejection: epoch filter.
+# Removes specific epochs from specific observation sets.
+# Provide the epochs as a list of seconds since J2000 TDB.
+
+outlier_rejection:
+  enabled: true
+  strategies:
+    - type: epoch_filter
+      epochs: []  # list[float], seconds since J2000 TDB

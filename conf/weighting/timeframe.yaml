@@ -1,0 +1,23 @@
+# @package _global_
+
+# Weighting: per-timeframe (TF) with sqrt(n_t) descalement.
+# Divides each file into timeframes (nights) based on time gaps.
+# Each timeframe gets its own weight computed from the descaled RMSE:
+#   epsilon_t = RMS(r_i in timeframe t)
+#   epsilon_tilde_t = epsilon_t * sqrt(n_t)     (descaled)
+#   w_t = 1 / epsilon_tilde_t^2
+#
+# A lower bound of min_sigma_arcsec is enforced per timeframe to prevent
+# artificially high weights from near-perfect timeframes.
+#
+# See thesis §3.2.2 "Per-Timeframe Weighting" for details.
+
+weighting:
+  enabled: true
+  strategy: timeframe
+  min_sigma_arcsec: 0.01
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 4.0
+        min_obs_per_frame: 1

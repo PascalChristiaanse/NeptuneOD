@@ -1,0 +1,16 @@
+# @package _global_
+
+# Kernel and data file settings for the Voyager-era experiments.
+
+kernel_folder: "data/kernels"
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  nep097xl-801.bsp: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097xl-801.bsp # TRITON (801) w.r.t. NEPTUNE BARYCENTER (8)
+  nep105.bsp: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp # NEPTUNE BARYCENTER (8) w.r.t. SOLAR SYSTEM BARYCENTER (0)
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"

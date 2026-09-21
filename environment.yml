@@ -28,7 +28,7 @@ dependencies:
 
   # orbitdet requirements
   - hydra-core
-  - hydra-joblib-launcher
+  - hydra-submitit-launcher
   - beautifulsoup4
   - aim
   - plotly

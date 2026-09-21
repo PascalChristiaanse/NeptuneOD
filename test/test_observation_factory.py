@@ -171,7 +171,9 @@ class TestCollectionBuilder:
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result == ("observation-collection", ["settings:alpha", "settings:beta"])
+        assert result[0] == "observation-collection"
+        assert result[1] == ["settings:alpha", "settings:beta"]
+        assert result[2] == {}  # dataset_metadata
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
         merge_mock.assert_called_once()
         merged_collections = merge_mock.call_args.args[0]
@@ -222,7 +224,9 @@ class TestCollectionBuilder:
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result == ("observation-collection", ["settings:alpha", "settings:beta", None])
+        assert result[0] == "observation-collection"
+        assert result[1] == ["settings:alpha", "settings:beta", None]
+        assert result[2] == {}  # dataset_metadata
         merge_mock.assert_called_once()
         merged_collections = merge_mock.call_args.args[0]
         assert len(merged_collections) == 1

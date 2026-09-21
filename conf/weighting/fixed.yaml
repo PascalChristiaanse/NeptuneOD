@@ -1,0 +1,34 @@
+# @package _global_
+
+# Weighting: fixed (user-specified sigmas).
+# Assigns weights from known sigmas rather than computing them from residuals.
+# Useful when you know the precision a priori (e.g. Gaia) or need to
+# reproduce published results.
+#
+# Sigmas are specified in the grouping config as ``fixed_sigmas``.
+# Keys are set identifiers (observatory codes, body names) or group-level
+# identifiers (section names like "Voyager 2_pre_encounter").
+#
+# Observers not listed fall back to the set-level RMSE.
+#
+# Example with Voyager pre/post encounter + Gaia:
+#   grouping:
+#     levels:
+#       - type: section
+#         sections:
+#           - {name: "pre_encounter", start: -1e30, end: 618600000.0}
+#           - {name: "post_encounter", start: 618600000.0, end: 1e30}
+#     fixed_sigmas:
+#       "Voyager 2_pre_encounter": {ra: 0.03, dec: 0.03}
+#       "Voyager 2_post_encounter": {ra: 0.05, dec: 0.05}
+#       "Gaia": {ra: 0.0002, dec: 0.0002}
+
+weighting:
+  enabled: true
+  strategy: fixed
+  min_sigma_arcsec: 0.001
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 4.0
+    fixed_sigmas: {}

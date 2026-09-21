@@ -96,6 +96,9 @@ class ResidualHistogram(Plot):
         bell_curve_lw = float(_cfg_get(plot_cfg, "styling", "bell_curve_lw", default=1.5))
 
         for set_index, obs_set in enumerate(observation_sets):
+            if len(obs_set.observation_times) == 0:
+                continue
+
             observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
             if observatory_code == "":
                 observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
@@ -118,7 +121,7 @@ class ResidualHistogram(Plot):
             finite_dec = dec_residuals_arcsec[np.isfinite(dec_residuals_arcsec)]
 
             # --- RA histogram ---
-            if finite_ra.size > 0:
+            if finite_ra.size > 1:
                 n_ra, bins_ra, patches_ra = axs[0].hist(
                     finite_ra,
                     bins=n_bins,
@@ -153,7 +156,7 @@ class ResidualHistogram(Plot):
                     )
 
             # --- DEC histogram ---
-            if finite_dec.size > 0:
+            if finite_dec.size > 1:
                 n_dec, bins_dec, patches_dec = axs[1].hist(
                     finite_dec,
                     bins=n_bins,

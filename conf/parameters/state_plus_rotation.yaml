@@ -1,0 +1,8 @@
+# @package _global_
+
+# Estimation settings
+estimation:
+  max_iterations: 5
+  parameters_to_estimate:
+    - initial_state
+    - "iau_rotation_model_pole"

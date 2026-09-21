@@ -120,6 +120,9 @@ class ResidualScatter(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
 
         for set_index, obs_set in enumerate(observation_sets):
+            if len(obs_set.observation_times) == 0:
+                continue
+
             observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
             if observatory_code == "":
                 observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name

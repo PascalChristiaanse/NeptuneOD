@@ -1,0 +1,18 @@
+# @package _global_
+
+# Weighting: ID v2 (default).
+# Computes per-file RMSE from descaled per-timeframe RMSEs.
+# See docs/WEIGHTING_AND_OUTLIER_REJECTION_DESIGN.md for formulas.
+#
+# To apply different strategies to specific sets, use per-set weighting
+# via the grouping config.
+
+weighting:
+  enabled: true
+  strategy: id_v2
+  min_sigma_arcsec: 0.01
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 4.0
+        min_obs_per_frame: 1

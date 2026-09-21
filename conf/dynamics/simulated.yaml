@@ -1,0 +1,44 @@
+# @package _global_
+
+# Simulated-observation dynamical model.
+# Propagates Triton around Neptune with a reduced planetary system.
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "ECLIPJ2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+bodies_to_create:
+  Neptune:
+    gravity: "Jacobson2009"
+    rotation_model:
+      type: "IAU2015"
+  Triton:
+    gravity: "central"
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+  Sun:
+    gravity: "central"
+  Jupiter:
+    gravity: "central"
+  Saturn:
+    gravity: "central"
+  Uranus:
+    gravity: "central"
+  Mercury:
+    gravity: "central"
+  Venus:
+    gravity: "central"
+  Earth:
+    gravity: "central"
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600

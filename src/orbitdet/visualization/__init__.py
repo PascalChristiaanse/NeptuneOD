@@ -13,6 +13,8 @@ from .residual_scatter import ResidualScatter
 from .residuals import Residuals
 from .residuals import ResidualsScan
 from .RSW_distance import RSWDistance
+from .weight_groups import WeightGroups
+from .weight_summary_table import WeightSummaryTable
 
 __all__ = [
     "Plot",
@@ -30,4 +32,6 @@ __all__ = [
     "ResidualRMSPerIteration",
     "ResidualScatter",
     "RSWDistance",
+    "WeightGroups",
+    "WeightSummaryTable",
 ]

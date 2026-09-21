@@ -1,3 +1,5 @@
+import logging
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +12,8 @@ from tudatpy.estimation.observations import observations_processing as obs_proc
 from orbitdet.data.gaia_data import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot
+
+logger = logging.getLogger(__name__)
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -95,32 +99,144 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
 
 
 class Residuals(Plot):
-    """Plot pre-fit and post-fit residuals for the orbit determination."""
+    """Plot pre-fit and post-fit residuals for the orbit determination.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    observation_collection : obs.ObservationCollection | None
+        A single observation collection. Optional if ``observation_collections``
+        is provided instead.
+    fig : plt.Figure | None
+        An optional pre-existing figure. Must be provided together with ``ax``.
+    ax : plt.Axes | None
+        An optional pre-existing axes. Must be provided together with ``fig``.
+    observation_parsers : list[obs_proc.ObservationParserType] | None
+        Optional parsers to filter observation sets by type.
+    observation_collections : list[obs.ObservationCollection] | None
+        When provided, residuals are plotted from *all* collections in this list
+        instead of from the single ``observation_collection``. All observation
+        sets across all collections are plotted on the same axes.
+    collection_names : list[str] | None
+        Names for each collection in ``observation_collections``, used in the
+        legend. Must have the same length as ``observation_collections`` when
+        provided. Ignored when using a single ``observation_collection``.
+    """
 
     def __init__(
         self,
         cfg: DictConfig,
-        observation_collection: obs.ObservationCollection,
+        observation_collection: obs.ObservationCollection | None = None,
+        fig: plt.Figure | None = None,
+        ax: plt.Axes | None = None,
         observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        observation_collections: list[obs.ObservationCollection] | None = None,
+        collection_names: list[str] | None = None,
     ):
         super().__init__(cfg)
         self.observation_collection = observation_collection
         self.observation_parsers = observation_parsers
+        self.observation_collections = observation_collections
+        self.collection_names = collection_names
+
+        # At least one of observation_collection or observation_collections must be provided
+        if observation_collection is None and observation_collections is None:
+            raise ValueError(
+                "Either 'observation_collection' or 'observation_collections' must be provided."
+            )
+
+        # Validate collection_names length if provided
+        if (
+            observation_collections is not None
+            and collection_names is not None
+            and len(collection_names) != len(observation_collections)
+        ):
+            raise ValueError(
+                f"Length of collection_names ({len(collection_names)}) must match "
+                f"length of observation_collections ({len(observation_collections)})."
+            )
+
+        # If either fig or ax is provided, both must be provided
+        if (fig is not None and ax is None) or (fig is None and ax is not None):
+            raise ValueError("Both fig and ax must be provided together.")
+
+        self.fig = fig
+        self.ax = ax
+
+    def _collect_observation_sets(
+        self,
+    ) -> list[obs.SingleObservationSet]:
+        """Collect all observation sets from single or multiple collections."""
+        if self.observation_collections is not None:
+            all_sets: list[obs.SingleObservationSet] = []
+            for collection in self.observation_collections:
+                if self.observation_parsers is None:
+                    all_sets.extend(collection.get_single_observation_sets())
+                else:
+                    all_sets.extend(
+                        collection.get_single_observation_sets(self.observation_parsers)
+                    )
+            return all_sets
+        else:
+            if self.observation_parsers is None:
+                return self.observation_collection.get_single_observation_sets()
+            else:
+                return self.observation_collection.get_single_observation_sets(
+                    self.observation_parsers
+                )
+
+    def _plot_single_observation_set(
+        self,
+        axs,
+        obs_set: obs.SingleObservationSet,
+        color,
+        marker,
+        marker_size,
+        label_prefix: str,
+    ):
+        """Plot RA and DEC residuals for one observation set on the given axes."""
+        if len(obs_set.observation_times) == 0:
+            logger.debug("Skipping empty observation set '%s'", label_prefix)
+            return
+
+        obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
+        obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
+        residuals = np.array(obs_set.residuals)
+
+        ra_residuals_arcsec = _rad_to_arcsec(residuals[:, 0])
+        dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
+
+        ra_rms_arcsec = _rms_arcsec(ra_residuals_arcsec)
+        dec_rms_arcsec = _rms_arcsec(dec_residuals_arcsec)
+        ra_rms_label = f"{ra_rms_arcsec:.3e} arcsec" if ra_rms_arcsec is not None else None
+        dec_rms_label = f"{dec_rms_arcsec:.3e} arcsec" if dec_rms_arcsec is not None else None
+
+        # RA
+        axs[0].scatter(
+            obs_times,
+            ra_residuals_arcsec,
+            marker=marker,
+            s=marker_size,
+            label=f"{label_prefix} - RMS: {ra_rms_label}",
+            color=color,
+            alpha=0.5,
+        )
+        # DEC
+        axs[1].scatter(
+            obs_times,
+            dec_residuals_arcsec,
+            marker=marker,
+            s=marker_size,
+            label=f"{label_prefix} - RMS: {dec_rms_label}",
+            color=color,
+            alpha=0.5,
+        )
 
     def _make_figure(self):
         cfg = self.cfg
-        observation_collection = self.observation_collection
-        observation_parsers = self.observation_parsers
 
         """Plot pre-fit and post-fit residuals for the orbit determination."""
-        if observation_parsers is None:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets()
-            )
-        else:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets(observation_parsers)
-            )
 
         # Load plotting configuration
         plot_cfg = _cfg_get(cfg, "residuals", default=None)
@@ -128,12 +244,20 @@ class Residuals(Plot):
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
         unit = _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
 
-        fig, axs = plt.subplots(
-            2,
-            1,
-            figsize=(fig_w, fig_h),
-            sharex=True,
-        )
+        if self.fig is None and self.ax is None:
+            fig, axs = plt.subplots(
+                2,
+                1,
+                figsize=(fig_w, fig_h),
+                sharex=True,
+            )
+        else:
+            # Check if there are two subplots, one for RA and one for DEC
+            if len(self.ax) != 2:
+                raise ValueError("Expected two subplots for RA and DEC residuals.")
+            fig = self.fig
+            axs = self.ax
+
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)

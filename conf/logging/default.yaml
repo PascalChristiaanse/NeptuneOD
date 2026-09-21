@@ -1,0 +1,9 @@
+# @package _global_
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"
+    # - "orbitdet.data.kernel"

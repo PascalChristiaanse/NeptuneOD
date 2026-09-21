@@ -1,0 +1,24 @@
+# @package _global_
+
+# Weighting: scaled hybrid geometric v2 (Hybrid G+v2) — thesis-faithful.
+# Geometric mean of the ID v2 (scaled per-file) weight and the descaled
+# per-timeframe weight:
+#   w_tf = sqrt(w_id_v2 * w_tf_descaled)
+#
+# This is "scaled hybrid geom." from thesis Table 6.2 and "hybrid_new_id"
+# in the reference codebase.
+#
+# NOTE: This differs from the original hybrid_geometric strategy, which
+# uses plain per-file RMSE (ID) and unscaled per-timeframe RMSE.
+#
+# See thesis §3.2.2 "Hybrid Weighting Schemes" for details.
+
+weighting:
+  enabled: true
+  strategy: hybrid_geometric_v2
+  min_sigma_arcsec: 0.01
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 4.0
+        min_obs_per_frame: 1

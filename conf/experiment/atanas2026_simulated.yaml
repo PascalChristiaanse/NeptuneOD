@@ -1,0 +1,33 @@
+# @package _global_
+# Example experiment: Atanas2026 with simulated observations only
+# Uses the new observation collection architecture with Hydra defaults composition
+
+defaults:
+  - /collection@collection: simulated_only
+  - /dynamics: simulated
+  - /kernels: classical
+  - /parameters: state_plus_pole
+  - /logging: default
+  - _self_ # Apply experiment config fields after collections
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 2024-12-30T12:00:00
+end_date: 2026-1-2T12:00:00
+
+# Observation settings (for backward compatibility with current generate_observations)
+observations:
+  simulated: true
+  type:
+    - "relative_position"
+  noise:
+    relative_position: 1000 # m
+  cadence: 10800 # s

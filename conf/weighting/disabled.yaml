@@ -1,0 +1,6 @@
+# @package _global_
+
+# Weighting: disabled.
+
+weighting:
+  enabled: false

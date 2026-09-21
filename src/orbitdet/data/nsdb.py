@@ -161,6 +161,19 @@ class NSDBManager:
         except Exception:
             pass
 
+        # Attach the parsed telescopes to their observatories (matched by code) and build a
+        # mapping from the telescope index data column to the observatory code, so consumers
+        # can resolve the observatory for each observation row.
+        observatories = result.get("observatory")
+        telescopes = result.get("telescope")
+        if isinstance(observatories, list) and isinstance(telescopes, list):
+            result["observatory"] = self._attach_telescopes_to_observatories(
+                observatories, telescopes
+            )
+            result["telescope_index"] = self._build_telescope_index(
+                result["format_columns"], telescopes
+            )
+
         # Reference and comments are kept as trimmed raw strings if present
         if sections["reference"]:
             result["reference"] = "\n".join(sections["reference"]).strip()
@@ -222,9 +235,15 @@ class NSDBManager:
         lines = [ln.strip() for ln in contents.replace("\r", "").split("\n") if ln.strip()]
 
         contents_block: dict[str, Any] = {}
+        # Lines already consumed as continuation lines of a previous field (e.g. extra
+        # observatories listed beneath the "observatory:" heading).
+        skip: set[int] = set()
 
-        for line in lines:
+        for i, line in enumerate(lines):
+            if i in skip:
+                continue
             if ":" not in line:
+                # Standalone continuation line without a known parent heading: ignore it.
                 continue
             key, val = [p.strip() for p in line.split(":", 1)]
             lkey = key.lower()
@@ -289,20 +308,35 @@ class NSDBManager:
                 continue
 
             if lkey == "observatory":
-                # e.g. '874 - Itajuba (Lab...)'
-                parts = [p.strip() for p in re.split(r"-", val, maxsplit=1)]
-                try:
-                    code = int(re.sub(r"[^0-9]", "", parts[0]))
-                except Exception:
-                    code = None
-                name = parts[1] if len(parts) > 1 else parts[0]
-                contents_block["observatory"] = {"code": code, "name": name}
+                # A dataset may list one or more observatories. The first one appears on the
+                # 'observatory:' line itself, and any additional ones follow as continuation
+                # lines (without a colon). e.g.:
+                #     observatory: 083 - Golosseevo-Kiev
+                #                  188 - Majdanak
+                raw_entries = [val]
+                j = i + 1
+                while j < len(lines) and ":" not in lines[j]:
+                    raw_entries.append(lines[j])
+                    skip.add(j)
+                    j += 1
+                observatories = [self._parse_observatory_entry(e) for e in raw_entries]
+                contents_block["observatory"] = observatories
                 continue
 
             # Fallback: store raw value under its normalized key
             contents_block[lkey.replace(" ", "_")] = val
 
         return contents_block
+
+    def _parse_observatory_entry(self, entry: str) -> dict[str, Any]:
+        """Parse a single observatory entry of the form '083 - Golosseevo-Kiev'."""
+        parts = [p.strip() for p in re.split(r"-", entry, maxsplit=1)]
+        try:
+            code = int(re.sub(r"[^0-9]", "", parts[0]))
+        except Exception:
+            code = None
+        name = parts[1] if len(parts) > 1 else (parts[0] if code is None else "")
+        return {"code": code, "name": name}
 
     def _parse_informations(self, informations: str) -> dict[str, Any]:
         """Parses informations section on NSDB contents file
@@ -351,6 +385,7 @@ class NSDBManager:
 
         field_map = {
             "reference frame": "reference_frame",
+            "center of frame": "center_of_frame",
             "centre of frame": "centre_of_frame",
             "epoch of equinox": "epoch_of_equinox",
             "time scale": "time_scale",
@@ -365,11 +400,19 @@ class NSDBManager:
 
         parsed: dict[str, Any] = {}
         current_alias: str | None = None
+        telescope_entries: list[str] = []
 
         for line in lines:
             if ":" in line:
                 key, value = [p.strip() for p in line.split(":", 1)]
                 lowered_key = key.lower()
+
+                # A telescope continuation line may itself contain a colon, e.g.
+                # '188 - Z6: The 60-cm Zeiss Reflector'. Detect it by the leading
+                # observatory-code prefix while still inside the telescope field.
+                if current_alias == "telescope" and re.match(r"^\d+\s*-\s*\S+", key):
+                    telescope_entries.append(line)
+                    continue
 
                 if lowered_key == "relative to":
                     designation = value
@@ -389,8 +432,16 @@ class NSDBManager:
 
                 alias = field_map.get(lowered_key)
                 if alias is not None:
-                    parsed[alias] = value
-                    current_alias = alias
+                    if alias == "telescope":
+                        # The telescope field may list multiple observatory-telescope pairs,
+                        # e.g.:
+                        #   telescope: 083 - DL: The Tepfer Double Long-Focus Astrograph
+                        #              188 - Z6: The 60-cm Zeiss Reflector
+                        telescope_entries = [value]
+                        current_alias = "telescope"
+                    else:
+                        parsed[alias] = value
+                        current_alias = alias
                     continue
 
                 current_alias = None
@@ -398,7 +449,148 @@ class NSDBManager:
 
             # Support line wraps in long fields like telescope/observers
             if current_alias and "-" * 5 not in line:
-                joined = f"{parsed[current_alias]} {line}".strip()
-                parsed[current_alias] = re.sub(r"\s+", " ", joined)
+                if current_alias == "telescope":
+                    telescope_entries.append(line)
+                else:
+                    joined = f"{parsed[current_alias]} {line}".strip()
+                    parsed[current_alias] = re.sub(r"\s+", " ", joined)
+
+        if telescope_entries:
+            # Only parse as structured entries when the telescope field carries observatory
+            # code prefixes (multi-observatory datasets). Otherwise keep it as a plain string
+            # for backward compatibility (e.g. 'Reflector, D = 0.61 m, f/16').
+            if any(re.match(r"^\d+\s*-\s*\S+", e) for e in telescope_entries):
+                parsed["telescope"] = self._parse_telescope_entries(telescope_entries)
+            else:
+                parsed["telescope"] = re.sub(r"\s+", " ", " ".join(telescope_entries)).strip()
+
+        # Expose "centre of frame" under both the British "centre_of_frame" and the
+        # US/American "center_of_frame" spellings so consumers can use either key.
+        if "centre_of_frame" in parsed and "center_of_frame" not in parsed:
+            parsed["center_of_frame"] = parsed["centre_of_frame"]
 
         return parsed
+
+    def _parse_telescope_entries(self, entries: list[str]) -> list[dict[str, Any]]:
+        """Parse telescope field entries.
+
+        Two formats are supported:
+
+        1. Observatory-code prefix (nm0083 style):
+             '083 - DL: The Tepfer Double Long-Focus Astrograph (D=40cm, F=550cm)'
+           The leading number is the observatory code.
+
+        2. Telescope-index prefix with observatory code embedded in the description
+           (nm0019 style):
+             '1 - Reflector, D=156 cm (at the Sheshan Station, code 337)'
+           The leading number is a telescope index; the observatory code is extracted
+           from the description text (e.g. 'code 337').
+
+        Each entry yields a dict with ``code`` (observatory code when resolvable),
+        ``name`` (short telescope name), ``description``, and ``index`` (the leading
+        numeric prefix).
+        """
+        result: list[dict[str, Any]] = []
+        for entry in entries:
+            parts = [p.strip() for p in re.split(r"-", entry, maxsplit=1)]
+            try:
+                index = int(re.sub(r"[^0-9]", "", parts[0]))
+            except Exception:
+                index = None
+            rest = parts[1] if len(parts) > 1 else ""
+            if ":" in rest:
+                short_name, description = [p.strip() for p in rest.split(":", 1)]
+            else:
+                short_name, description = rest, ""
+
+            # If the description carries an explicit observatory code (e.g. 'code 337'),
+            # the leading number is a telescope index. Otherwise the leading number is the
+            # observatory code itself. Search the whole entry text for 'code NNN' since the
+            # code may appear in the short name when there is no colon separator.
+            code_match = re.search(r"code\s+(\d+)", entry, re.IGNORECASE)
+            if code_match:
+                code = int(code_match.group(1))
+            else:
+                code = index
+
+            result.append(
+                {
+                    "code": code,
+                    "name": short_name,
+                    "description": description,
+                    "index": index,
+                }
+            )
+        return result
+
+    def _attach_telescopes_to_observatories(
+        self,
+        observatories: list[dict[str, Any]],
+        telescopes: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Attach the parsed telescopes to their observatory by matching observatory code."""
+        by_code: dict[int | None, list[dict[str, Any]]] = {}
+        for t in telescopes:
+            by_code.setdefault(t.get("code"), []).append(t)
+        result: list[dict[str, Any]] = []
+        for obs in observatories:
+            entry = dict(obs)
+            entry["telescopes"] = by_code.get(obs.get("code"), [])
+            result.append(entry)
+        return result
+
+    def _build_telescope_index(
+        self,
+        format_columns: dict[str, str],
+        telescopes: list[dict[str, Any]],
+    ) -> dict[str, int | None]:
+        """Build a mapping from the telescope index data column to the observatory code.
+
+        Two cases are supported:
+
+        1. The format column enumerates telescope indices mapped to telescope names, e.g.
+           'Telescope (T): 1 - DL, 2 - Z6'. Each telescope name is matched against the parsed
+           telescope entries (which carry the observatory code) to resolve the observatory for
+           each data row.
+
+        2. The format column directly describes observatory codes, e.g.
+           'Code of observatory (327 or 337)'. In this case the data column already holds the
+           observatory code, so the mapping is the identity (code -> code).
+        """
+        # Find the format column describing the telescope index / observatory code
+        telescope_col: tuple[str, str] | None = None
+        for index, label in format_columns.items():
+            lowered = label.lower()
+            if "telescope" in lowered or "observatory" in lowered:
+                telescope_col = (index, label)
+                break
+        if telescope_col is None:
+            return {}
+
+        _, label = telescope_col
+        lowered = label.lower()
+
+        # Case 2: the column directly holds observatory codes, e.g. 'Code of observatory
+        # (327 or 337)'. Extract the codes and map each to itself.
+        if "observatory" in lowered and "telescope" not in lowered:
+            codes = re.findall(r"\b(\d{3})\b", label)
+            return {code: int(code) for code in codes}
+
+        # Case 1: telescope index -> telescope name mapping, e.g. 'Telescope (T): 1 - DL, 2 - Z6'
+        mapping_text = label.split(":", 1)[1] if ":" in label else label
+        index_to_name: dict[str, str] = {}
+        for part in mapping_text.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            m = re.match(r"^(\d+)\s*-\s*(.+)$", part)
+            if m:
+                index_to_name[m.group(1)] = m.group(2).strip()
+
+        # Build short_name -> observatory code from telescope entries
+        name_to_code: dict[str, int | None] = {}
+        for t in telescopes:
+            if t.get("name"):
+                name_to_code[t["name"]] = t.get("code")
+
+        return {idx: name_to_code.get(name) for idx, name in index_to_name.items()}

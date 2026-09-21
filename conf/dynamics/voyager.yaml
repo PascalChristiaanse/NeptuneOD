@@ -1,0 +1,33 @@
+# @package _global_
+
+# Voyager-era dynamical model.
+# Propagates Triton around the SSB with Voyager 2 as an observer.
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "B1950"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "SSB"
+
+bodies_to_create:
+  Neptune Barycenter:
+    placeholder: true
+    ephemeris:
+      type: "direct_spice"
+  Voyager 2:
+    ephemeris:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file" # (Ephemeris matches paper)
+  Triton:
+    ephemeris:
+      type: "direct_spice"
+      relative_to: "SSB"
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600

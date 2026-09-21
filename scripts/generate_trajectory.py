@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiments/classic_triton_state",
+    config_name="experiment/classic_triton_state",
 )
 @enforce_initialization
 def main(cfg: DictConfig):

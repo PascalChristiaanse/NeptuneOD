@@ -1,0 +1,41 @@
+# @package _global_
+
+# Experiment: Atanas D. estimating:
+# - Triton initial state
+
+defaults:
+  - /collection@collection: atanas_triton_generated
+  - /dynamics: classical
+  - /kernels: classical
+  - /parameters: initial_state
+  - /logging: default
+  - _self_ # Apply experiment config fields after collections
+  - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/dependent_variable
+  - /figures/dependent_variable_differenced@dependent_variable_differenced
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+  launcher:
+    _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
+
+# Time settings
+start_date: 1963-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+initial_epoch: 2006-10-1T12:00:00
+
+# Estimation overrides
+estimation:
+  max_iterations: 3

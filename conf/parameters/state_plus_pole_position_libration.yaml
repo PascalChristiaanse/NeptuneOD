@@ -1,0 +1,17 @@
+# @package _global_
+
+# Estimation settings: Triton initial state + Neptune pole position + libration rates.
+# Estimates the full IAU pole model for Neptune:
+#   - Pole position (alpha_0, delta_0)
+#   - Pole precession rates (alpha_dot, delta_dot)
+#
+# This is the most comprehensive pole parameter set — useful for sensitivity
+# analysis but beyond the WA-FIT-PL baseline (which estimates state + pole
+# libration rates only).
+
+estimation:
+  max_iterations: 5
+  parameters_to_estimate:
+    - initial_state
+    - iau_rotation_model_pole
+    - iau_rotation_model_pole_rate

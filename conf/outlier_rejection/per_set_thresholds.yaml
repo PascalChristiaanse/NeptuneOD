@@ -12,7 +12,7 @@ outlier_rejection:
   enabled: true
   strategies:
     - type: residual_threshold
-      threshold_arcsec: 0.5
+      threshold_arcsec: 5
       sets: ["Voyager 2"]
     - type: residual_threshold
       threshold_arcsec: 1.5

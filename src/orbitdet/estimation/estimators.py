@@ -11,13 +11,32 @@ from orbitdet.reproducibility.runtime import RuntimeContext
 logger = logging.getLogger(__name__)
 
 
+def _resolve_libration_frequencies(cfg_entry: DictConfig | str) -> list[float]:
+    """Extract libration angular frequencies from a config entry.
+
+    Accepts:
+      - A list of floats, e.g. ``[1.0, 2.0]``.
+      - A single float (wrapped into a one-element list).
+      - A string ``"default"``, which returns ``[]`` (frequencies determined
+        by the IAU rotation model in Tudat).
+    """
+    if isinstance(cfg_entry, DictConfig):
+        raw = cfg_entry.get("libration_frequencies", [])
+        if isinstance(raw, (list, tuple)):
+            return list(raw)
+        if isinstance(raw, (int, float)):
+            return [float(raw)]
+        return []
+    return []
+
+
 def get_estimatable_parameter_settings(
     cfg: DictConfig,
     ctx: RuntimeContext,
     prop_settings: prop_setup.propagator.PropagatorSettings,
     bodies: env.SystemOfBodies,
 ) -> list[param.EstimatableParameter]:
-    # `initial_states` returns a sequence of EstimatableParameterSettings;
+    # ``initial_states`` returns a sequence of EstimatableParameterSettings;
     # ensure we start with a flat list instead of nesting the sequence.
     estimated_parameters = list(param_setup.initial_states(prop_settings, bodies))
     for parameters in cfg.estimation.parameters_to_estimate:
@@ -32,9 +51,24 @@ def get_estimatable_parameter_settings(
             case "initial_state":
                 continue  # initial state is already added as a group parameter
             case "iau_rotation_model_pole":
-                estimated_parameters.append(param_setup.iau_rotation_model_pole("Neptune"))
+                estimated_parameters.append(
+                    param_setup.iau_rotation_model_pole("Neptune")
+                )
+            case "iau_rotation_model_pole_rate":
+                estimated_parameters.append(
+                    param_setup.iau_rotation_model_pole_rate("Neptune")
+                )
+            case "iau_rotation_model_pole_librations":
+                freqs = _resolve_libration_frequencies(parameters)
+                estimated_parameters.append(
+                    param_setup.iau_rotation_model_pole_librations(
+                        "Neptune", freqs
+                    )
+                )
             case "neptune_GM":
-                estimated_parameters.append(param_setup.gravitational_parameter("Neptune"))
+                estimated_parameters.append(
+                    param_setup.gravitational_parameter("Neptune")
+                )
             case "neptune_j2_j4":
                 block_indices = [
                     (2, 0),  # C20 (J2)
@@ -48,7 +82,9 @@ def get_estimatable_parameter_settings(
                     )
                 )
             case _:
-                raise ValueError(f"Unknown parameter {param_name} specified for estimation")
+                raise ValueError(
+                    f"Unknown parameter {param_name} specified for estimation"
+                )
 
     return estimated_parameters
 

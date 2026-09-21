@@ -1,0 +1,46 @@
+# @package _global_
+
+# Sweep: WA-FIT-PL weighting strategy comparison (Chapter 6).
+#   - 12 experiments = 6 weighting schemes x 2 data variants (with/without Voyager)
+#   - Analyses: Triton state + Neptune pole libration rates, IAU 2015 pole model
+#     (override dynamics for NEP097-fitted pole to match thesis exactly)
+#
+# Run with:
+#   python scripts/solve_least_squares.py --multirun --config-name sweep/wa_fit_pl_weighting
+#
+# Thesis reference: §6 Weighting Strategy Comparison Experiments, WA-FIT-PL analysis.
+# The "ref" row in thesis Table 6.2 corresponds to weighting=id_v2 here
+# (the FitPole reference solution with scaled per-file weights).
+#
+# Weighting scheme mapping (thesis label -> NeptuneOD config key):
+#   ref (FitPole ref.)   -> id_v2                  (ID v2, the reference scheme)
+#   per file             -> id                     (plain per-file RMSE)
+#   scaled per file      -> id_v2                  (ID v2, descaled per-file RMSE)
+#   per timeframe        -> timeframe              (TF, descaled with sqrt(n_t))
+#   per timeframe free   -> timeframe_free         (TF free, no sigma cap)
+#   scaled hybrid geom.  -> hybrid_geometric_v2    (Hybrid G+v2, geometric mean)
+#   scaled hybrid arith. -> hybrid_arithmetic      (Hybrid A+v2, arithmetic mean)
+
+defaults:
+  - /experiment: wa_fit_pl
+  - /outlier_rejection: residual_threshold
+  - _self_
+  - override /hydra/launcher: submitit_local
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    submitit_folder: ${hydra.sweep.dir}
+    tasks_per_node: 1
+    nodes: 1
+    gpus_per_node: 0
+    cpus_per_task: 1
+    timeout_min: 60
+  sweep:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  sweeper:
+    max_batch_size: 12
+    params:
+      weighting: id,id_v2,timeframe,timeframe_free,hybrid_geometric_v2,hybrid_arithmetic
+      data: classical,classical_voyager

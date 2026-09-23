@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 
 import hydra
-import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
@@ -75,9 +74,13 @@ def main(cfg: DictConfig):
     # ESA kernel shows mainly interpolator error rather than the physical
     # discrepancy at the observation epochs. The differences are interpolated
     # onto the observation epochs and plotted as a scatter.
-    gaia_cache = Path(cfg.bodies_to_create.Gaia.ephemeris.cache_file)
-    gaia_table = pd.read_pickle(gaia_cache)
-    observation_epochs = gaia_table["epoch"].to_numpy()
+    from orbitdet.data.gaia_data import GaiaQuery
+
+    source_ids = list(cfg.bodies_to_create.Gaia.ephemeris.source_ids)
+    filter_outcomes = bool(getattr(cfg.bodies_to_create.Gaia.ephemeris, "filter_outcomes", False))
+    gaia_query = GaiaQuery()
+    gaia_query.retrieve_data(source_ids=source_ids, filter_outcomes=filter_outcomes)
+    observation_epochs = gaia_query.observation_table["epoch"].to_numpy()
 
     fig_diff_kep, data_diff_kep = DifferencedDependentVariables(
         cfg,

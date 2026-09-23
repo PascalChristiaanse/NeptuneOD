@@ -1,0 +1,35 @@
+# @package _global_
+
+defaults:
+  - /collection: gaia_collection
+  - /dynamics: classical_gaia
+  - /kernels: gaia
+  - /logging: default
+  - _self_ # Apply experiment config fields after collections
+  - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/dependent_variable
+  - /figures/dependent_variable_differenced@dependent_variable_differenced
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/RSW_distance
+  
+seed: 42
+
+propagation:
+  set_integrated_result: false
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 2014-1-1T12:00:00 # Gaia first light
+end_date: 2026-1-1T12:00:00 # Gaia end of mission
+initial_epoch: 2014-1-1T12:00:00

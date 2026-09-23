@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - /kernels/classical
+  - _self_ 
+
+kernels:
+  gaia_flp.bsp: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/spk/gaia_flp_20131219_21250328_v01.bsp" # Gaia position
+  gaia_v01.tf: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/fk/gaia_v01.tf" # Gaia frame

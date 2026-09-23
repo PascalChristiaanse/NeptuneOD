@@ -1,5 +1,3 @@
-import logging
-
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,10 +7,9 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
+from orbitdet.data.gaia_data import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot
-
-logger = logging.getLogger(__name__)
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -35,17 +32,40 @@ def _rad_to_arcsec(angle_rad: np.ndarray) -> np.ndarray:
     return np.rad2deg(angle_rad) * 3600.0
 
 
+def _unit_factor(unit: str) -> float:
+    """Number of the chosen unit in one radian.
+
+    Supported units are ``"arcsec"`` (default) and ``"mas"``.
+
+    Args:
+        unit: Display unit for the residuals. One of ``"arcsec"`` or ``"mas"``.
+
+    Returns:
+        Conversion factor from radians to the requested unit.
+    """
+    if unit == "mas":
+        return np.rad2deg(1.0) * 3600.0 * 1e3
+    # Default: arcseconds
+    return np.rad2deg(1.0) * 3600.0
+
+
+def _rad_to_unit(angle_rad: np.ndarray, unit: str) -> np.ndarray:
+    """Convert angles from radians to the requested display unit."""
+    return np.asarray(angle_rad) * _unit_factor(unit)
+
+
 def _principal_angle_rad(angle_rad: np.ndarray) -> np.ndarray:
     return np.remainder(angle_rad + np.pi, 2.0 * np.pi) - np.pi
 
 
-def _rms_arcsec(values_arcsec: np.ndarray) -> float | None:
-    finite_values = values_arcsec[np.isfinite(values_arcsec)]
+def _rms_in_unit(values_in_unit: np.ndarray, unit: str) -> float | None:
+    finite_values = values_in_unit[np.isfinite(values_in_unit)]
     if finite_values.size == 0:
         return None
 
-    return float(np.sqrt(np.mean(np.square(finite_values))))
-
+    rms = float(np.sqrt(np.mean(np.square(finite_values))))
+    # Report very small RMS values (e.g. in mas) without losing precision.
+    return rms
 
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000: np.ndarray) -> pd.DatetimeIndex:
     return pd.to_datetime(
@@ -172,7 +192,6 @@ class Residuals(Plot):
     ):
         """Plot RA and DEC residuals for one observation set on the given axes."""
         if len(obs_set.observation_times) == 0:
-            logger.debug("Skipping empty observation set '%s'", label_prefix)
             return
 
         obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
@@ -182,8 +201,8 @@ class Residuals(Plot):
         ra_residuals_arcsec = _rad_to_arcsec(residuals[:, 0])
         dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
 
-        ra_rms_arcsec = _rms_arcsec(ra_residuals_arcsec)
-        dec_rms_arcsec = _rms_arcsec(dec_residuals_arcsec)
+        ra_rms_arcsec = _rms_in_unit(ra_residuals_arcsec)
+        dec_rms_arcsec = _rms_in_unit(dec_residuals_arcsec)
         ra_rms_label = f"{ra_rms_arcsec:.3e} arcsec" if ra_rms_arcsec is not None else None
         dec_rms_label = f"{dec_rms_arcsec:.3e} arcsec" if dec_rms_arcsec is not None else None
 
@@ -359,7 +378,7 @@ class Residuals(Plot):
 
         return fig, axs
 
-    
+
 class ResidualsScan(Plot):
     """Plot along-scan (AL) and across-scan (AC) residuals for Gaia observations.
 
@@ -507,9 +526,7 @@ class ResidualsScan(Plot):
 
         # Hover formatter
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
-        hover_y_label = _cfg_get(
-            plot_cfg, "axes", "hover_y_label", default=f"Residual [{unit}]"
-        )
+        hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default=f"Residual [{unit}]")
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt

@@ -20,12 +20,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import spiceypy as spy
 
 PROJECT = Path(__file__).resolve().parent.parent
 K = PROJECT / "data" / "kernels"
-TABLE = PROJECT / "data" / "gaia" / "triton.pkl"
 
 BASE_KERNELS = [str(K / "naif0012.tls"), str(K / "pck00010.tpc")]
 DE440 = str(K / "DE440.bsp")
@@ -69,9 +67,6 @@ def seconds_since_j2000(year: float) -> float:
 
 
 def main():
-    table = pd.read_pickle(str(TABLE))
-    epochs = table["epoch"].to_numpy().astype(float)
-
     # Plot over the requested long arc (1900-2050), not just the Gaia window.
     year_min, year_max = 1900.0, 2050.0
     et_dense = np.linspace(seconds_since_j2000(year_min), seconds_since_j2000(year_max), 2000)
@@ -140,7 +135,8 @@ def main():
             f"{np.sqrt(np.mean(T**2)):.0f} / {np.sqrt(np.mean(N**2)):.0f} km"
         )
         print(
-            f"    at Gaia window (2014-2019): mean {np.mean(d3[(years >= 2014) & (years <= 2019)]):.0f} "
+            f"    at Gaia window (2014-2019): "
+            f"mean {np.mean(d3[(years >= 2014) & (years <= 2019)]):.0f} "
             f"max {np.max(d3[(years >= 2014) & (years <= 2019)]):.0f} km"
         )
     print(f"{REF_NAME:24s}  (reference, zero by construction)")

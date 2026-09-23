@@ -34,7 +34,6 @@ from orbitdet.simulation import (
     get_integrator_settings,
     get_propagator_settings,
 )
-from orbitdet.simulation.propagation import get_propagator_settings
 from orbitdet.visualization import Residuals, ResidualsScan
 
 display = os.environ.get("DISPLAY")
@@ -153,7 +152,8 @@ def main(cfg: DictConfig):
     # (as per config/gaia docs)https://gea.esac.esa.int/archive/documentation/FPR/chap_datamodel/
     # sec_dm_focused_product_release/ssec_dm_sso_observation.html)
 
-    # Ephemeris doesnt seem to match up with literature (see aim runs favorites/gaiaprefitsresiduals 59fe499)
+    # Ephemeris doesnt seem to match up with literature
+    # (see aim runs favorites/gaiaprefitsresiduals 59fe499)
     # "systematics and refinement... yuan2025"
 
 

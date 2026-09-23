@@ -257,7 +257,8 @@ class GaiaQuery:
 
         if not bodies.does_body_exist(target_name) or bodies.get(target_name).ephemeris is None:
             raise ValueError(
-                f"Target body '{target_name}' and associated ephemeris must be loaded in SystemOfBodies"
+                f"Target body '{target_name}' and associated ephemeris must be "
+                "loaded in SystemOfBodies"
             )
 
         output_frame = output_frame or input_frame
@@ -500,7 +501,9 @@ class GaiaQuery:
             raise LookupError(f"No observations found for query {where_clause}")
 
         # Convert units and sort
-        func = lambda jd: julian_day_to_seconds_since_epoch(jd + J2010)
+        def func(jd):
+            return julian_day_to_seconds_since_epoch(jd + J2010)
+
         table["epoch"] = table["epoch"].apply(func)
         table["epoch"] = table["epoch"].apply(TCB_to_TDB)
 
@@ -678,10 +681,12 @@ class GaiaQuery:
         first_epoch = DateTime.from_epoch(self.epoch_start)
         final_epoch = DateTime.from_epoch(self.epoch_end)
         print(
-            f"First observation yy/mm/dd: {first_epoch.year}, {first_epoch.month}, {first_epoch.day}"
+            "First observation yy/mm/dd: "
+            f"{first_epoch.year}, {first_epoch.month}, {first_epoch.day}"
         )
         print(
-            f"Final observation yy/mm/dd: {final_epoch.year}, {final_epoch.month}, {final_epoch.day}"
+            "Final observation yy/mm/dd: "
+            f"{final_epoch.year}, {final_epoch.month}, {final_epoch.day}"
         )
 
         for mpc_number in self.mpc_numbers:
@@ -696,10 +701,12 @@ class GaiaQuery:
             final_epoch = DateTime.from_epoch(epochs_as_list[-1])
 
             print(
-                f"First observation yy/mm/dd: {first_epoch.year}, {first_epoch.month}, {first_epoch.day}"
+                "First observation yy/mm/dd: "
+                f"{first_epoch.year}, {first_epoch.month}, {first_epoch.day}"
             )
             print(
-                f"Final observation yy/mm/dd: {final_epoch.year}, {final_epoch.month}, {final_epoch.day}"
+                "Final observation yy/mm/dd: "
+                f"{final_epoch.year}, {final_epoch.month}, {final_epoch.day}"
             )
 
     def get_gaia_ephemeris(self, geocentric: bool = True):

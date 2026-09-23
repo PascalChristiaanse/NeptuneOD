@@ -72,7 +72,8 @@ def _deflection_vector_to_corrections(
     Returns:
         (ra_correction, dec_correction) in radians.
     """
-    unit = lambda vec: vec / np.linalg.norm(vec)
+    def unit(vec):
+        return vec / np.linalg.norm(vec)
 
     # Find corrected unit observation vector
     observed_unit_vector = -np.array(  # Minus because of Klioner sign convention

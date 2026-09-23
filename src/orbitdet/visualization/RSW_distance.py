@@ -182,8 +182,6 @@ class RSWDistance(Plot):
         axes[-1].set_xlabel("Epoch")
 
         # --- title ---
-        body1 = position_dependent_variable.associated_body
-        body2 = position_dependent_variable.secondary_body
         central = _cfg_get(plot_cfg, "central_body", default=central_body)
         try:
             if isinstance(suptitle, str):

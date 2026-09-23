@@ -471,8 +471,8 @@ def main(cfg: DictConfig):
     fig_residuals, ax_residuals = Residuals(cfg, observations).plot()
 
     # Plot residual PSD
-    residuals_psd_cfg = cfg.get("residuals_psd", {})
-    window_length_days = residuals_psd_cfg.get("window_length_days", 30.0)
+    # residuals_psd_cfg = cfg.get("residuals_psd", {})
+    # window_length_days = residuals_psd_cfg.get("window_length_days", 30.0)
     # fig_psd, ax_psd = ResidualsPSD(
     #     cfg, observations, window_length_days, cfg.figures.get("residuals_psd", {})
     # ).plot()

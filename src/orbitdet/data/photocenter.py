@@ -34,7 +34,10 @@ def _offset_magnitude(
     solar_phase_angle: float, diameter: float, target_gaia_distance: float
 ) -> float:
     """Magnitude (rad) of the photocenter offset (Fuentes-Munoz 2024)."""
-    cot = lambda x: np.cos(x) / np.sin(x)
+
+    def cot(x):
+        return np.cos(x) / np.sin(x)
+
     num = 2 * (np.sin(solar_phase_angle) + (np.pi - solar_phase_angle) * np.cos(solar_phase_angle))
     denom = (
         3

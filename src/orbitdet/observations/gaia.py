@@ -61,13 +61,9 @@ def create_gaia_dataset(
 
     query = GaiaQuery()
     if source_ids is not None:
-        query.retrieve_data(
-            source_ids=source_ids, filter_outcomes=filter_outcomes
-        )
+        query.retrieve_data(source_ids=source_ids, filter_outcomes=filter_outcomes)
     elif mpc_numbers is not None:
-        query.retrieve_data(
-            mpc_numbers=mpc_numbers, filter_outcomes=filter_outcomes
-        )
+        query.retrieve_data(mpc_numbers=mpc_numbers, filter_outcomes=filter_outcomes)
     else:
         raise ValueError(
             f"Gaia dataset {dataset_cfg.identifier} must specify either "

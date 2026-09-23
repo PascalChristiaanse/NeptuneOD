@@ -5,13 +5,27 @@ import spiceypy as spice
 # 1. LOAD THE HIGH-PRECISION KERNELS
 # ==========================================
 # Make sure you have downloaded these from NAIF / ESA Gaia repositories
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/naif0012.tls")       # Leapseconds kernel (LSK)
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/DE440.bsp")          # High-precision planetary ephemeris
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/nep097.bsp")         # basic solar system bodies ephemeris
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/F8B24.bsp")         # High-precision solar system bodies
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/F8M24.bsp")         # High-precision Neptune/Triton ephemeris
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/gaia_v01.tf")        # Gaia frames kernel (defines GAIA ID)
-spice.furnsh("/home/pascal/Documents/NeptuneOD/data/kernels/gaia_flp.bsp") # Real/reconstructed Gaia trajectory SPK
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/naif0012.tls"
+)  # Leapseconds kernel (LSK)
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/DE440.bsp"
+)  # High-precision planetary ephemeris
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/nep097.bsp"
+)  # basic solar system bodies ephemeris
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/F8B24.bsp"
+)  # High-precision solar system bodies
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/F8M24.bsp"
+)  # High-precision Neptune/Triton ephemeris
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/gaia_v01.tf"
+)  # Gaia frames kernel (defines GAIA ID)
+spice.furnsh(
+    "/home/pascal/Documents/NeptuneOD/data/kernels/gaia_flp.bsp"
+)  # Real/reconstructed Gaia trajectory SPK
 
 
 # ==========================================
@@ -25,18 +39,18 @@ def gaia_tcb_to_tdb_et(tcb_jd):
     """
     # TDB seconds past J2000 for the JD epoch
     tdb_jd_j2000 = 2451545.0
-    
+
     # Standard IAU linear drift rate between TCB and TDB
     # L_B = 1.550519768 * 10^-8
     LB = 1.550519768e-8
-    
+
     # Convert input TCB JD into TCB seconds past J2000
     tcb_sec = (tcb_jd - tdb_jd_j2000) * 86400.0
-    
+
     # TDB = TCB - L_B * (TCB_seconds) - TDB_0
     # At J2000.0, TCB - TDB is approximately -65.56 ms
-    tdb_0 = -6.5562e-2 
-    
+    tdb_0 = -6.5562e-2
+
     et_tdb = tcb_sec - (LB * tcb_sec) - tdb_0
     return et_tdb
 
@@ -63,7 +77,7 @@ position, light_time = spice.spkpos(
     ref="J2000",
     abcorr="CN",
     # abcorr="XCN+S",
-    obs="GAIA"
+    obs="GAIA",
 )
 
 
@@ -97,7 +111,7 @@ dec_from_gaia_archive = -10.490687886968159
 #   0 = North, 90 = increasing RA, 180 = South, 270 = decreasing RA.
 # It is the angle between the along-scan (AL) direction and the direction to
 # the North Pole at the SSO position.
-position_angle_scan_deg = 303.0407249788776   # <-- SET THIS from the Gaia archive
+position_angle_scan_deg = 303.0407249788776  # <-- SET THIS from the Gaia archive
 
 print(f"RA from Gaia archive (deg): {ra_from_gaia_archive:.12f}")
 print(f"Dec from Gaia archive (deg): {dec_from_gaia_archive:.12f}")

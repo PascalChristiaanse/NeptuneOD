@@ -226,9 +226,7 @@ class DifferencedDependentVariables(Plot):
             plot_epochs = plot_epochs[in_bounds]
             n_components = difference_dicts[0][full_time_history[0]].size
             for diff in difference_dicts:
-                values = np.vstack(
-                    [np.asarray(diff[e]).flatten() for e in full_time_history]
-                )
+                values = np.vstack([np.asarray(diff[e]).flatten() for e in full_time_history])
                 interpolated = np.vstack(
                     [
                         np.interp(plot_epochs, full_time_history, values[:, c])

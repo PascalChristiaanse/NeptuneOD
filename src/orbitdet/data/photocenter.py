@@ -25,9 +25,7 @@ def _unit(vector: np.ndarray) -> np.ndarray:
     return vector / norm(vector)
 
 
-def _solar_phase_angle(
-    target_wrt_gaia_unit: np.ndarray, target_wrt_sun_unit: np.ndarray
-) -> float:
+def _solar_phase_angle(target_wrt_gaia_unit: np.ndarray, target_wrt_sun_unit: np.ndarray) -> float:
     """Solar phase angle in radians (observer-target-Sun angle)."""
     return np.arccos(np.dot(target_wrt_gaia_unit, target_wrt_sun_unit))
 
@@ -37,13 +35,14 @@ def _offset_magnitude(
 ) -> float:
     """Magnitude (rad) of the photocenter offset (Fuentes-Munoz 2024)."""
     cot = lambda x: np.cos(x) / np.sin(x)
-    num = 2 * (
-        np.sin(solar_phase_angle)
-        + (np.pi - solar_phase_angle) * np.cos(solar_phase_angle)
-    )
-    denom = 3 * np.pi * (
-        cot(solar_phase_angle / 2)
-        - np.sin(solar_phase_angle / 2) * np.log(cot(solar_phase_angle / 4))
+    num = 2 * (np.sin(solar_phase_angle) + (np.pi - solar_phase_angle) * np.cos(solar_phase_angle))
+    denom = (
+        3
+        * np.pi
+        * (
+            cot(solar_phase_angle / 2)
+            - np.sin(solar_phase_angle / 2) * np.log(cot(solar_phase_angle / 4))
+        )
     )
     offset_ratio = num / denom  # Fraction of body radius
     offset_ratio = max(0.0, min(1.0, float(offset_ratio)))
@@ -115,10 +114,9 @@ def photocenter_offset_spherical(
         target_gaia_distance = norm(target_wrt_ssb - gaia_wrt_ssb)
 
         solar_phase_angle = _solar_phase_angle(target_wrt_gaia_unit, target_wrt_sun_unit)
-        offset_vec = (
-            _offset_magnitude(solar_phase_angle, diameter, target_gaia_distance)
-            * _offset_direction(target_wrt_gaia_unit, target_wrt_sun_unit)
-        )
+        offset_vec = _offset_magnitude(
+            solar_phase_angle, diameter, target_gaia_distance
+        ) * _offset_direction(target_wrt_gaia_unit, target_wrt_sun_unit)
 
         ra_corr, dec_corr = _offset_vector_to_corrections(offset_vec, row.ra, row.dec)
 

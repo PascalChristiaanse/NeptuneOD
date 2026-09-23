@@ -204,10 +204,10 @@ def _configure_ephemeris_model(
             )
 
             gaia_ephemeris = get_gaia_ephemeris(
-                            source_ids,
-                            geocentric=geocentric,
-                            filter_outcomes=filter_outcomes,
-                        )
+                source_ids,
+                geocentric=geocentric,
+                filter_outcomes=filter_outcomes,
+            )
             spice_settings = env_setup.ephemeris.direct_spice()
             ephemeris_table = {
                 # ctx.start_epoch: spice_settings,
@@ -220,7 +220,6 @@ def _configure_ephemeris_model(
                 cfg.global_frame_orientation,
                 default_ephemeris_settings=spice_settings,
             )
-
 
             body_settings.get(body_name).ephemeris_settings = ephemeris_setting
 

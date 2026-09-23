@@ -74,9 +74,7 @@ def main():
 
     # Plot over the requested long arc (1900-2050), not just the Gaia window.
     year_min, year_max = 1900.0, 2050.0
-    et_dense = np.linspace(
-        seconds_since_j2000(year_min), seconds_since_j2000(year_max), 2000
-    )
+    et_dense = np.linspace(seconds_since_j2000(year_min), seconds_since_j2000(year_max), 2000)
     years = et_dense / 31556952.0 + 2000.0  # approx calendar years for plotting
 
     ref = triton_rel_nsb(et_dense, REF_FILE)
@@ -137,10 +135,14 @@ def main():
         N = dr @ nhat
         ang = np.degrees(np.arcsin(np.clip(d3 / dist_km, 0, 1))) * 3600.0
         print(f"{name:24s} {d3.mean():8.0f} {d3.max():8.0f} {ang.max():10.2f}")
-        print(f"    R/T/N rms: {np.sqrt(np.mean(R**2)):.0f} / "
-              f"{np.sqrt(np.mean(T**2)):.0f} / {np.sqrt(np.mean(N**2)):.0f} km")
-        print(f"    at Gaia window (2014-2019): mean {np.mean(d3[(years>=2014)&(years<=2019)]):.0f} "
-              f"max {np.max(d3[(years>=2014)&(years<=2019)]):.0f} km")
+        print(
+            f"    R/T/N rms: {np.sqrt(np.mean(R**2)):.0f} / "
+            f"{np.sqrt(np.mean(T**2)):.0f} / {np.sqrt(np.mean(N**2)):.0f} km"
+        )
+        print(
+            f"    at Gaia window (2014-2019): mean {np.mean(d3[(years >= 2014) & (years <= 2019)]):.0f} "
+            f"max {np.max(d3[(years >= 2014) & (years <= 2019)]):.0f} km"
+        )
     print(f"{REF_NAME:24s}  (reference, zero by construction)")
     print("saved", out)
 

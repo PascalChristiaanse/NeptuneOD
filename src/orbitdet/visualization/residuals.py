@@ -201,8 +201,8 @@ class Residuals(Plot):
         ra_residuals_arcsec = _rad_to_arcsec(residuals[:, 0])
         dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
 
-        ra_rms_arcsec = _rms_in_unit(ra_residuals_arcsec)
-        dec_rms_arcsec = _rms_in_unit(dec_residuals_arcsec)
+        ra_rms_arcsec = _rms_in_unit(ra_residuals_arcsec, unit="arcsec")
+        dec_rms_arcsec = _rms_in_unit(dec_residuals_arcsec, unit="arcsec")
         ra_rms_label = f"{ra_rms_arcsec:.3e} arcsec" if ra_rms_arcsec is not None else None
         dec_rms_label = f"{dec_rms_arcsec:.3e} arcsec" if dec_rms_arcsec is not None else None
 

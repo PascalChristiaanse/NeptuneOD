@@ -95,7 +95,7 @@ _GAIA_QUERY_CACHE = Memory(
 _GAIA_QUERY_CACHE_TTL = expires_after(weeks=1)
 
 # Registry of position angle of scan (radians) keyed by the observation epoch
-# (seconds since J2000 TDB).  The Tudat ``ObservationCollection`` / 
+# (seconds since J2000 TDB).  The Tudat ``ObservationCollection`` /
 # ``SingleObservationSet`` pybind classes do not allow attaching arbitrary
 # attributes, so we carry the scan angles alongside via this module-level map.
 # Epochs are unique per observation, so they form a stable key that survives
@@ -218,7 +218,7 @@ class GaiaQuery:
         """Which asteroid MPC numbers appear in the observations table."""
         return pd.unique(self.observation_table["number_mp"])
 
-    def copy(self) -> "GaiaQuery":
+    def copy(self) -> GaiaQuery:
         """Return a deep copy of the query object."""
         return copy.deepcopy(self)
 
@@ -359,9 +359,7 @@ class GaiaQuery:
                     [corr_s * sigma_ra_s * sigma_dec_s, sigma_dec_s**2],
                 ]
             )
-            covariance_systematic = np.tile(
-                covariance_systematic_sub, (len(transit), len(transit))
-            )
+            covariance_systematic = np.tile(covariance_systematic_sub, (len(transit), len(transit)))
 
             weight_block = np.linalg.inv(covariance_random + covariance_systematic)
             weight_blocks.append(np.diag(weight_block))
@@ -422,8 +420,7 @@ class GaiaQuery:
             if not all(bodies.does_body_exist(body) for body in light_deflection):
                 raise ValueError("Light deflection bodies missing from bodies object")
             logger.info(
-                "Applying relativistic light deflection to %s observations "
-                "(bodies: %s).",
+                "Applying relativistic light deflection to %s observations (bodies: %s).",
                 target_name,
                 list(light_deflection),
             )
@@ -491,9 +488,7 @@ class GaiaQuery:
             table = job.get_results()
         except Exception as err:
             logger.error("Gaia archive query failed: %s", err)
-            raise RuntimeError(
-                f"Error while retrieving astrometric observations: \n{err}"
-            ) from err
+            raise RuntimeError(f"Error while retrieving astrometric observations: \n{err}") from err
         else:
             logger.info(
                 "Gaia archive query succeeded: retrieved %d row(s).",
@@ -526,13 +521,21 @@ class GaiaQuery:
         table["ra_error_systematic"] /= np.cos(table["dec"])
 
         pos_names = [
-            "x_gaia", "y_gaia", "z_gaia",
-            "x_gaia_geocentric", "y_gaia_geocentric", "z_gaia_geocentric",
+            "x_gaia",
+            "y_gaia",
+            "z_gaia",
+            "x_gaia_geocentric",
+            "y_gaia_geocentric",
+            "z_gaia_geocentric",
         ]
         table.loc[:, pos_names] *= ASTRONOMICAL_UNIT * TIME_SCALE_CORRECTION
         vel_names = [
-            "vx_gaia", "vy_gaia", "vz_gaia",
-            "vx_gaia_geocentric", "vy_gaia_geocentric", "vz_gaia_geocentric",
+            "vx_gaia",
+            "vy_gaia",
+            "vz_gaia",
+            "vx_gaia_geocentric",
+            "vy_gaia_geocentric",
+            "vz_gaia_geocentric",
         ]
         table.loc[:, vel_names] *= ASTRONOMICAL_UNIT / DAY_IN_S
 
@@ -627,7 +630,7 @@ class GaiaQuery:
             table = table[table["astrometric_outcome_ccd"] == 1]
             table = table[table["astrometric_outcome_transit"] == 1]
         if table.empty:
-            raise LookupError(f"No observations found for query")
+            raise LookupError("No observations found for query")
         table = table[TABLE_COLUMNS]
         table = table.sort_values(by="epoch")
 
@@ -636,8 +639,6 @@ class GaiaQuery:
         table = table.reset_index(drop=True)
 
         self._table = table
-
-
 
     def filter(
         self,

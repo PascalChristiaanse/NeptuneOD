@@ -127,14 +127,10 @@ class RSWDistance(Plot):
         inv_epochs = np.asarray(epochs)
         # Build the full-epoch arrays we may need to interpolate.
         state_array = np.vstack([np.asarray(state_history[e]).flatten() for e in full_epochs])
-        rel_pos_array = np.vstack(
-            [np.asarray(pos_value_dict[e]).flatten() for e in full_epochs]
-        )
+        rel_pos_array = np.vstack([np.asarray(pos_value_dict[e]).flatten() for e in full_epochs])
 
         rsw_components = np.zeros((n_epochs, 3))
-        interpolate = len(epochs) != len(full_epochs) or not np.array_equal(
-            exp_epochs, inv_epochs
-        )
+        interpolate = len(epochs) != len(full_epochs) or not np.array_equal(exp_epochs, inv_epochs)
         for i, epoch in enumerate(inv_epochs):
             if interpolate:
                 inertial_state = np.array(

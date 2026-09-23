@@ -264,7 +264,7 @@ def convert_radec_frame(
     # ICRS/ICRF input: apply the real ICRS->J2000 frame-bias rotation (Astropy),
     # then (if needed) continue from J2000 to the requested output via SPICE.
     input_is_icrs = str(input_frame).strip().upper() in {"ICRS", "ICRF"}
-    if input_is_icrs and not output_is_date and not str(output_frame).lower() in {"date"}:
+    if input_is_icrs and not output_is_date and str(output_frame).lower() not in {"date"}:
         output_norm = str(output_frame).strip().upper()
         if output_norm in {"J2000", "J2000.0"}:
             return _radec_icrs_to_j2000(data, ra_column, dec_column, angle_unit)

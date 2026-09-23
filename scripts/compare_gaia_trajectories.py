@@ -66,8 +66,6 @@ def main(cfg: DictConfig):
     result.propagation_results.save_to_binary("myresult_atanas_triton_state")
 
     # ── Plot Keplerian differences (Triton Spice vs Triton) ──
-    from orbitdet.visualization import DifferencedDependentVariables
-
     # Only evaluate the difference at the epochs at which we actually have Gaia
     # observations. The archived Gaia kernel is a tabulated ephemeris with sparse
     # support points; evaluating the difference continuously vs. the (interpolated)
@@ -75,6 +73,7 @@ def main(cfg: DictConfig):
     # discrepancy at the observation epochs. The differences are interpolated
     # onto the observation epochs and plotted as a scatter.
     from orbitdet.data.gaia_data import GaiaQuery
+    from orbitdet.visualization import DifferencedDependentVariables
 
     source_ids = list(cfg.bodies_to_create.Gaia.ephemeris.source_ids)
     filter_outcomes = bool(getattr(cfg.bodies_to_create.Gaia.ephemeris, "filter_outcomes", False))
@@ -141,7 +140,9 @@ def main(cfg: DictConfig):
 
     # show figures
     import matplotlib.pyplot as plt
+
     plt.show(block=True)
+
 
 if __name__ == "__main__":
     main()

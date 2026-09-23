@@ -65,7 +65,6 @@ def main(cfg: DictConfig):
     integ = get_integrator_settings(cfg, ctx)
     prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=[])
 
-
     if prop.processing_settings.set_integrated_result:
         logger.info(
             "Prefit residuals will be computed using the integrated result from the propagator."

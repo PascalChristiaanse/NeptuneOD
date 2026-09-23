@@ -12,7 +12,6 @@ import hydra
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import tudatpy.dynamics.propagation_setup as prop_setup
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
@@ -36,7 +35,7 @@ from orbitdet.simulation import (
     get_propagator_settings,
 )
 from orbitdet.simulation.propagation import get_propagator_settings
-from orbitdet.visualization import Residuals, ResidualScanHistogram, ResidualsPSD, ResidualsScan
+from orbitdet.visualization import Residuals, ResidualsScan
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -71,7 +70,6 @@ def main(cfg: DictConfig):
     ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
     ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
 
-
     km: KernelManager = KernelManager(cfg)
     km.download_all_kernels()
     km.furnish()
@@ -95,7 +93,6 @@ def main(cfg: DictConfig):
         )
         sim.create_dynamics_simulator(bodies, prop)
 
-    
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies
@@ -150,16 +147,14 @@ def main(cfg: DictConfig):
 
     logger.info("Gaia pre-fit residuals script completed.")
 
-
     # Observations get loaded correctly (manually verified)
     # Observation times get loaded correctly (manually verified)
-    # Gaia ephemeris gets loaded correctly (see aim run, manually verified, J2000 from SSB 
+    # Gaia ephemeris gets loaded correctly (see aim run, manually verified, J2000 from SSB
     # (as per config/gaia docs)https://gea.esac.esa.int/archive/documentation/FPR/chap_datamodel/
-    # sec_dm_focused_product_release/ssec_dm_sso_observation.html) 
+    # sec_dm_focused_product_release/ssec_dm_sso_observation.html)
 
     # Ephemeris doesnt seem to match up with literature (see aim runs favorites/gaiaprefitsresiduals 59fe499)
     # "systematics and refinement... yuan2025"
-
 
 
 if __name__ == "__main__":

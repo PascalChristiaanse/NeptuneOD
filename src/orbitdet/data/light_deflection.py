@@ -156,22 +156,16 @@ def relativistic_light_deflection(
             )
             light_time_observer_body /= SPEED_OF_LIGHT
 
-            body_state = body_ephemeris.cartesian_position(
-                current_epoch - light_time_observer_body
-            )
+            body_state = body_ephemeris.cartesian_position(current_epoch - light_time_observer_body)
 
-            delta_k_pn = _calculate_light_deflection(
-                gaia_state, target_state, body_state, mu_body
-            )
+            delta_k_pn = _calculate_light_deflection(gaia_state, target_state, body_state, mu_body)
             delta_k_pn_total.append(delta_k_pn)
 
         # Add contributions from all bodies
         delta_k_pn_total = -np.sum(delta_k_pn_total, axis=0)
         assert delta_k_pn_total.shape == (3,)
 
-        ra_corr, dec_corr = _deflection_vector_to_corrections(
-            row.ra, row.dec, delta_k_pn_total
-        )
+        ra_corr, dec_corr = _deflection_vector_to_corrections(row.ra, row.dec, delta_k_pn_total)
 
         ra_corrections.append(ra_corr)
         dec_corrections.append(dec_corr)

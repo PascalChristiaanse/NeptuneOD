@@ -201,7 +201,7 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiment/classic_triton_state",
+    config_name="experiment/generate_prefit_residuals",
 )
 # @enforce_initialization Disabled to support submitit multiprocessing
 def main(cfg: DictConfig):
@@ -214,25 +214,25 @@ def main(cfg: DictConfig):
     ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
 
     # Detect the actual observation date bounds from the configured datasets
-    detected_start, detected_end = detect_date_bounds_from_datasets(cfg)
-    if detected_start is not None and detected_end is not None:
-        ctx.start_epoch = iso_string_to_epoch_time_object(detected_start)
-        ctx.end_epoch = iso_string_to_epoch_time_object(detected_end)
-        logger.info(
-            "Detected observation date bounds from datasets: %s to %s.",
-            detected_start,
-            detected_end,
-        )
+    # detected_start, detected_end = detect_date_bounds_from_datasets(cfg)
+    # if detected_start is not None and detected_end is not None:
+    #     ctx.start_epoch = iso_string_to_epoch_time_object(detected_start)
+    #     ctx.end_epoch = iso_string_to_epoch_time_object(detected_end)
+    #     logger.info(
+    #         "Detected observation date bounds from datasets: %s to %s.",
+    #         detected_start,
+    #         detected_end,
+    #     )
 
-        # Add a buffer around the observation dates to cover the propagation
-        # arc before the first and after the last observation.
-        ctx.start_epoch = ctx.start_epoch - 365.25 * 24 * 3600
-        ctx.end_epoch = ctx.end_epoch + 365.25 * 24 * 360
-    else:
-        logger.warning(
-            "Could not detect observation date bounds from datasets; "
-            "using configured start_date/end_date instead."
-        )
+    #     # Add a buffer around the observation dates to cover the propagation
+    #     # arc before the first and after the last observation.
+    #     ctx.start_epoch = ctx.start_epoch - 365.25 * 24 * 3600
+    #     ctx.end_epoch = ctx.end_epoch + 365.25 * 24 * 360
+    # else:
+    #     logger.warning(
+    #         "Could not detect observation date bounds from datasets; "
+    #         "using configured start_date/end_date instead."
+    #     )
 
     from tudatpy.astro.time_representation import DateTime
 
@@ -466,16 +466,16 @@ def main(cfg: DictConfig):
     logger.info("Estimation completed successfully.")
 
     # Plot post-fit residuals
-    from orbitdet.visualization import Residuals, ResidualsPSD
+    from orbitdet.visualization import Residuals
 
     fig_residuals, ax_residuals = Residuals(cfg, observations).plot()
 
     # Plot residual PSD
     residuals_psd_cfg = cfg.get("residuals_psd", {})
     window_length_days = residuals_psd_cfg.get("window_length_days", 30.0)
-    fig_psd, ax_psd = ResidualsPSD(
-        cfg, observations, window_length_days, cfg.figures.get("residuals_psd", {})
-    ).plot()
+    # fig_psd, ax_psd = ResidualsPSD(
+    #     cfg, observations, window_length_days, cfg.figures.get("residuals_psd", {})
+    # ).plot()
 
     # Plot residual RMS per iteration
     from orbitdet.visualization import ResidualRMSPerIteration

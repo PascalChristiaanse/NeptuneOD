@@ -181,9 +181,7 @@ def _compute_psd(
     if method == "lombscargle":
         return _compute_lombscargle(times_days, values)
 
-    raise ValueError(
-        f"Unsupported PSD method '{method}'. Supported methods: welch, lombscargle"
-    )
+    raise ValueError(f"Unsupported PSD method '{method}'. Supported methods: welch, lombscargle")
 
 
 def _compute_lombscargle(
@@ -247,10 +245,7 @@ def _find_psd_peaks(
 
     peak_power = power_density[peaks]
     order = np.argsort(peak_power)[::-1]
-    return [
-        (float(frequencies[peaks[i]]), float(peak_power[i]))
-        for i in order
-    ]
+    return [(float(frequencies[peaks[i]]), float(peak_power[i])) for i in order]
 
 
 def _plot_psd_series(
@@ -487,8 +482,7 @@ class ResidualsPSD(Plot):
                             alpha=0.6,
                         )
                         axis.annotate(
-                            f"{_format_period_days(1.0 / peak_freq)} "
-                            f"({peak_freq:.4g} c/d)",
+                            f"{_format_period_days(1.0 / peak_freq)} ({peak_freq:.4g} c/d)",
                             xy=(peak_freq, peak_power),
                             xytext=(0, 10),
                             textcoords="offset points",

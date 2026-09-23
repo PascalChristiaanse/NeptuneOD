@@ -15,6 +15,7 @@ from orbitdet.transformations import convert_radec_frame
 from .helpers import (
     add_observatory_to_SOB,
     convert_time_to_seconds_since_j2000_TDB,
+    normalize_observatory_code,
 )
 from .nsdb_helpers import (
     group_rows_by_observatory,
@@ -124,6 +125,11 @@ def create_absolute_ccd_dataset(
         if pos is not None and 0 <= pos < len(col_names):
             col_names[pos] = name if name is not None else col_names[pos]
 
+    # Ensure observatory exists in the system of bodies
+    station_name = normalize_observatory_code(dataset_cfg.observatory[0].code)
+    add_observatory_to_SOB(cfg, system_of_bodies, station_name)
+
+    # Convert times to seconds since J2000 epoch TDB for Tudat using station position
     data_file.columns = col_names
 
     # Station-independent preprocessing on the full dataframe.

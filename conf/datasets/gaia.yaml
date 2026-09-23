@@ -1,0 +1,16 @@
+identifier: gaia_triton
+
+type: gaia
+target: Triton
+# Gaia source_id for Triton (from the Gaia FPR archive)
+source_ids: [-4293959295]
+
+# Keep all rows returned by the archive (no astrometric_outcome filtering).
+# Triton rows may have astrometric_outcome_ccd/transit != 1, which would
+# otherwise discard ~half the observations.
+filter_outcomes: true
+
+light_deflection: ["Sun"]
+correct_photocenter: True
+# Triton nominal diameter in meters (~ 2707 km) used for photo-center to center-of-mass correction.
+diameter: 2706800.0

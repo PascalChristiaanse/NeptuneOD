@@ -1,0 +1,5 @@
+# @package _global_
+defaults:
+  - /datasets/gaia@datasets.gaia
+
+name: "Gaia Triton Data"

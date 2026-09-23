@@ -1,0 +1,127 @@
+# @package _global_
+
+# Experiment: Triton State Estimation using only classical data
+# estimating:
+# - Triton initial state
+
+defaults:
+  # - /collection@collection: atanas_plus_micro
+  - /collection@collection: working
+  - _self_ # Apply experiment config fields after collections
+  - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/dependent_variable
+  - /figures/dependent_variable_differenced@dependent_variable_differenced
+  # - /figures/parameter_correlation_heatmap
+  # - /figures/parameter_history_per_iteration
+  # - /figures/covariance_ellipses
+  - /figures/dependent_variable_differenced
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+  launcher:
+    _target_: hydra_plugins.hydra_joblib_launcher.joblib_launcher.JoblibLauncher
+
+
+# Time settings
+start_date: 2014-10-29T12:00:00
+end_date: 2019-11-10T12:00:00
+initial_epoch: 2019-11-9T12:00:00
+
+# Kernel settings
+kernel_folder: "data/kernels"
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  # nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
+  # nep105.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep105.bsp"
+  F8M24.bsp: "https://pub.nddc.pmo.ac.cn/eph/satellites/bsp/forces-8-main-2024.bsp"
+  gaia_flp.bsp: "https://spiftp.esac.esa.int/data/SPICE/GAIA/kernels/spk/gaia_flp_20131219_21250328_v01.bsp"
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"
+
+# Frame settings
+global_frame_origin: "SSB"
+global_frame_orientation: "J2000"
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 36000
+
+# Environment settings
+bodies_to_create:
+  Neptune:
+    ephemeris:
+      type: "direct_spice"
+  Triton:
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+  Earth:
+    ephemeris:
+      type: "direct_spice"
+  Gaia:
+    ephemeris:
+      type: "tabulated_from_gaia"
+      source_ids: [-4293959295]
+      cache_file: "data/gaia/triton.pkl"
+      geocentric: false
+      filter_outcomes: false
+
+  Gaia Spice:
+    ephemeris:
+      type: "direct_spice"
+      # source_ids: [-4293959295]
+      # cache_file: "data/gaia/triton.pkl"
+      # geocentric: false
+      # filter_outcomes: false
+      use_body_name: "-123"
+  Sun:
+    ephemeris:
+      type: "direct_spice"
+
+# Estimation settings
+estimation:
+  max_iterations: 5
+  parameters_to_estimate:
+    - initial_state:
+      - placeholder: True
+        # apriori: [1.0e7, 1.0e2]
+    # - "iau_rotation_model_pole"
+    # - "neptune_GM"
+    # - "neptune_j2_j4"
+
+
+# Logging settings
+logging:
+  level: "INFO"
+  tudatpy_logging_level: "WARNING"
+  muted_loggers:
+    - "matplotlib"
+    # - "orbitdet.data.kernel"

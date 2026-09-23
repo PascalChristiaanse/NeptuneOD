@@ -20,11 +20,13 @@ bodies_to_create:
   Triton:
     gravity: "central"
     ephemeris:
-      type: "direct_spice"
-  Voyager 2:
-    ephemeris:
-      relative_to: "Neptune Barycenter"
-      type: "tabulated_from_ancillary_file"
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  # Voyager 2:
+  #   ephemeris:
+  #     relative_to: "Neptune Barycenter"
+  #     type: "tabulated_from_ancillary_file"
   Neptune Barycenter:
     ephemeris:
       type: "direct_spice"

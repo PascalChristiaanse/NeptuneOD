@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import atexit
-import errno
 import logging
-import os
 import random
-import re
-import select
 import shutil
 import subprocess
 import sys
-import threading
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
@@ -39,140 +33,6 @@ class RuntimeContext:
 
 
 _CONTEXT: RuntimeContext | None = None
-_NATIVE_FD_CAPTURES: tuple[FdCapture, FdCapture] | None = None
-_PYTHON_LOG_LINE_PATTERN = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\]")
-
-
-class FdCapture:
-    """Captures file descriptor output and logs it via Python logging."""
-
-    def __init__(self, fd: int, logger: logging.Logger, level: int):
-        self._fd = fd
-        self._logger = logger
-        self._level = level
-        self._original_fd: int | None = None
-        self._read_fd: int | None = None
-        self._thread: threading.Thread | None = None
-        self._lock = threading.Lock()
-        self._active = False
-
-    def __enter__(self):
-        return self.start()
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.stop()
-        return False
-
-    def _forward_output(self) -> None:
-        """Read from the captured fd and log each line."""
-        assert self._read_fd is not None
-        assert self._original_fd is not None
-
-        encoding = getattr(sys.stderr, "encoding", None) or "utf-8"
-        buffer = b""
-
-        while True:
-            try:
-                ready, _, _ = select.select([self._read_fd], [], [], 0.5)
-                if self._read_fd not in ready:
-                    continue
-
-                chunk = os.read(self._read_fd, 4096)
-                if not chunk:
-                    break
-
-                # Write to original fd and buffer for logging
-                os.write(self._original_fd, chunk)
-                buffer += chunk
-
-                # Log complete lines
-                lines = buffer.split(b"\n")
-                buffer = lines[-1]  # Keep incomplete line in buffer
-
-                for line in lines[:-1]:
-                    text = line.decode(encoding, errors="replace")
-                    if text.strip() and not _PYTHON_LOG_LINE_PATTERN.match(text):
-                        self._logger.log(self._level, text)
-
-            except OSError as exc:
-                if exc.errno == errno.EIO:
-                    break
-                raise
-
-    def start(self):
-        """Start capturing the file descriptor."""
-        with self._lock:
-            if self._active:
-                return self
-
-            self._original_fd = os.dup(self._fd)
-            read_fd, write_fd = os.pipe()
-
-            self._read_fd = read_fd
-            os.dup2(write_fd, self._fd)
-            os.close(write_fd)
-
-            self._thread = threading.Thread(
-                target=self._forward_output,
-                name=f"FdCapture-{self._fd}",
-                daemon=True,
-            )
-            self._thread.start()
-            self._active = True
-
-        return self
-
-    def stop(self):
-        """Stop capturing the file descriptor."""
-        thread: threading.Thread | None = None
-
-        with self._lock:
-            if not self._active:
-                return self
-
-            assert self._original_fd is not None
-            os.dup2(self._original_fd, self._fd)
-
-            thread = self._thread
-            self._thread = None
-            self._active = False
-
-        if thread is not None:
-            thread.join()
-
-        with self._lock:
-            if self._original_fd is not None:
-                os.close(self._original_fd)
-                self._original_fd = None
-
-        return self
-
-
-def _start_native_fd_capture(logger: logging.Logger) -> None:
-    """Start capturing stdout and stderr at the file descriptor level."""
-    global _NATIVE_FD_CAPTURES
-
-    if _NATIVE_FD_CAPTURES is not None:
-        return
-
-    stdout_capture = FdCapture(1, logger, logging.INFO).start()
-    stderr_capture = FdCapture(2, logger, logging.WARNING).start()
-    _NATIVE_FD_CAPTURES = (stdout_capture, stderr_capture)
-
-
-def _stop_native_fd_capture() -> None:
-    global _NATIVE_FD_CAPTURES
-
-    if _NATIVE_FD_CAPTURES is None:
-        return
-
-    for capture in reversed(_NATIVE_FD_CAPTURES):
-        capture.stop()
-
-    _NATIVE_FD_CAPTURES = None
-
-
-atexit.register(_stop_native_fd_capture)
 
 
 def setup_logging(cfg: DictConfig):
@@ -333,8 +193,6 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
     )
 
     setup_logging(cfg)
-    logger = logging.getLogger("FDCapture")
-    _start_native_fd_capture(logger)
 
     OmegaConf.set_readonly(cfg, True)
 

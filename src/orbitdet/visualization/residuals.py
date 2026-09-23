@@ -9,7 +9,6 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.data.gaia_data import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot
 
@@ -36,40 +35,16 @@ def _rad_to_arcsec(angle_rad: np.ndarray) -> np.ndarray:
     return np.rad2deg(angle_rad) * 3600.0
 
 
-def _unit_factor(unit: str) -> float:
-    """Number of the chosen unit in one radian.
-
-    Supported units are ``"arcsec"`` (default) and ``"mas"``.
-
-    Args:
-        unit: Display unit for the residuals. One of ``"arcsec"`` or ``"mas"``.
-
-    Returns:
-        Conversion factor from radians to the requested unit.
-    """
-    if unit == "mas":
-        return np.rad2deg(1.0) * 3600.0 * 1e3
-    # Default: arcseconds
-    return np.rad2deg(1.0) * 3600.0
-
-
-def _rad_to_unit(angle_rad: np.ndarray, unit: str) -> np.ndarray:
-    """Convert angles from radians to the requested display unit."""
-    return np.asarray(angle_rad) * _unit_factor(unit)
-
-
 def _principal_angle_rad(angle_rad: np.ndarray) -> np.ndarray:
     return np.remainder(angle_rad + np.pi, 2.0 * np.pi) - np.pi
 
 
-def _rms_in_unit(values_in_unit: np.ndarray, unit: str) -> float | None:
-    finite_values = values_in_unit[np.isfinite(values_in_unit)]
+def _rms_arcsec(values_arcsec: np.ndarray) -> float | None:
+    finite_values = values_arcsec[np.isfinite(values_arcsec)]
     if finite_values.size == 0:
         return None
 
-    rms = float(np.sqrt(np.mean(np.square(finite_values))))
-    # Report very small RMS values (e.g. in mas) without losing precision.
-    return rms
+    return float(np.sqrt(np.mean(np.square(finite_values))))
 
 
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000: np.ndarray) -> pd.DatetimeIndex:
@@ -242,7 +217,6 @@ class Residuals(Plot):
         plot_cfg = _cfg_get(cfg, "residuals", default=None)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-        unit = _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
 
         if self.fig is None and self.ax is None:
             fig, axs = plt.subplots(
@@ -271,63 +245,57 @@ class Residuals(Plot):
             ">",
             "P",
             "X",
-        ]  # cycle through marker types if more sets than colors
-        for set_index, obs_set in enumerate(observation_sets):
-            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-            if observatory_code == "":
-                # Missing reference points imply spacecraft which use receiver name instead for info
-                # lookup and labeling
-                observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                info = {"code": observatory_code}
-                info["name"] = observatory_name
-                info["region"] = "Spacecraft"
-            else:
-                info = get_observatory_info(cfg, observatory_code)
-            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
-            color = colors(set_index % colors.N)
-            marker = marker_types[set_index % len(marker_types)]
+        ]
 
-            obs_times_sec_j2000 = np.array(
-                [epoch.to_float() for epoch in obs_set.observation_times]
-            )
-            obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
-            residuals = np.array(obs_set.residuals)
-            # n x 2 array of RA and DEC residuals in radians
+        if self.observation_collections is not None:
+            # --- Multi-collection mode: one color/marker/name per collection ---
+            target_name = None
+            for coll_index, collection in enumerate(self.observation_collections):
+                color = colors(coll_index % colors.N)
+                marker = marker_types[coll_index % len(marker_types)]
+                name = (
+                    self.collection_names[coll_index]
+                    if self.collection_names is not None
+                    else f"Collection {coll_index}"
+                )
 
-            # Both RA and DEC residuals are circular; fold them to the principal interval
-            # before converting to avoid wrapping artifacts near ±180° / 360°.
-            # ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
-            # dec_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 1]))
+                if self.observation_parsers is None:
+                    coll_sets = collection.get_single_observation_sets()
+                else:
+                    coll_sets = collection.get_single_observation_sets(self.observation_parsers)
 
-            # Dont use wrapping (TEST)
-            ra_residuals_unit = _rad_to_unit(residuals[:, 0], unit)
-            dec_residuals_unit = _rad_to_unit(residuals[:, 1], unit)
+                for obs_set in coll_sets:
+                    if target_name is None:
+                        target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+                    self._plot_single_observation_set(
+                        axs, obs_set, color, marker, marker_size, name
+                    )
+        else:
+            # --- Single-collection mode: one color/marker/name per observation set ---
+            observation_sets = self._collect_observation_sets()
+            target_name = None
+            for set_index, obs_set in enumerate(observation_sets):
+                observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
+                if observatory_code == "":
+                    observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
+                    info = {"code": observatory_code}
+                    info["name"] = observatory_name
+                    info["region"] = "Geocentric"
+                elif int(observatory_code) < 0:
+                    observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
+                    info = {"code": observatory_code}
+                    info["name"] = observatory_name
+                    info["region"] = "Spacecraft"
+                else:
+                    info = get_observatory_info(cfg, observatory_code)
+                target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+                color = colors(set_index % colors.N)
+                marker = marker_types[set_index % len(marker_types)]
 
-            ra_rms_unit = _rms_in_unit(ra_residuals_unit, unit)
-            dec_rms_unit = _rms_in_unit(dec_residuals_unit, unit)
-            ra_rms_label = f"{ra_rms_unit:.3e} {unit}" if ra_rms_unit is not None else None
-            dec_rms_label = f"{dec_rms_unit:.3e} {unit}" if dec_rms_unit is not None else None
-
-            # RA
-            axs[0].scatter(
-                obs_times,
-                ra_residuals_unit,
-                marker=marker,
-                s=marker_size,
-                label=f"{info['name']} - {info['region']} - RMS: {ra_rms_label}",
-                color=color,
-                alpha=0.5,
-            )
-            # DEC
-            axs[1].scatter(
-                obs_times,
-                dec_residuals_unit,
-                marker=marker,
-                s=marker_size,
-                label=f"{info['name']} - {info['region']} - RMS: {dec_rms_label}",
-                color=color,
-                alpha=0.5,
-            )
+                label_prefix = f"{info['name']} - {info['region']}"
+                self._plot_single_observation_set(
+                    axs, obs_set, color, marker, marker_size, label_prefix
+                )
 
         # Titles and labels (configurable)
         title_ra = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension")
@@ -345,7 +313,7 @@ class Residuals(Plot):
 
         axs[0].set_title(title_ra)
         axs[1].set_title(title_dec)
-        y_label = _cfg_get(plot_cfg, "axes", "y_label", default=f"Residual [{unit}]")
+        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Residual [arcsec]")
         axs[0].set_ylabel(y_label)
         axs[1].set_ylabel(y_label)
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
@@ -391,7 +359,7 @@ class Residuals(Plot):
 
         return fig, axs
 
-
+    
 class ResidualsScan(Plot):
     """Plot along-scan (AL) and across-scan (AC) residuals for Gaia observations.
 

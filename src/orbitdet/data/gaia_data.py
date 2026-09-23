@@ -3,17 +3,18 @@ Retrieve Gaia FPR astrometry from the archives.
 
 This module provides the :class:`GaiaQuery` class, which retrieves astrometric
 observations of solar-system objects (asteroids, and now Triton) from the Gaia
-archive.  The class caches its pulls from the Gaia archive to reduce internet
-traffic, and converts the raw archive columns into the units and conventions
-expected by Tudat.
+archive.  The class holds a cache (size=1) so that
+repeated queries with identical parameters within a single Python session skip
+the archive.
 """
 
 from __future__ import annotations
 
 import copy
 import logging
+import time
 from datetime import datetime
-from pathlib import Path
+from functools import cache
 
 import numpy as np
 import pandas as pd
@@ -85,7 +86,7 @@ CATALOG_NAMES = {
 _SCAN_ANGLE_REGISTRY: dict[tuple[float, ...], np.ndarray] = {}
 
 
-def register_scan_angles(epochs: np.ndarray | list[float], scan_angles: np.ndarray) -> None:
+def _register_scan_angles(epochs: np.ndarray | list[float], scan_angles: np.ndarray) -> None:
     """Store the per-observation scan angles keyed by their epochs.
 
     Args:
@@ -127,12 +128,11 @@ def get_scan_angles_for_epochs(epochs: np.ndarray | list[float]) -> np.ndarray |
         return None
 
 
-def build_gaia_tabulated_state_history(
+def get_gaia_ephemeris(
     source_ids: list[int],
-    cache_file: str | Path | None = None,
-    geocentric: bool = False,
+    geocentric: bool = True,
     filter_outcomes: bool = True,
-) -> dict[float, np.ndarray]:
+):
     """Build a Gaia tabulated ephemeris state history from the archive.
 
     Retrieves the Gaia state vectors archived alongside the observations and
@@ -141,51 +141,32 @@ def build_gaia_tabulated_state_history(
 
     Args:
         source_ids: Gaia ``source_id`` values used to select the observations.
-        cache_file: Optional path to a pickle cache to avoid re-querying the
-            archive.
         geocentric: If True, use the geocentric Gaia states (frame origin
-            ``Earth``).  If False (default), use the barycentric states (frame
-            origin ``SSB``).
+            ``Earth``).  If False, use the barycentric states (frame origin
+            ``SSB``).
         filter_outcomes: If True, keep only rows with
             ``astrometric_outcome_ccd == 1`` and ``astrometric_outcome_transit
             == 1``.  If False, use all rows returned by the archive (no
             filtering).
 
     Returns:
-        dict[float, np.ndarray]: State history with epochs (seconds since J2000
-        TDB) as keys and 6x1 [position (m), velocity (m/s)] states as values.
+        EphemerisSettings: Tabulated ephemeris settings.
     """
     query = GaiaQuery()
     query.retrieve_data(
-        source_ids=source_ids, cache_file=cache_file, filter_outcomes=filter_outcomes
+        source_ids=source_ids,
+        filter_outcomes=filter_outcomes,
     )
-
-    state_vector_labels = ["x_gaia", "y_gaia", "z_gaia", "vx_gaia", "vy_gaia", "vz_gaia"]
-    if geocentric:
-        state_vector_labels = [label + "_geocentric" for label in state_vector_labels]
-
-    table = query.observation_table
-    epochs = table["epoch"].to_numpy(dtype=float)
-    states = table[state_vector_labels].to_numpy(dtype=float)
-
-    # _convert_units already scaled the states to SI (m, m/s)
-    state_history: dict[float, np.ndarray] = {}
-    for index, time_value in enumerate(epochs):
-        state = states[index].reshape(6, 1)
-        state_history[float(time_value)] = state
-
-    logger.info(
-        "Built Gaia tabulated ephemeris state history with %d samples.", len(state_history)
-    )
-    return state_history
+    return query.get_gaia_ephemeris(geocentric=geocentric)
 
 
 class GaiaQuery:
     """Retrieve and hold Gaia astrometric observations of solar-system objects.
 
     The class supports both asteroids (queried by MPC number) and Triton
-    (queried by Gaia ``source_id``).  Raw archive pulls are cached to disk as a
-    pickle to reduce internet traffic on subsequent calls.
+    (queried by Gaia ``source_id``).  The underlying archive fetch is cached
+    with ``functools.cache`` so repeated queries with identical parameters
+    within a single Python session skip the archive round-trip.
 
     Attributes:
         _table (pd.DataFrame): Holds astrometry and metadata after calling
@@ -299,7 +280,7 @@ class GaiaQuery:
         # Register the per-observation scan angles (radians) keyed by epoch so the
         # residual visualisations can rotate RA/Dec residuals into the Gaia
         # along-scan / across-scan frame without re-querying the archive.
-        register_scan_angles(
+        _register_scan_angles(
             observation_times,
             table["position_angle_scan"].to_numpy(dtype=float),
         )
@@ -430,34 +411,135 @@ class GaiaQuery:
             )
             self._table.loc[:, ["ra", "dec"]] += corrections
 
+    @staticmethod
+    @cache
+    def _cached_fetch(
+        source_ids: tuple[int, ...] | None,
+        mpc_numbers: tuple[int, ...] | None,
+        catalog: str,
+        filter_outcomes: bool,
+    ) -> pd.DataFrame:
+        """Fetch Gaia observations from the archive, unit-converted, with cache.
+
+        Args:
+            source_ids: Gaia source IDs as a hashable tuple, or None.
+            mpc_numbers: MPC numbers as a hashable tuple, or None.
+            catalog: Gaia catalog name.
+            filter_outcomes: Whether to filter by outcome flags.
+
+        Returns:
+            Unit-converted observation table.
+        """
+        logger.info("Fetching Gaia observations from archive.")
+        query_catalog = CATALOG_NAMES[catalog]
+
+        if mpc_numbers is not None:
+            mpc_str = ", ".join(str(m) for m in mpc_numbers)
+            where_clause = f"number_mp IN ({mpc_str})"
+        else:
+            src_str = ", ".join(str(s) for s in source_ids)
+            where_clause = f"source_id IN ({src_str})"
+
+        outcome_filter = ""
+        if filter_outcomes:
+            outcome_filter = (
+                "\n            AND astrometric_outcome_ccd = 1\n"
+                "            AND astrometric_outcome_transit = 1"
+            )
+
+        # Retry with exponential backoff
+        max_retries = 3
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                query = f"""
+                SELECT *
+                FROM {query_catalog}
+                WHERE {where_clause}{outcome_filter}
+                ORDER BY epoch ASC
+                """
+                job = Gaia.launch_job_async(query)
+                table = job.get_results()
+                break
+            except Exception as err:
+                last_error = err
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        "Gaia query failed (attempt %d/%d): %s. Retrying in %ds ...",
+                        attempt + 1, max_retries, err, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    raise RuntimeError(
+                        f"Error while retrieving astrometric observations after "
+                        f"{max_retries} attempts: \n{err}"
+                    ) from err
+
+        table = table.to_pandas()
+        if table.empty:
+            raise LookupError(f"No observations found for query {where_clause}")
+
+        # Convert units and sort
+        func = lambda jd: julian_day_to_seconds_since_epoch(jd + J2010)
+        table["epoch"] = table["epoch"].apply(func)
+        table["epoch"] = table["epoch"].apply(TCB_to_TDB)
+
+        table["ra"] = np.deg2rad(table["ra"]) % (2 * np.pi)
+        table["dec"] = np.deg2rad(table["dec"])
+        table["position_angle_scan"] = np.deg2rad(table["position_angle_scan"])
+
+        table[
+            [
+                "ra_error_random",
+                "dec_error_random",
+                "ra_error_systematic",
+                "dec_error_systematic",
+            ]
+        ] *= arcsec / 1e3
+
+        table["ra_error_random"] /= np.cos(table["dec"])
+        table["ra_error_systematic"] /= np.cos(table["dec"])
+
+        pos_names = [
+            "x_gaia", "y_gaia", "z_gaia",
+            "x_gaia_geocentric", "y_gaia_geocentric", "z_gaia_geocentric",
+        ]
+        table.loc[:, pos_names] *= ASTRONOMICAL_UNIT * TIME_SCALE_CORRECTION
+        vel_names = [
+            "vx_gaia", "vy_gaia", "vz_gaia",
+            "vx_gaia_geocentric", "vy_gaia_geocentric", "vz_gaia_geocentric",
+        ]
+        table.loc[:, vel_names] *= ASTRONOMICAL_UNIT / DAY_IN_S
+
+        table = table.reset_index(drop=True)
+        assert table["epoch"].is_monotonic_increasing
+
+        return table
+
     def retrieve_data(
         self,
         mpc_numbers: tuple[int] | list[int] | None = None,
         source_ids: list[int] | None = None,
         catalog: str = "FPR",
-        username: str | None = None,
-        password: str | None = None,
-        cache_file: str | Path | None = None,
         filter_outcomes: bool = True,
     ) -> None:
         """Retrieve astrometric observations through astroquery.
 
-        Observations are stored in the observation table attribute.  If
-        ``cache_file`` is provided and exists, the cached table is loaded
-        instead of querying the archive.
+        Observations are stored in the observation table attribute.  The
+        underlying archive fetch is LRU-cached (size=1) so that repeated
+        queries with the same parameters within a single Python session
+        skip the archive round-trip.
 
         Args:
             mpc_numbers: List of asteroid MPC numbers to retrieve.
             source_ids: List of Gaia ``source_id`` values to retrieve (e.g. for
                 Triton).  Mutually exclusive with ``mpc_numbers``.
             catalog: Which catalog to use. Options: DR2, DR3, FPR.
-            username: Username for the Gaia archives (optional).
-            password: Password for the Gaia archives (optional).
-            cache_file: Path to a pickle file used to cache the raw archive pull.
             filter_outcomes: If True, keep only rows with
-                ``astrometric_outcome_ccd == 1`` and ``astrometric_outcome_transit
-                == 1``.  If False, use all rows returned by the archive (no
-                filtering).
+                ``astrometric_outcome_ccd == 1`` and
+                ``astrometric_outcome_transit == 1``.  If False, use all rows
+                returned by the archive (no filtering).
         """
         if (mpc_numbers is None) == (source_ids is None):
             raise ValueError("Provide exactly one of mpc_numbers or source_ids")
@@ -467,70 +549,12 @@ class GaiaQuery:
                 f"Catalog not available. Catalog options are: {', '.join(CATALOG_NAMES.keys())}"
             )
 
-        # Try to load from cache first
-        if cache_file is not None:
-            cache_path = Path(cache_file)
-            if cache_path.exists():
-                logger.info("Loading Gaia observations from cache %s", cache_path)
-                table = pd.read_pickle(cache_path)
-                self._table = table
-                return
-
-        # Define query to database
-        query_catalog = CATALOG_NAMES[catalog]
-
-        if mpc_numbers is not None:
-            query_mpc_numbers = ", ".join(str(mpc_number) for mpc_number in mpc_numbers)
-            where_clause = f"number_mp IN ({query_mpc_numbers})"
-        else:
-            query_source_ids = ", ".join(str(source_id) for source_id in source_ids)
-            where_clause = f"source_id IN ({query_source_ids})"
-
-        # Apply the astrometric-outcome filter only when requested.  The FPR
-        # ``astrometric_outcome_ccd`` / ``astrometric_outcome_transit`` = 1 rows
-        # are the ones used in the FPR astrometric solution; other values (e.g. 2
-        # for multiple/non-unique solutions) are dropped by default.
-        outcome_filter = ""
-        if filter_outcomes:
-            outcome_filter = (
-                "\n            AND astrometric_outcome_ccd = 1\n"
-                "            AND astrometric_outcome_transit = 1"
-            )
-
-        login_provided = username is not None and password is not None
-        if login_provided:
-            Gaia.login(user=username, password=password)
-
-        try:
-            query = f"""
-            SELECT *
-            FROM {query_catalog}
-            WHERE {where_clause}{outcome_filter}
-            ORDER BY epoch ASC
-            """
-            job = Gaia.launch_job_async(query)
-            table = job.get_results()
-        except Exception as err:
-            raise RuntimeError(f"Error while retrieving astrometric observations: \n{err}") from err
-
-        table = table.to_pandas()  # Convert astropy table to dataframe
-        if table.empty:
-            raise LookupError(f"No observations found for query {where_clause}")
-
-        # Pre-process data
-        table = self._convert_units(table)
-        table = table.reset_index(drop=True)
-        assert table["epoch"].is_monotonic_increasing  # Sanity check for ordering by epoch
-
-        # Store
-        self._table = table
-
-        # Cache the table
-        if cache_file is not None:
-            cache_path = Path(cache_file)
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            table.to_pickle(cache_path)
-            logger.info("Cached Gaia observations to %s", cache_path)
+        self._table = self._cached_fetch(
+            source_ids=tuple(source_ids) if source_ids is not None else None,
+            mpc_numbers=tuple(mpc_numbers) if mpc_numbers is not None else None,
+            catalog=catalog,
+            filter_outcomes=filter_outcomes,
+        ).copy()
 
     def retrieve_data_locally(
         self,
@@ -590,56 +614,7 @@ class GaiaQuery:
 
         self._table = table
 
-    def _convert_units(self, table: pd.DataFrame) -> pd.DataFrame:
-        """Convert the table columns into the correct format for Tudat."""
-        # Convert epoch to seconds since J2000
-        func = lambda jd: julian_day_to_seconds_since_epoch(jd + J2010)
-        table["epoch"] = table["epoch"].apply(func)
 
-        # Convert TCB to TDB epoch
-        table["epoch"] = table["epoch"].apply(TCB_to_TDB)
-
-        # Convert angles to rad
-        table["ra"] = np.deg2rad(table["ra"]) % (2 * np.pi)
-        table["dec"] = np.deg2rad(table["dec"])
-        table["position_angle_scan"] = np.deg2rad(table["position_angle_scan"])
-
-        # Convert mas to radians
-        table[
-            [
-                "ra_error_random",
-                "dec_error_random",
-                "ra_error_systematic",
-                "dec_error_systematic",
-            ]
-        ] *= arcsec / 1e3
-
-        # Remove the cos delta factor from the right ascension uncertainty values
-        table["ra_error_random"] /= np.cos(table["dec"])
-        table["ra_error_systematic"] /= np.cos(table["dec"])
-
-        # Convert Gaia state vectors to SI, apply correction to position vectors
-        # due to time scale change
-        pos_names = [
-            "x_gaia",
-            "y_gaia",
-            "z_gaia",
-            "x_gaia_geocentric",
-            "y_gaia_geocentric",
-            "z_gaia_geocentric",
-        ]
-        table.loc[:, pos_names] *= ASTRONOMICAL_UNIT * TIME_SCALE_CORRECTION
-        vel_names = [
-            "vx_gaia",
-            "vy_gaia",
-            "vz_gaia",
-            "vx_gaia_geocentric",
-            "vy_gaia_geocentric",
-            "vz_gaia_geocentric",
-        ]
-        table.loc[:, vel_names] *= ASTRONOMICAL_UNIT / DAY_IN_S
-
-        return table
 
     def filter(
         self,

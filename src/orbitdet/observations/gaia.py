@@ -2,8 +2,8 @@
 
 Creates a Tudat observation collection from Gaia astrometric observations of a
 solar-system body (e.g. Triton).  The raw archive pull is handled by
-:class:`~orbitdet.data.gaia.GaiaQuery`, which caches the pull to disk to reduce
-internet traffic.
+:class:`~orbitdet.data.gaia.GaiaQuery`, which holds an LRU cache (size=1) in
+memory during the Python session.
 """
 
 import logging
@@ -28,7 +28,7 @@ def create_gaia_dataset(
     Args:
         cfg: Experiment configuration with necessary metadata.
         dataset_cfg: Dataset configuration.  Must contain a ``source_id`` (or
-            ``mpc_numbers``) and a ``cache_file`` path.
+            ``mpc_numbers``).
         system_of_bodies: The environment containing the bodies for which to
             create the dataset.
 
@@ -41,7 +41,6 @@ def create_gaia_dataset(
     target_name = str(getattr(dataset_cfg, "target", "Triton"))
     source_ids = getattr(dataset_cfg, "source_ids", None)
     mpc_numbers = getattr(dataset_cfg, "mpc_numbers", None)
-    cache_file = getattr(dataset_cfg, "cache_file", None)
     epoch_of_equinox = str(getattr(dataset_cfg, "epoch_of_equinox", "ICRS"))
     filter_outcomes = bool(getattr(dataset_cfg, "filter_outcomes", True))
     correct_photocenter = bool(getattr(dataset_cfg, "correct_photocenter", False))
@@ -63,11 +62,11 @@ def create_gaia_dataset(
     query = GaiaQuery()
     if source_ids is not None:
         query.retrieve_data(
-            source_ids=source_ids, cache_file=cache_file, filter_outcomes=filter_outcomes
+            source_ids=source_ids, filter_outcomes=filter_outcomes
         )
     elif mpc_numbers is not None:
         query.retrieve_data(
-            mpc_numbers=mpc_numbers, cache_file=cache_file, filter_outcomes=filter_outcomes
+            mpc_numbers=mpc_numbers, filter_outcomes=filter_outcomes
         )
     else:
         raise ValueError(

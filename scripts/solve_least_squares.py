@@ -8,6 +8,7 @@ import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
+from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import estimation_analysis as est_an
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
@@ -276,11 +277,11 @@ def main(cfg: DictConfig):
     )
     logger.info("Observation simulators created successfully.")
 
-    # if prop.processing_settings.set_integrated_result:
-    #     logger.info(
-    #         "Prefit residuals will be computed using the integrated result from the propagator."
-    #     )
-    #     sim.create_dynamics_simulator(bodies, prop)
+    if prop.processing_settings.set_integrated_result:
+        logger.info(
+            "Prefit residuals will be computed using the integrated result from the propagator."
+        )
+        sim.create_dynamics_simulator(bodies, prop)
 
     # Populate residuals in SingleObservationSets
     obs.compute_residuals_and_dependent_variables(

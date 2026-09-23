@@ -6,6 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
+from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 
@@ -13,7 +14,10 @@ from orbitdet.data import KernelManager
 from orbitdet.observations import create_observation_collection
 from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
 from orbitdet.simulation import (
+    get_dynamical_model,
     get_environment,
+    get_integrator_settings,
+    get_propagator_settings,
 )
 from orbitdet.visualization import Residuals
 
@@ -48,6 +52,7 @@ def main(cfg: DictConfig):
     # Inject start and end epochs into the runtime context
     ctx.start_epoch = iso_string_to_epoch_time_object(cfg.start_date)
     ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
+    ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
 
     km: KernelManager = KernelManager(cfg)
     km.download_all_kernels()
@@ -56,7 +61,16 @@ def main(cfg: DictConfig):
     logger.info("Configuration loaded and runtime initialized successfully.")
 
     bodies = get_environment(cfg, ctx)
-    logger.info("Environment created successfully.")
+    acc = get_dynamical_model(cfg, ctx, bodies)
+    integ = get_integrator_settings(cfg, ctx)
+    prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=[])
+
+
+    if prop.processing_settings.set_integrated_result:
+        logger.info(
+            "Prefit residuals will be computed using the integrated result from the propagator."
+        )
+        sim.create_dynamics_simulator(bodies, prop)
 
     # Create observations
     observations, observation_models, _ = create_observation_collection(cfg, bodies)

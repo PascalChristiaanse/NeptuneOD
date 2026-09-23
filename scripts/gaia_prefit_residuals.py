@@ -12,9 +12,11 @@ import hydra
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import tudatpy.dynamics.propagation_setup as prop_setup
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
+from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 
@@ -27,11 +29,14 @@ from orbitdet.reproducibility import (
     enforce_initialization,
     initialize,
 )
-from orbitdet.simulation import get_environment
-from orbitdet.visualization import Residuals
-from orbitdet.visualization import ResidualsPSD
-from orbitdet.visualization import ResidualsScan
-from orbitdet.visualization import ResidualScanHistogram
+from orbitdet.simulation import (
+    get_dynamical_model,
+    get_environment,
+    get_integrator_settings,
+    get_propagator_settings,
+)
+from orbitdet.simulation.propagation import get_propagator_settings
+from orbitdet.visualization import Residuals, ResidualScanHistogram, ResidualsPSD, ResidualsScan
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -55,7 +60,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiment/gaia_prefits",
+    config_name="experiment/gaia_prefit_residuals",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -64,6 +69,8 @@ def main(cfg: DictConfig):
     # Inject start and end epochs into the runtime context
     ctx.start_epoch = iso_string_to_epoch_time_object(cfg.start_date)
     ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
+    ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
+
 
     km: KernelManager = KernelManager(cfg)
     km.download_all_kernels()
@@ -74,10 +81,21 @@ def main(cfg: DictConfig):
     bodies = get_environment(cfg, ctx)
     logger.info("Environment created successfully.")
 
+    acc = get_dynamical_model(cfg, ctx, bodies)
+    integ = get_integrator_settings(cfg, ctx)
+    prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=[])
+
     # Create observations
     observations, observation_models, _ = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
+    if prop.processing_settings.set_integrated_result:
+        logger.info(
+            "Prefit residuals will be computed using the integrated result from the propagator."
+        )
+        sim.create_dynamics_simulator(bodies, prop)
+
+    
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies
@@ -110,9 +128,9 @@ def main(cfg: DictConfig):
         logger.warning("Could not log residual summary metrics: %s", exc)
 
     Residuals(cfg, observations).plot()
-    ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
+    # ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
     ResidualsScan(cfg.figures, observations).plot()
-    ResidualScanHistogram(cfg.figures, observations).plot()
+    # ResidualScanHistogram(cfg.figures, observations).plot()
 
     logger.info("Pre-fit residuals plotted successfully.")
 

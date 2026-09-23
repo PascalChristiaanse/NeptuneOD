@@ -3,22 +3,22 @@ Retrieve Gaia FPR astrometry from the archives.
 
 This module provides the :class:`GaiaQuery` class, which retrieves astrometric
 observations of solar-system objects (asteroids, and now Triton) from the Gaia
-archive.  The class holds a cache (size=1) so that
-repeated queries with identical parameters within a single Python session skip
-the archive.
+archive.  Archive queries are cached on disk for one week so that repeated
+queries with identical parameters skip the archive.
 """
 
 from __future__ import annotations
 
 import copy
 import logging
-import time
 from datetime import datetime
-from functools import cache
 
 import numpy as np
 import pandas as pd
 from astroquery.gaia import Gaia
+from joblib import Memory
+from joblib.memory import expires_after
+from platformdirs import user_cache_dir
 from scipy.constants import arcsec
 from scipy.linalg import block_diag
 from tudatpy.astro.time_representation import (
@@ -76,6 +76,23 @@ CATALOG_NAMES = {
     "DR3": "gaiadr3.sso_observation",
     "FPR": "gaiafpr.sso_observation",
 }
+
+# On-disk cache for archive queries.  The Gaia FPR release changes on a roughly
+# yearly cadence and archive outages/retries are common, so caching for a week
+# strikes a balance between avoiding repeated round-trips within a campaign and
+# not serving stale data.  Stored under the user cache directory (e.g.
+# ``~/.cache/orbitdet`` on Linux, ``~/Library/Caches/orbitdet`` on macOS).
+#
+# Entries are keyed on the full set of query arguments, so distinct queries
+# coexist rather than evicting one another, and the number of entries is
+# unlimited (joblib only enforces a cap via ``Memory.reduce_size``, which is
+# not used here).  joblib also hashes the function source, so editing the
+# fetch logic invalidates all cached entries automatically.
+_GAIA_QUERY_CACHE = Memory(
+    location=user_cache_dir("orbitdet") + "/gaia_query_cache",
+    verbose=0,
+)
+_GAIA_QUERY_CACHE_TTL = expires_after(weeks=1)
 
 # Registry of position angle of scan (radians) keyed by the observation epoch
 # (seconds since J2000 TDB).  The Tudat ``ObservationCollection`` / 
@@ -139,6 +156,9 @@ def get_gaia_ephemeris(
     packs them into a Tudat-compatible state history (keys = seconds since
     J2000 TDB, values = 6x1 position/velocity in SI units).
 
+    The underlying archive fetch is cached on disk for one week (see
+    :meth:`GaiaQuery._cached_fetch`).
+
     Args:
         source_ids: Gaia ``source_id`` values used to select the observations.
         geocentric: If True, use the geocentric Gaia states (frame origin
@@ -165,8 +185,9 @@ class GaiaQuery:
 
     The class supports both asteroids (queried by MPC number) and Triton
     (queried by Gaia ``source_id``).  The underlying archive fetch is cached
-    with ``functools.cache`` so repeated queries with identical parameters
-    within a single Python session skip the archive round-trip.
+    on disk for one week (see :meth:`_cached_fetch`) so repeated queries with
+    identical parameters skip the archive round-trip.  The cache lives under
+    the platform user cache directory, e.g. ``~/.cache/orbitdet`` on Linux.
 
     Attributes:
         _table (pd.DataFrame): Holds astrometry and metadata after calling
@@ -412,7 +433,7 @@ class GaiaQuery:
             self._table.loc[:, ["ra", "dec"]] += corrections
 
     @staticmethod
-    @cache
+    @_GAIA_QUERY_CACHE.cache(cache_validation_callback=_GAIA_QUERY_CACHE_TTL)
     def _cached_fetch(
         source_ids: tuple[int, ...] | None,
         mpc_numbers: tuple[int, ...] | None,
@@ -420,6 +441,13 @@ class GaiaQuery:
         filter_outcomes: bool,
     ) -> pd.DataFrame:
         """Fetch Gaia observations from the archive, unit-converted, with cache.
+
+        Results are cached on disk (via ``joblib``) for one week, keyed on the
+        full set of query parameters, so repeated runs within a campaign skip
+        the archive.  Distinct queries (e.g. differing ``filter_outcomes``) are
+        cached independently and do not evict one another; the cache has no
+        entry limit.  Entries older than one week are transparently cleared and
+        recomputed on next access.
 
         Args:
             source_ids: Gaia source IDs as a hashable tuple, or None.
@@ -447,34 +475,30 @@ class GaiaQuery:
                 "            AND astrometric_outcome_transit = 1"
             )
 
-        # Retry with exponential backoff
-        max_retries = 3
-        last_error = None
-        for attempt in range(max_retries):
-            try:
-                query = f"""
-                SELECT *
-                FROM {query_catalog}
-                WHERE {where_clause}{outcome_filter}
-                ORDER BY epoch ASC
-                """
-                job = Gaia.launch_job_async(query)
-                table = job.get_results()
-                break
-            except Exception as err:
-                last_error = err
-                if attempt < max_retries - 1:
-                    wait = 2 ** attempt
-                    logger.warning(
-                        "Gaia query failed (attempt %d/%d): %s. Retrying in %ds ...",
-                        attempt + 1, max_retries, err, wait,
-                    )
-                    time.sleep(wait)
-                else:
-                    raise RuntimeError(
-                        f"Error while retrieving astrometric observations after "
-                        f"{max_retries} attempts: \n{err}"
-                    ) from err
+        query = f"""
+        SELECT *
+        FROM {query_catalog}
+        WHERE {where_clause}{outcome_filter}
+        ORDER BY epoch ASC
+        """
+        logger.info(
+            "Launching Gaia archive query on %s: %s",
+            query_catalog,
+            " ".join(query.split()),
+        )
+        job = Gaia.launch_job_async(query)
+        try:
+            table = job.get_results()
+        except Exception as err:
+            logger.error("Gaia archive query failed: %s", err)
+            raise RuntimeError(
+                f"Error while retrieving astrometric observations: \n{err}"
+            ) from err
+        else:
+            logger.info(
+                "Gaia archive query succeeded: retrieved %d row(s).",
+                len(table),
+            )
 
         table = table.to_pandas()
         if table.empty:
@@ -527,9 +551,8 @@ class GaiaQuery:
         """Retrieve astrometric observations through astroquery.
 
         Observations are stored in the observation table attribute.  The
-        underlying archive fetch is LRU-cached (size=1) so that repeated
-        queries with the same parameters within a single Python session
-        skip the archive round-trip.
+        underlying archive fetch is cached on disk for one week so that
+        repeated queries with the same parameters skip the archive round-trip.
 
         Args:
             mpc_numbers: List of asteroid MPC numbers to retrieve.

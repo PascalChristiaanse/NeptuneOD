@@ -1,0 +1,14 @@
+# @package _global_
+
+propagated_formal_errors_cartesian:
+  output_file: "formal_errors_cartesian.pdf"
+  figure:
+    width: 12
+    height: 6
+  titles:
+    title: "Propagated Formal Errors - Cartesian"
+  axes:
+    x_label: "Epoch"
+    y_label: "Formal Error [m]"
+    hover_x_label: "Epoch"
+    hover_y_label: "Formal Error [m]"

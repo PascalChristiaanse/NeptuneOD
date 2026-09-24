@@ -352,8 +352,10 @@ def configure_logging(cfg: DictConfig, *, run_dir: Path, aim_run: Run | None) ->
     """Install the single logging pipeline. Idempotent."""
     ...
 
+
 def attach_aim_handler(aim_run: Run) -> None:
     """Attach (or re-point) the Aim handler once the Run exists."""
+
 
 def shutdown_logging() -> None:
     """Flush and stop the QueueListener. Safe to call twice. Registered with atexit."""

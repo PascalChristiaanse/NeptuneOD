@@ -288,7 +288,7 @@ def enforce_initialization(func):
                 aim_add_tag(ctx.aim_run, outcome)
                 aim_finalize(ctx.aim_run)
 
-        if _CONTEXT is None:
+        if sys.modules[__name__]._CONTEXT is None:  # noqa: SLF001
             raise RuntimeError(
                 "Reproducibility system was not initialized in this run. "
                 "Call initialize(cfg) or initialize_test_mode() in your Hydra main function."

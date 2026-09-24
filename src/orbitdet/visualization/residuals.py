@@ -67,6 +67,7 @@ def _rms_in_unit(values_in_unit: np.ndarray, unit: str) -> float | None:
     # Report very small RMS values (e.g. in mas) without losing precision.
     return rms
 
+
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000: np.ndarray) -> pd.DatetimeIndex:
     return pd.to_datetime(
         seconds_since_j2000,

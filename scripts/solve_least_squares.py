@@ -518,7 +518,7 @@ def main(cfg: DictConfig):
     fig_rsw, axes_rsw = RSWDistance(
         cfg,
         # estimation_output.simulation_results_per_iteration[-1].dynamics_results,
-        final_result.dynamics_results,
+        final_result.propagation_results,
         dep_vars[0],
         central_body="Neptune",
     ).plot()
@@ -531,8 +531,8 @@ def main(cfg: DictConfig):
             central_body="Neptune",
         ).plot()
 
-    from matplotlib import pyplot as plt
-    plt.show()
+    # from matplotlib import pyplot as plt
+    # plt.show()
 
     # Plot dependent variable (Triton Spice relative position, Keplerian states)
     from orbitdet.visualization import DependentVariable

@@ -1,0 +1,42 @@
+# @package _global_
+
+# Experiment for the DelftBlue validation soak (WP7).
+# Uses simulated observations for speed; no real data downloads needed.
+# The "fail" flag in the sweep controls whether each job raises an error.
+
+defaults:
+  - /collection: simulated_only
+  - /dynamics: simulated
+  - /kernels: classical
+  - /parameters: initial_state
+  - /logging: default
+  - _self_
+  - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+
+seed: 42
+
+# Hydra settings — will be overridden by the sweep config.
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings (reduced window for fast validation).
+start_date: 2025-06-01T12:00:00
+end_date: 2025-08-01T12:00:00
+initial_epoch: 2025-06-01T12:00:00
+
+# Fast estimation (2 iterations is enough for the logging test).
+estimation:
+  max_iterations: 2
+  parameters_to_estimate:
+    - initial_state:
+      - placeholder: True
+
+# Sweep flag: the sweeper sets this from the multirun params list. Non-sweep
+# runs default to false (success path).
+fail: false

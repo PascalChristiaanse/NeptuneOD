@@ -72,6 +72,7 @@ def _deflection_vector_to_corrections(
     Returns:
         (ra_correction, dec_correction) in radians.
     """
+
     def unit(vec):
         return vec / np.linalg.norm(vec)
 

@@ -1,0 +1,39 @@
+# @package _global_
+
+# Fast validation sweep for DelftBlue soak test (WP7).
+# Uses simulated observations — no real data downloads, no heavy kernels.
+# Run with:
+#   python scripts/delftblue_validation.py --multirun --config-name sweep/validation_fast
+# or via sbatch:
+#   sbatch scripts/run_delftblue_validation.sbatch
+
+defaults:
+  - /experiment: validation_fast
+  - _self_
+  - override /hydra/launcher: submitit_local
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    stderr_to_stdout: false
+    tasks_per_node: 1
+    nodes: 1
+    gpus_per_node: 0
+    cpus_per_task: 1
+    timeout_min: 30
+  sweep:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  sweeper:
+    max_batch_size: 2
+    params:
+      # One "success" and one "fail" so both paths are exercised.
+      fail: false,true
+
+# Reduce estimation iterations for speed.
+estimation:
+  max_iterations: 2
+
+# Disable figures for the soak test (they take time but don't test logging).
+figures: {}

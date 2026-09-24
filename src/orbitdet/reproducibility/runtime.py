@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import atexit
-import errno
 import logging
-import os
 import random
-import re
-import select
 import shutil
 import subprocess
 import sys
-import threading
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
@@ -39,158 +33,25 @@ class RuntimeContext:
 
 
 _CONTEXT: RuntimeContext | None = None
-_NATIVE_FD_CAPTURES: tuple[FdCapture, FdCapture] | None = None
-_PYTHON_LOG_LINE_PATTERN = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\]")
-
-
-class FdCapture:
-    """Captures file descriptor output and logs it via Python logging."""
-
-    def __init__(self, fd: int, logger: logging.Logger, level: int):
-        self._fd = fd
-        self._logger = logger
-        self._level = level
-        self._original_fd: int | None = None
-        self._read_fd: int | None = None
-        self._thread: threading.Thread | None = None
-        self._lock = threading.Lock()
-        self._active = False
-
-    def __enter__(self):
-        return self.start()
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.stop()
-        return False
-
-    def _forward_output(self) -> None:
-        """Read from the captured fd and log each line."""
-        assert self._read_fd is not None
-        assert self._original_fd is not None
-
-        encoding = getattr(sys.stderr, "encoding", None) or "utf-8"
-        buffer = b""
-
-        while True:
-            try:
-                ready, _, _ = select.select([self._read_fd], [], [], 0.5)
-                if self._read_fd not in ready:
-                    continue
-
-                chunk = os.read(self._read_fd, 4096)
-                if not chunk:
-                    break
-
-                # Write to original fd and buffer for logging
-                os.write(self._original_fd, chunk)
-                buffer += chunk
-
-                # Log complete lines
-                lines = buffer.split(b"\n")
-                buffer = lines[-1]  # Keep incomplete line in buffer
-
-                for line in lines[:-1]:
-                    text = line.decode(encoding, errors="replace")
-                    if text.strip() and not _PYTHON_LOG_LINE_PATTERN.match(text):
-                        self._logger.log(self._level, text)
-
-            except OSError as exc:
-                if exc.errno == errno.EIO:
-                    break
-                raise
-
-    def start(self):
-        """Start capturing the file descriptor."""
-        with self._lock:
-            if self._active:
-                return self
-
-            self._original_fd = os.dup(self._fd)
-            read_fd, write_fd = os.pipe()
-
-            self._read_fd = read_fd
-            os.dup2(write_fd, self._fd)
-            os.close(write_fd)
-
-            self._thread = threading.Thread(
-                target=self._forward_output,
-                name=f"FdCapture-{self._fd}",
-                daemon=True,
-            )
-            self._thread.start()
-            self._active = True
-
-        return self
-
-    def stop(self):
-        """Stop capturing the file descriptor."""
-        thread: threading.Thread | None = None
-
-        with self._lock:
-            if not self._active:
-                return self
-
-            assert self._original_fd is not None
-            os.dup2(self._original_fd, self._fd)
-
-            thread = self._thread
-            self._thread = None
-            self._active = False
-
-        if thread is not None:
-            thread.join()
-
-        with self._lock:
-            if self._original_fd is not None:
-                os.close(self._original_fd)
-                self._original_fd = None
-
-        return self
-
-
-def _start_native_fd_capture(logger: logging.Logger) -> None:
-    """Start capturing stdout and stderr at the file descriptor level."""
-    global _NATIVE_FD_CAPTURES
-
-    if _NATIVE_FD_CAPTURES is not None:
-        return
-
-    stdout_capture = FdCapture(1, logger, logging.INFO).start()
-    stderr_capture = FdCapture(2, logger, logging.WARNING).start()
-    _NATIVE_FD_CAPTURES = (stdout_capture, stderr_capture)
-
-
-def _stop_native_fd_capture() -> None:
-    global _NATIVE_FD_CAPTURES
-
-    if _NATIVE_FD_CAPTURES is None:
-        return
-
-    for capture in reversed(_NATIVE_FD_CAPTURES):
-        capture.stop()
-
-    _NATIVE_FD_CAPTURES = None
-
-
-atexit.register(_stop_native_fd_capture)
 
 
 def setup_logging(cfg: DictConfig):
-    if OmegaConf.select(cfg, "logging") is None:
-        return
+    """Install the repository logging pipeline and the exception hook.
 
-    logging.basicConfig(
-        level=cfg.logging.level,
-        format="[%(asctime)s] %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    logging.getLogger("tudatpy").setLevel(cfg.logging.tudatpy_logging_level)
+    Delegates to :func:`orbitdet.reproducibility.logging.configure_logging`,
+    which builds the stdout/stderr/file sinks behind a non-blocking queue. The
+    previous ``logging.basicConfig`` call was silently a no-op because Hydra had
+    already attached root handlers, so ``cfg.logging.level`` had no effect.
 
-    for name in cfg.logging.muted_loggers:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    Args:
+        cfg: The resolved Hydra configuration. The ``logging`` section is
+            optional; defaults are used when it is absent.
+    """
+    from orbitdet.reproducibility.logging import configure_logging
+
+    configure_logging(cfg)
 
     logger = logging.getLogger(__name__)
-    # sys.stderr = _LoggerStderr(logger, sys.stderr)
 
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
@@ -297,6 +158,14 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
 
     global _CONTEXT
 
+    # Logging is (re)configured on every call, before the context cache check.
+    # Under a Hydra launcher that reuses the interpreter for several jobs, each
+    # job has its own run directory; configuring logging after the early return
+    # meant every job after the first wrote its logs into the first job's files
+    # (or produced no log file at all). configure_logging() is idempotent while
+    # the run directory is unchanged and reconfigures when it changes.
+    setup_logging(cfg)
+
     if _CONTEXT is not None:
         return _CONTEXT
 
@@ -324,6 +193,12 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
     # Start an Aim run for experiment tracking
     aim_run = aim_start_run(cfg, git_commit, output_dir, seed)
 
+    # Point the logging pipeline's Aim sink at the new run. Logging is
+    # configured before the run exists, so the handler starts detached.
+    from orbitdet.reproducibility.logging import attach_aim_run
+
+    attach_aim_run(aim_run)
+
     _CONTEXT = RuntimeContext(
         git_commit=git_commit,
         output_dir=output_dir,
@@ -331,10 +206,6 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
         test_mode=False,
         aim_run=aim_run,
     )
-
-    setup_logging(cfg)
-    logger = logging.getLogger("FDCapture")
-    _start_native_fd_capture(logger)
 
     OmegaConf.set_readonly(cfg, True)
 
@@ -357,6 +228,13 @@ def initialize_test_mode(
     )
 
     set_random_seed(seed)
+
+    # Install the same logging pipeline as production (console split, no file,
+    # no Aim) so tests exercise the real handler wiring instead of a separate
+    # basicConfig path. run_dir=None keeps it console-only.
+    from orbitdet.reproducibility.logging import configure_logging
+
+    configure_logging(None, run_dir=None, use_queue=True)
 
     _CONTEXT = RuntimeContext(
         git_commit="TEST",
@@ -399,12 +277,18 @@ def enforce_initialization(func):
             logging.getLogger(func.__module__).exception("Uncaught exception")
             raise
         finally:
-            ctx = _CONTEXT
+            # NB: resolve the module through sys.modules rather than the
+            # closure's globals. Under the submitit launcher the decorated
+            # function is pickled into the child process, which can leave the
+            # wrapper's __globals__ pointing at a deserialized *copy* of this
+            # module; reading _CONTEXT through that copy would always see None
+            # and the completed/crashed tag would be silently lost.
+            ctx = sys.modules[__name__]._CONTEXT  # type: ignore[attr-defined]
             if ctx is not None and ctx.aim_run is not None and outcome is not None:
                 aim_add_tag(ctx.aim_run, outcome)
                 aim_finalize(ctx.aim_run)
 
-        if _CONTEXT is None:
+        if sys.modules[__name__]._CONTEXT is None:  # noqa: SLF001
             raise RuntimeError(
                 "Reproducibility system was not initialized in this run. "
                 "Call initialize(cfg) or initialize_test_mode() in your Hydra main function."

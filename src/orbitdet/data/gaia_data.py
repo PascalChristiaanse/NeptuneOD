@@ -398,7 +398,6 @@ class GaiaQuery:
         Returns:
             None
         """
-        print("hi")
         if not bodies.does_body_exist(target_name) or bodies.get(target_name).ephemeris is None:
             raise ValueError(
                 f"Correction not possible for {target_name}. Body needs to be in SystemOfBodies "
@@ -615,7 +614,7 @@ class GaiaQuery:
         except FileNotFoundError:
             table = pd.DataFrame()
             for i in range(20):
-                print(f"Loading file number {i}/19...")
+                logger.info("Loading file number %d/19...", i)
                 file_number = str(i) if i >= 10 else "0" + str(i)
                 file_name = "SsoObservation_" + file_number + ".csv"
                 table_chunk = pd.read_csv(file_path + file_name, comment="#")
@@ -670,43 +669,51 @@ class GaiaQuery:
             raise Exception("No observations left after filtering")
 
     def summary(self) -> None:
-        """Print a convenient summary of the astrometric observations."""
+        """Log a convenient summary of the astrometric observations."""
         if len(self._table) == 0:
-            print("Observations not loaded")
+            logger.info("Observations not loaded")
             return
 
-        print("Summary:")
-        print(f"Observations for {len(self.mpc_numbers)} objects:")
+        logger.info("Summary:")
+        logger.info("Observations for %d objects:", len(self.mpc_numbers))
 
         first_epoch = DateTime.from_epoch(self.epoch_start)
         final_epoch = DateTime.from_epoch(self.epoch_end)
-        print(
-            "First observation yy/mm/dd: "
-            f"{first_epoch.year}, {first_epoch.month}, {first_epoch.day}"
+        logger.info(
+            "First observation yy/mm/dd: %d, %d, %d",
+            first_epoch.year,
+            first_epoch.month,
+            first_epoch.day,
         )
-        print(
-            "Final observation yy/mm/dd: "
-            f"{final_epoch.year}, {final_epoch.month}, {final_epoch.day}"
+        logger.info(
+            "Final observation yy/mm/dd: %d, %d, %d",
+            final_epoch.year,
+            final_epoch.month,
+            final_epoch.day,
         )
 
         for mpc_number in self.mpc_numbers:
-            print(f"\nMinor planet {mpc_number}:")
+            logger.info("Minor planet %d:", mpc_number)
             table_single_obj = self.observation_table.query("number_mp == @mpc_number")
 
             nr_of_observations = len(table_single_obj)
-            print(f"Number of observations: {nr_of_observations}")
+            logger.info("Number of observations: %d", nr_of_observations)
 
             epochs_as_list = table_single_obj["epoch"].to_list()
             first_epoch = DateTime.from_epoch(epochs_as_list[0])
             final_epoch = DateTime.from_epoch(epochs_as_list[-1])
 
-            print(
-                "First observation yy/mm/dd: "
-                f"{first_epoch.year}, {first_epoch.month}, {first_epoch.day}"
+            logger.info(
+                "First observation yy/mm/dd: %d, %d, %d",
+                first_epoch.year,
+                first_epoch.month,
+                first_epoch.day,
             )
-            print(
-                "Final observation yy/mm/dd: "
-                f"{final_epoch.year}, {final_epoch.month}, {final_epoch.day}"
+            logger.info(
+                "Final observation yy/mm/dd: %d, %d, %d",
+                final_epoch.year,
+                final_epoch.month,
+                final_epoch.day,
             )
 
     def get_gaia_ephemeris(self, geocentric: bool = True):

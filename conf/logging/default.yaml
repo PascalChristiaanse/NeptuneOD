@@ -1,9 +1,52 @@
 # @package _global_
 
-# Logging settings
+# Logging settings consumed by orbitdet.reproducibility.logging.configure_logging().
+#
+# The pipeline itself (handlers, queue, sinks) is built in Python so it can be
+# dynamic: the run directory depends on the live Hydra output dir, and Aim is
+# attached after the run exists.
+#
+# Hydra's `job_logging` is disabled so it cannot open a duplicate
+# {job_name}.log in the run directory or install a competing root handler set
+# (its default console handler writes to stdout, which is what sent every
+# application error to slurm .out instead of .err).
+#
+# `hydra_logging` is deliberately left at its default: the multirun parent
+# process never runs the application entrypoint, so Hydra's own launch/progress
+# messages are the only feedback available there.
+
+defaults:
+  - override /hydra/job_logging: none
+
 logging:
+  # Level for the console streams (stdout for < WARNING, stderr for >= WARNING).
   level: "INFO"
+  # Level for the rotating file sink. Defaults to `level` when null; set to
+  # "DEBUG" to keep a complete on-disk record while the console stays quiet.
+  file_level: null
+  # Level applied to the tudatpy logger.
   tudatpy_logging_level: "WARNING"
+  # Loggers forced to WARNING.
   muted_loggers:
     - "matplotlib"
     # - "orbitdet.data.kernel"
+  # Base name of the rotating run log in the Hydra run directory.
+  filename: "run.log"
+  # Rotation: 10 MiB per file, 5 backups.
+  max_bytes: 10485760
+  backup_count: 5
+
+  # AimStack sink. Records are forwarded as Aim log records on the run so they
+  # appear in the UI's Logs tab. This runs on the logging queue thread, so a
+  # stopped Aim server cannot block the application.
+  aim:
+    enabled: true
+    # Level for Aim. Defaults to `level` when null (useful to keep the console
+    # quiet while still shipping full logs to Aim).
+    level: null
+    # How many Aim handler failures to report before going quiet.
+    max_warnings: 3
+    # Aim's own terminal capture is deliberately off: it monkey-patches
+    # sys.stdout/sys.stderr globally and duplicated everything now handled by
+    # the Aim logging sink.
+    capture_terminal_logs: false

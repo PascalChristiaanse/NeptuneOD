@@ -21,6 +21,7 @@ from orbitdet.reproducibility import (
     RuntimeContext,
     aim_log_artifact_reference,
     aim_log_metrics,
+    enforce_initialization,
     initialize,
 )
 from orbitdet.simulation import (
@@ -203,7 +204,7 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
     config_path="../conf",
     config_name="experiment/generate_prefit_residuals",
 )
-# @enforce_initialization Disabled to support submitit multiprocessing
+@enforce_initialization
 def main(cfg: DictConfig):
     logger.info(f"Starting main() with on process PID {os.getpid()}")
 
@@ -406,6 +407,11 @@ def main(cfg: DictConfig):
     # estimation_input.save_to_binary(HydraConfig.get().runtime.output_dir + "/estimation_input")
     logger.info("Starting estimation...")
 
+    # tudatpy's estimator prints its progression directly to the console from
+    # C++, bypassing Python logging. redirect_std captures that output to a
+    # per-run file; the file itself is attached to Aim below. The output is
+    # intentionally NOT re-logged into the pipeline afterwards (it used to be
+    # read back and re-emitted, which duplicated the whole run log).
     estimation_log_path = Path(HydraConfig.get().runtime.output_dir) / "estimation_progression.log"
     try:
         with redirect_std(str(estimation_log_path)):
@@ -413,12 +419,7 @@ def main(cfg: DictConfig):
     except Exception as e:
         logger.error("Estimation failed: %s", e)
         logger.info("Estimation progression logged to %s", estimation_log_path)
-        # write estimation log file to logger
-        if estimation_log_path.exists():
-            with open(estimation_log_path) as f:
-                for line in f:
-                    logger.info("Estimation: %s", line.rstrip("\n"))
-        else:
+        if not estimation_log_path.exists():
             logger.warning("Unable to find estimation log file at %s", estimation_log_path)
         raise
 
@@ -428,12 +429,6 @@ def main(cfg: DictConfig):
     logger.info("Estimation output saved to %s", estimation_log_path.with_suffix(".tudat"))
     logger.info("Observations saved to %s", estimation_log_path.with_name("observations.tudat"))
     logger.info("Estimation completed successfully.")
-
-    # Also log the estimation progress to the regular logger
-    if estimation_log_path.exists():
-        with open(estimation_log_path) as f:
-            for line in f:
-                logger.info("Estimation: %s", line.rstrip("\n"))
 
     # Log residual RMS per iteration to Aim
     num_iterations = estimation_output.residual_history.shape[1]

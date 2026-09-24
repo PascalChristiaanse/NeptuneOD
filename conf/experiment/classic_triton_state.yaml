@@ -8,6 +8,8 @@ defaults:
   - /data: classical
   - /parameters: initial_state
   - /logging: default
+  - /outlier_rejection: per_set_thresholds
+  - /weighting: hybrid_geometric_v2
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
   - /figures/residual_histogram
@@ -19,6 +21,8 @@ defaults:
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses
   - /figures/RSW_distance
+  - /figures/propagated_formal_errors_cartesian
+  - /figures/propagated_formal_errors_rsw
   
 seed: 42
 

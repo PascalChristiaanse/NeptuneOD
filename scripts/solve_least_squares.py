@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
+from tudatpy.astro import frame_conversion
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import estimation_analysis as est_an
@@ -31,6 +32,10 @@ from orbitdet.simulation import (
     get_propagator_settings,
 )
 from orbitdet.utility import save_tudat_object
+from orbitdet.visualization import (
+    PropagatedFormalErrorsCartesian,
+    PropagatedFormalErrorsRSW,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +207,7 @@ def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str |
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiment/generate_prefit_residuals",
+    config_name="experiment/classic_triton_state",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -430,6 +435,11 @@ def main(cfg: DictConfig):
     logger.info("Observations saved to %s", estimation_log_path.with_name("observations.tudat"))
     logger.info("Estimation completed successfully.")
 
+    parameters = estimation_output.parameter_history[estimation_output.best_iteration]
+    prop.initial_states = parameters
+
+    final_result = sim.create_dynamics_simulator(bodies, prop)
+
     # Log residual RMS per iteration to Aim
     num_iterations = estimation_output.residual_history.shape[1]
     logger.info("Logging per-iteration metrics to Aim...")
@@ -494,36 +504,48 @@ def main(cfg: DictConfig):
 
     from orbitdet.visualization import DifferencedDependentVariables
 
-    fig_diff, axes_diff = DifferencedDependentVariables(
-        cfg,
-        reference_result=estimation_output.simulation_results_per_iteration[0].dynamics_results,
-        comparison_results=[estimation_output.simulation_results_per_iteration[0].dynamics_results],
-        reference_dependent_variable=dep_vars[2],
-        comparison_dependent_variables=[dep_vars[1]],
-    ).plot()
+    # fig_diff, axes_diff = DifferencedDependentVariables(
+    #     cfg,
+    #     reference_result=estimation_output.simulation_results_per_iteration[0].dynamics_results,
+    #     comparison_results=[estimation_output.simulation_results_per_iteration[0].dynamics_results],
+    #     reference_dependent_variable=dep_vars[2],
+    #     comparison_dependent_variables=[dep_vars[1]],
+    # ).plot()
 
     # Plot RSW decomposition of relative position (Triton Spice vs Triton)
     from orbitdet.visualization import RSWDistance
 
     fig_rsw, axes_rsw = RSWDistance(
         cfg,
-        estimation_output.simulation_results_per_iteration[-1].dynamics_results,
+        # estimation_output.simulation_results_per_iteration[-1].dynamics_results,
+        final_result.dynamics_results,
         dep_vars[0],
         central_body="Neptune",
     ).plot()
 
+    fig_rsw1, axes_rsw1 = RSWDistance(
+            cfg,
+            estimation_output.simulation_results_per_iteration[-1].dynamics_results,
+            # final_result.dynamics_results,
+            dep_vars[0],
+            central_body="Neptune",
+        ).plot()
+
+    from matplotlib import pyplot as plt
+    plt.show()
+
     # Plot dependent variable (Triton Spice relative position, Keplerian states)
     from orbitdet.visualization import DependentVariable
 
-    fig_dep_relpos, axes_dep_relpos = DependentVariable(
-        cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[0]
-    ).plot()
-    fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
-        cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[1]
-    ).plot()
-    fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
-        cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[2]
-    ).plot()
+    # fig_dep_relpos, axes_dep_relpos = DependentVariable(
+    #     cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[0]
+    # ).plot()
+    # fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
+    #     cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[1]
+    # ).plot()
+    # fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
+    #     cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[2]
+    # ).plot()
 
     # Plot residual histogram, Q-Q, and scatter
     from orbitdet.visualization import ResidualHistogram, ResidualQQ, ResidualScatter
@@ -531,6 +553,56 @@ def main(cfg: DictConfig):
     fig_hist, axes_hist = ResidualHistogram(cfg, observations).plot()
     fig_qq, axes_qq = ResidualQQ(cfg, observations).plot()
     fig_scatter, ax_scatter = ResidualScatter(cfg, observations).plot()
+
+    # ====================================================================
+    # Propagate covariance and plot formal errors
+    # ====================================================================
+    logger.info("Propagating covariance over the full time arc ...")
+    state_transition_interface = estimator.state_transition_interface
+    start_epoch = float(ctx.start_epoch.to_float())
+    end_epoch = float(ctx.end_epoch.to_float())
+    step_days = OmegaConf.select(cfg, "propagation.step_days", default=10.0)
+    step_seconds = step_days * 86400.0
+    output_times = np.arange(start_epoch, end_epoch, step_seconds)
+
+    propagated_covariances = est_an.propagate_covariance(
+        estimation_output.covariance, state_transition_interface, output_times
+    )
+    propagated_formal_errors = est_an.propagate_formal_errors(
+        initial_covariance=estimation_output.covariance,
+        state_transition_interface=state_transition_interface,
+        output_times=output_times,
+    )
+
+    epochs = np.array(list(propagated_formal_errors.keys()))
+    formal_errors = np.array(list(propagated_formal_errors.values()))
+
+    # RSW rotation
+    n_epochs = len(epochs)
+    fe_rsw = np.zeros((n_epochs, 6))
+    for i, epoch in enumerate(epochs):
+        state_est = bodies.get("Triton").ephemeris.cartesian_state(epoch)
+        rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(state_est)
+        full_rot = np.block([[rot_matrix, np.zeros((3, 3))],
+                             [np.zeros((3, 3)), rot_matrix]])
+        cov = propagated_covariances[epoch]
+        cov_rsw = full_rot @ cov @ full_rot.T
+        fe_rsw[i] = np.sqrt(np.diag(cov_rsw))
+
+    logger.info("Plotting propagated formal errors ...")
+    PropagatedFormalErrorsCartesian(cfg, epochs, formal_errors).plot()
+    PropagatedFormalErrorsRSW(cfg, epochs, fe_rsw).plot()
+    logger.info("Propagated formal errors plotted.")
+
+    # Save propagated formal errors as NumPy archive
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+    np.savez(
+        output_dir / "propagated_formal_errors.npz",
+        epochs=epochs,
+        formal_errors=formal_errors,
+        formal_errors_rsw=fe_rsw,
+    )
+    logger.info("Propagated formal errors saved to %s", output_dir / "propagated_formal_errors.npz")
 
     # Save all figures to the output directory
     output_dir = Path(HydraConfig.get().runtime.output_dir)

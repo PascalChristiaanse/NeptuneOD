@@ -1,5 +1,4 @@
-import contextlib
-import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -12,11 +11,11 @@ from orbitdet.reproducibility import runtime
 
 @pytest.fixture(autouse=True)
 def reset_runtime_context():
-    runtime._stop_native_fd_capture()
+    original_excepthook = sys.excepthook
     runtime._CONTEXT = None
     yield
-    runtime._stop_native_fd_capture()
     runtime._CONTEXT = None
+    sys.excepthook = original_excepthook
 
 
 def test_enforce_initialization_raises_if_initialize_not_called():
@@ -37,6 +36,31 @@ def test_enforce_initialization_allows_test_mode_initialization(tmp_path, monkey
         return "ok"
 
     assert wrapped() == "ok"
+
+
+def test_initialize_test_mode_installs_console_only_pipeline(tmp_path, monkeypatch):
+    """Test mode must configure the production pipeline, console-only (WP6).
+
+    It replaces the old behavior where test mode bypassed logging entirely.
+    """
+    from orbitdet.reproducibility import logging as od_logging
+
+    captured = {}
+
+    def fake_configure_logging(cfg, *, run_dir, use_queue):
+        captured["cfg"] = cfg
+        captured["run_dir"] = run_dir
+        captured["use_queue"] = use_queue
+
+    monkeypatch.setattr(od_logging, "configure_logging", fake_configure_logging)
+    monkeypatch.chdir(tmp_path)
+
+    ctx = runtime.initialize_test_mode(seed=7)
+
+    assert ctx.test_mode is True
+    assert captured["cfg"] is None
+    assert captured["run_dir"] is None  # console-only: no file sink
+    assert captured["use_queue"] is True
 
 
 # def test_initialize_blocks_dirty_repository(tmp_path, monkeypatch):
@@ -108,125 +132,72 @@ def test_save_conda_environment_uses_quiet_fallback_when_conda_missing(tmp_path,
     assert "conda was not found in PATH" in content
 
 
-def test_initialize_starts_native_fd_capture(tmp_path, monkeypatch):
-    monkeypatch.setattr(runtime, "get_git_commit", MagicMock(return_value="abc123"))
-    monkeypatch.setattr(runtime, "save_conda_environment", MagicMock())
-    monkeypatch.setattr(runtime, "setup_logging", MagicMock())
-    monkeypatch.setattr(runtime, "assert_clean_repo", MagicMock())
-    monkeypatch.setattr(runtime, "aim_start_run", MagicMock())
-    start_capture = MagicMock()
-    monkeypatch.setattr(runtime, "_start_native_fd_capture", start_capture)
-    monkeypatch.setattr(
-        runtime.HydraConfig,
-        "get",
-        staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
-    )
+def test_setup_logging_installs_pipeline(tmp_path, monkeypatch):
+    """setup_logging must delegate to the dictConfig pipeline, not basicConfig.
 
-    cfg = OmegaConf.create({"seed": 11})
+    The old implementation called ``logging.basicConfig``, which was silently a
+    no-op because Hydra had already attached root handlers, so ``cfg.logging.level``
+    had no effect.
+    """
+    from orbitdet.reproducibility import logging as od_logging
 
-    ctx = runtime.initialize(cfg)
+    captured = {}
 
-    assert ctx.seed == 11
-    start_capture.assert_called_once()
+    def fake_configure_logging(cfg):
+        captured["cfg"] = cfg
 
-
-def test_setup_logging_configures_root_and_muted_loggers(monkeypatch):
-    basic_config = MagicMock()
-    logger_map = {}
-
-    def fake_get_logger(name):
-        logger = logger_map.get(name)
-        if logger is None:
-            logger = MagicMock()
-            logger_map[name] = logger
-        return logger
-
-    fake_logging = SimpleNamespace(
-        basicConfig=basic_config,
-        getLogger=fake_get_logger,
-        WARNING=runtime.logging.WARNING,
-    )
-    monkeypatch.setattr(runtime, "logging", fake_logging)
+    monkeypatch.setattr(od_logging, "configure_logging", fake_configure_logging)
 
     cfg = OmegaConf.create(
         {
             "logging": {
                 "level": "INFO",
                 "tudatpy_logging_level": "WARNING",
-                "muted_loggers": ["matplotlib", "orbitdet.data.kernel"],
+                "muted_loggers": ["matplotlib"],
             }
         }
     )
 
     runtime.setup_logging(cfg)
 
-    basic_config.assert_called_once_with(
-        level="INFO",
-        format="[%(asctime)s] %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    assert captured["cfg"] is cfg
+
+
+def test_setup_logging_replaces_default_excepthook(monkeypatch):
+    monkeypatch.setattr("orbitdet.reproducibility.logging.configure_logging", lambda cfg: None)
+    default_hook = sys.excepthook
+
+    runtime.setup_logging(OmegaConf.create({"logging": {"level": "INFO"}}))
+
+    assert sys.excepthook is not default_hook
+
+    # A non-KeyboardInterrupt exception must be routed through the logger.
+    logged = {}
+    monkeypatch.setattr(
+        runtime.logging.getLogger("orbitdet.reproducibility.runtime"),
+        "error",
+        lambda *a, **k: logged.update(kwargs=k),
     )
-    assert logger_map["tudatpy"].setLevel.called
-    logger_map["tudatpy"].setLevel.assert_called_once_with("WARNING")
-    logger_map["matplotlib"].setLevel.assert_called_once_with(fake_logging.WARNING)
-    logger_map["orbitdet.data.kernel"].setLevel.assert_called_once_with(fake_logging.WARNING)
+    sys.excepthook(ValueError, ValueError("boom"), None)
+    assert "exc_info" in logged["kwargs"]
 
 
-def test_fd_capture_forwards_lines_and_restores_fd():
-    logger = MagicMock()
-    mirror_read_fd, mirror_write_fd = os.pipe()
-    target_fd = os.dup(mirror_write_fd)
+def test_no_fd_level_capture_mechanism_exists():
+    """Regression guard for WP1.
 
-    try:
-        capture = runtime.FdCapture(target_fd, logger, runtime.logging.INFO)
-        capture.start()
-
-        os.write(target_fd, b"first line\nsecond line\n")
-
-        capture.stop()
-        os.close(target_fd)
-        os.close(mirror_write_fd)
-
-        mirrored = os.read(mirror_read_fd, 4096).decode().replace("\r\n", "\n")
-
-        logger.log.assert_any_call(runtime.logging.INFO, "first line")
-        logger.log.assert_any_call(runtime.logging.INFO, "second line")
-        assert mirrored == "first line\nsecond line\n"
-    finally:
-        os.close(mirror_read_fd)
-        with contextlib.suppress(OSError):
-            os.close(mirror_write_fd)
-        with contextlib.suppress(OSError):
-            os.close(target_fd)
-
-
-def test_fd_capture_ignores_python_formatted_log_lines():
-    logger = MagicMock()
-    mirror_read_fd, mirror_write_fd = os.pipe()
-    target_fd = os.dup(mirror_write_fd)
-
-    try:
-        capture = runtime.FdCapture(target_fd, logger, runtime.logging.INFO)
-        capture.start()
-
-        os.write(
-            target_fd,
-            b"[2026-05-21 15:57:18,581][orbitdet.reproducibility.runtime][INFO] - already logged\n",
-        )
-
-        capture.stop()
-        os.close(target_fd)
-        os.close(mirror_write_fd)
-
-        mirrored = os.read(mirror_read_fd, 4096).decode()
-
-        logger.log.assert_not_called()
-        assert "already logged" in mirrored
-    finally:
-        os.close(mirror_read_fd)
-        with contextlib.suppress(OSError):
-            os.close(mirror_write_fd)
-        with contextlib.suppress(OSError):
-            os.close(target_fd)
+    ``FdCapture`` dup2'd fds 1/2 into a pipe and re-injected captured lines into
+    the root logger, whose console handler wrote back to the same pipe. When the
+    pipe filled (e.g. under Slurm ``srun``, where stdout is a pipe) this
+    deadlocked the process. The mechanism must never be reintroduced.
+    """
+    for name in (
+        "FdCapture",
+        "_start_native_fd_capture",
+        "_stop_native_fd_capture",
+        "_NATIVE_FD_CAPTURES",
+        "_PYTHON_LOG_LINE_PATTERN",
+    ):
+        assert not hasattr(runtime, name), f"{name} must not exist in runtime.py"
 
 
 def test_initialize_returns_existing_context_without_reinitializing(monkeypatch):
@@ -247,6 +218,10 @@ def test_initialize_returns_existing_context_without_reinitializing(monkeypatch)
     monkeypatch.setattr(
         runtime.HydraConfig, "get", MagicMock(side_effect=AssertionError("should not run"))
     )
+    # Logging is intentionally reconfigured on every call (see
+    # test_initialize_configures_logging_even_when_context_is_cached); it must
+    # not require the run directory here.
+    monkeypatch.setattr(runtime, "setup_logging", MagicMock(return_value=None))
 
     cfg = OmegaConf.create({"seed": 1})
 
@@ -294,3 +269,42 @@ def test_require_initialized_delegates_to_get_context(monkeypatch):
     runtime.require_initialized()
 
     mocked_get_context.assert_called_once_with()
+
+
+def test_initialize_configures_logging_even_when_context_is_cached(monkeypatch, tmp_path):
+    """Logging must be (re)configured for every job, not only the first one.
+
+    Hydra launchers such as joblib can run several jobs in one interpreter. Each
+    job has its own output directory, so logging has to be configured before the
+    ``_CONTEXT`` cache check - otherwise every job after the first writes into
+    the first job's log files, or produces no log file at all.
+    """
+    configure_calls = []
+
+    monkeypatch.setattr(
+        "orbitdet.reproducibility.logging.configure_logging",
+        lambda cfg, **kwargs: configure_calls.append(cfg),
+    )
+    monkeypatch.setattr(runtime, "get_git_commit", MagicMock(return_value="abc123"))
+    monkeypatch.setattr(runtime, "save_conda_environment", MagicMock())
+    monkeypatch.setattr(runtime, "aim_start_run", MagicMock())
+    monkeypatch.setattr(
+        runtime.HydraConfig,
+        "get",
+        staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
+    )
+
+    runtime._CONTEXT = runtime.RuntimeContext(
+        git_commit="cached",
+        output_dir=tmp_path,
+        seed=1,
+        test_mode=False,
+    )
+
+    cfg = OmegaConf.create({"seed": 1, "logging": {"level": "INFO"}})
+    result = runtime.initialize(cfg)
+
+    # The cached context is still returned...
+    assert result.git_commit == "cached"
+    # ...but logging was configured for this job regardless.
+    assert configure_calls == [cfg]

@@ -11,7 +11,16 @@ defaults:
 hydra:
   mode: MULTIRUN
   launcher:
-    submitit_folder: ${hydra.sweep.dir}
+    # One directory per submitit job under the sweep output dir. The submitit
+    # plugin writes "<job_id>_<task>_log.out" / ".err" into this folder, so the
+    # "/%j" segment is what gives each job its own directory. Overriding this to
+    # ${hydra.sweep.dir} (as it once was) flattened every job's logs into a
+    # single folder where files could only be told apart by PID.
+    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    # Keep stderr separate from stdout so a job's .err file contains the
+    # WARNING/ERROR records routed there by the logging pipeline, rather than
+    # the whole run log. See docs/LOGGING_ARCHITECTURE_REPORT.md.
+    stderr_to_stdout: false
     tasks_per_node: 1
     nodes: 1
     gpus_per_node: 0 # set if relevant

@@ -83,12 +83,20 @@ def aim_start_run(
     from aim.sdk import Run
     from hydra.core.hydra_config import HydraConfig
 
+    from orbitdet.reproducibility.logging.config import LoggingSettings
+
+    settings = LoggingSettings.from_config(cfg)
+
     # Use the actual Hydra job name (script name) as the experiment name
     experiment_name = HydraConfig.get().job.name
     run = Run(
         repo=AIM_REPO_DIR,
         experiment=experiment_name,
-        capture_terminal_logs=True,
+        # Terminal output reaches Aim through the AimLogHandler in the logging
+        # pipeline. Aim's own capture monkey-patches sys.stdout/sys.stderr at
+        # class level, which duplicated every line and conflicted with the other
+        # capture mechanisms, so it stays off.
+        capture_terminal_logs=settings.aim.capture_terminal_logs,
     )
 
     # Name the run after the script + git info for easy identification
@@ -115,6 +123,13 @@ def aim_start_run(
     run["seed"] = seed
     run["output_dir"] = str(output_dir)
 
+    # Record Hydra/submitit job identity so a run can be traced back to the
+    # exact job and parameter combination that produced it. `hydra.job.id` is
+    # populated by the submitit launcher only; it is absent otherwise.
+    job_identity = _job_identity()
+    for key, value in job_identity.items():
+        run[key] = value
+
     # Store the run hash inside the Hydra output dir so results on disk can
     # be linked back to the Aim run.
     _hash_path = Path(output_dir)
@@ -122,6 +137,59 @@ def aim_start_run(
     (_hash_path / ".aim_run_hash").write_text(run.hash)
 
     return run
+
+
+def _job_identity() -> dict:
+    """Return the current Hydra job's identity for Aim tracking.
+
+    Returns a dict with the keys that could be resolved. Never raises: job
+    identity is useful metadata, not something that should break a run.
+
+    Returns:
+        Mapping of Aim parameter name to value, e.g.
+        ``{"job_name": "solve_least_squares", "job_num": 3,
+        "job_id": "12345", "override_dirname": "parameters=..."}``.
+    """
+    from hydra.core.hydra_config import HydraConfig
+
+    try:
+        job = HydraConfig.get().job
+    except Exception:
+        return {}
+
+    # `job.id` exists only under the submitit launcher.
+    candidates = {
+        "job_name": _select_field(job, "name"),
+        "job_num": _select_field(job, "num"),
+        "job_id": _select_field(job, "id"),
+        "override_dirname": _select_field(job, "override_dirname"),
+    }
+    return {key: value for key, value in candidates.items() if value is not None}
+
+
+def _select_field(node: object, key: str) -> object | None:
+    """Read *key* from a Hydra config node, tolerating any node type.
+
+    ``hydra.job`` is normally an OmegaConf ``DictConfig``, but it can be a plain
+    object in tests or older Hydra versions. Missing keys and unexpected types
+    yield ``None`` rather than raising.
+
+    Args:
+        node: The config node to read from.
+        key: The field name.
+
+    Returns:
+        The field value, or ``None`` when absent or unreadable.
+    """
+    try:
+        return OmegaConf.select(node, key, default=None)
+    except Exception:
+        pass
+
+    try:
+        return getattr(node, key, None)
+    except Exception:
+        return None
 
 
 def aim_add_tag(run: Run | None, tag: str) -> None:

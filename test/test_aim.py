@@ -98,3 +98,47 @@ def test_aim_log_artifact_skips_missing_file(caplog):
     aim.aim_log_artifact("/nonexistent/file.pdf")
     # run.log_artifact should not be called since there's no active run
     assert "No active Aim run" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# aim_start_run — terminal capture must stay off
+# ---------------------------------------------------------------------------
+
+
+def test_aim_start_run_disables_terminal_capture(tmp_path, monkeypatch):
+    """Aim must not patch sys.stdout/sys.stderr; the logging handler covers it."""
+    from types import SimpleNamespace
+
+    import aim.sdk as aim_sdk
+
+    import orbitdet.reproducibility.aim as aim_module
+
+    captured_kwargs = {}
+
+    class FakeRun:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            self.hash = "abc123"
+            self.artifacts_uri = None
+
+        def add_tag(self, tag):
+            pass
+
+        def set_artifacts_uri(self, uri):
+            self.artifacts_uri = uri
+
+        def __setitem__(self, key, value):
+            pass
+
+    monkeypatch.setattr(aim_sdk, "Run", FakeRun)
+    monkeypatch.setattr(
+        "hydra.core.hydra_config.HydraConfig.get",
+        staticmethod(lambda: SimpleNamespace(job=SimpleNamespace(name="demo"))),
+    )
+
+    cfg = OmegaConf.create({})
+    run = aim_module.aim_start_run(cfg, "abc123", tmp_path, 42)
+
+    assert isinstance(run, FakeRun)
+    assert captured_kwargs["capture_terminal_logs"] is False
+    assert captured_kwargs["experiment"] == "demo"

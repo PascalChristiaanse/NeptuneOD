@@ -70,14 +70,19 @@ class KernelManager:
                         downloaded += len(chunk)
                         if total:
                             percent = downloaded * 100 / total
-                            print(
-                                f"\r{file.name}: {downloaded}/{total} bytes ({percent:.1f}%)",
-                                end="",
-                                flush=True,
+                            # Per-chunk progress at DEBUG so large downloads
+                            # do not flood the INFO log (the old code printed
+                            # a single \r-updated line to the terminal).
+                            logger.debug(
+                                "%s: %d/%d bytes (%.1f%%)",
+                                file.name,
+                                downloaded,
+                                total,
+                                percent,
                             )
                         else:
-                            print(f"\r{file.name}: {downloaded} bytes", end="", flush=True)
-            print()
+                            logger.debug("%s: %d bytes", file.name, downloaded)
+            logger.info("Download of %s complete.", file.name)
         else:
             logger.info(f"Kernel {name} already exists, skipping download")
 

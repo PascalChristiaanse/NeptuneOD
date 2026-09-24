@@ -32,6 +32,8 @@ dependencies:
   - beautifulsoup4
   - aim
   - plotly
+  - joblib
+  - platformdirs
 
   - pip:
     # Tudatpy requirements

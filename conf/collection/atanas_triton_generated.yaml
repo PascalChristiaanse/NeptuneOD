@@ -1,11 +1,5 @@
 # @package _global_
 
-
-  # - /datasets/generated/nm0090.yaml@datasets.nm0090 # Never actually loaded
-  # - /datasets/generated/nm0002.yaml@datasets.nm0002 # not in atanas's set
-  # - /datasets/generated/nm0006.yaml@datasets.nm0006 # not in atanas's set
-
-  # Already working
 defaults:
   - /datasets/generated/nm0008.yaml@datasets.nm0008 # In XY
   - /datasets/generated/nm0009.yaml@datasets.nm0009 # In XY

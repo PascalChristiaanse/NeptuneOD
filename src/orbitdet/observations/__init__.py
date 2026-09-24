@@ -4,6 +4,7 @@
 
 from . import (
     absolute_ccd_nsdb,
+    gaia,
     relative_ccd_nsdb,
     relative_xy_nsdb,
     simulated,
@@ -65,6 +66,7 @@ __all__ = [
     "relative_xy_nsdb",
     "relative_xy_radec_nsdb",
     "voyager",
+    "gaia",
     # Helper functions
     "get_observatory_info",
     # Outlier rejection

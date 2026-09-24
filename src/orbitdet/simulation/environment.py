@@ -6,6 +6,7 @@ from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import environment_setup as env_setup
 from tudatpy.interface import spice
 
+from orbitdet.data.gaia_data import get_gaia_ephemeris
 from orbitdet.data.voyager_data import build_voyager_tabulated_state_history
 from orbitdet.reproducibility.runtime import RuntimeContext
 
@@ -188,6 +189,40 @@ def _configure_ephemeris_model(
                     default_ephemeris_settings=spice_settings,
                 )
                 body_settings.get(body_name).ephemeris_settings = ephemeris_setting
+        case "tabulated_from_gaia":
+            source_ids = list(getattr(settings.ephemeris, "source_ids", []))
+            if not source_ids:
+                raise ValueError(
+                    f"Gaia source_ids must be specified for tabulated_from_gaia "
+                    f"ephemeris of {body_name}."
+                )
+            geocentric = bool(getattr(settings.ephemeris, "geocentric", False))
+            filter_outcomes = bool(getattr(settings.ephemeris, "filter_outcomes", True))
+            logger.info(
+                f"Building tabulated ephemeris for {body_name} from Gaia source_ids "
+                f"{source_ids} (geocentric={geocentric}, filter_outcomes={filter_outcomes})."
+            )
+
+            gaia_ephemeris = get_gaia_ephemeris(
+                source_ids,
+                geocentric=geocentric,
+                filter_outcomes=filter_outcomes,
+            )
+            spice_settings = env_setup.ephemeris.direct_spice()
+            ephemeris_table = {
+                # ctx.start_epoch: spice_settings,
+                441849600.000000: gaia_ephemeris,
+                # max(state_history.keys()): spice_settings,
+            }
+            ephemeris_setting = env_setup.ephemeris.multi_arc_ephemeris(
+                ephemeris_table,
+                "Earth",
+                cfg.global_frame_orientation,
+                default_ephemeris_settings=spice_settings,
+            )
+
+            body_settings.get(body_name).ephemeris_settings = ephemeris_setting
+
         case _:
             raise ValueError(f"Unsupported ephemeris type for {body_name}: {ephemeris_type}")
 

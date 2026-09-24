@@ -1,9 +1,9 @@
 # @package _global_
 
 defaults:
-  - /collection: atanas_triton_generated
-  - /dynamics: classical
-  - /kernels: classical
+  - /collection: gaia_collection
+  - /dynamics: classical_gaia
+  - /kernels: gaia
   - /logging: default
   - _self_ # Apply experiment config fields after collections
   - /figures/residuals
@@ -30,8 +30,6 @@ hydra:
     chdir: false
 
 # Time settings
-start_date: 1960-1-1T12:00:00
-end_date: 2026-1-1T12:00:00
-initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton
-
-
+start_date: 2014-1-1T12:00:00 # Gaia first light
+end_date: 2026-1-1T12:00:00 # Gaia end of mission
+initial_epoch: 2014-1-1T12:00:00

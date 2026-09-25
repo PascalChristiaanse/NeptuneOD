@@ -251,7 +251,6 @@ def main(cfg: DictConfig):
     prop.initial_states = parameters
     final_result = sim.create_dynamics_simulator(bodies, prop)
 
-
     # Log residual RMS per iteration to Aim
     num_iterations = estimation_output.residual_history.shape[1]
     logger.info("Logging per-iteration metrics to Aim...")
@@ -363,23 +362,15 @@ def main(cfg: DictConfig):
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save TudatPy objects to binary .tudat files
-    logger.info("Saving TudatPy objects to disk...")
-    observations_path = save_tudat_object(observations, output_dir / "observations")
-    logger.info("Observation collection saved to %s", observations_path)
-
-    estimation_output_path = save_tudat_object(estimation_output, output_dir / "estimation_output")
-    logger.info("Estimation output saved to %s", estimation_output_path)
-
     # The Plot base class already saved each figure as a PDF, logged it to Aim
     # as a static image, and attached the PDF as an artifact reference. Only
     # the config and binary TudatPy objects still need explicit references.
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact_reference(config_path)
-    aim_log_artifact_reference(observations_path.with_suffix(".tudat"))
-    aim_log_artifact_reference(estimation_output_path.with_suffix(".tudat"))
-    aim_log_artifact_reference(estimation_log_path.with_suffix(".tudat"))
+    aim_log_artifact_reference(estimation_log_path.with_name("observations.tudat"))
+    aim_log_artifact_reference(estimation_log_path.with_name("estimation_output.tudat"))
+    aim_log_artifact_reference(estimation_log_path.with_name("estimation_log.tudat"))
     logger.info("Attached artifacts to Aim.")
 
     # fig_traj_path = output_dir / "triton_trajectory.pdf"

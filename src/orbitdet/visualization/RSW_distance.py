@@ -111,11 +111,28 @@ class RSWDistance(Plot):
 
         # --- decompose relative position into RSW components ---
         rsw_components = np.zeros((n_epochs, 3))
+        skipped_epochs = 0
         for i, epoch in enumerate(epochs):
             inertial_state = np.asarray(state_history[epoch])
+            # Check for degenerate state where position and velocity are parallel
+            radius = inertial_state[:3]
+            velocity = inertial_state[3:]
+            cross_norm = np.linalg.norm(np.cross(radius, velocity))
+            if cross_norm == 0.0:
+                skipped_epochs += 1
+                rsw_components[i, :] = np.nan
+                continue
             rot = fc.inertial_to_rsw_rotation_matrix(inertial_state)
             rel_pos = np.asarray(pos_value_dict[epoch]).flatten()
             rsw_components[i, :] = rot @ rel_pos
+
+        if skipped_epochs > 0:
+            import warnings
+
+            warnings.warn(
+                f"Skipped {skipped_epochs} / {n_epochs} epoch(s) where "
+                f"position and velocity are parallel (cannot form RSW frame)."
+            )
 
         rsw_norm = np.linalg.norm(rsw_components, axis=1)
 

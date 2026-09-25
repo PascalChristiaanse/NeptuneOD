@@ -358,13 +358,9 @@ def main(cfg: DictConfig):
     )
     logger.info("Propagated formal errors saved to %s", output_dir / "propagated_formal_errors.npz")
 
-    # Save all figures to the output directory
+    # Log artifacts to Aim
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # The Plot base class already saved each figure as a PDF, logged it to Aim
-    # as a static image, and attached the PDF as an artifact reference. Only
-    # the config and binary TudatPy objects still need explicit references.
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact_reference(config_path)
@@ -372,12 +368,6 @@ def main(cfg: DictConfig):
     aim_log_artifact_reference(estimation_log_path.with_name("estimation_output.tudat"))
     aim_log_artifact_reference(estimation_log_path.with_name("estimation_log.tudat"))
     logger.info("Attached artifacts to Aim.")
-
-    # fig_traj_path = output_dir / "triton_trajectory.pdf"
-    # fig_traj.savefig(fig_traj_path)
-    # logger.info(f"Triton trajectory plot saved to {fig_traj_path}")
-
-    # plt.show()
 
 
 if __name__ == "__main__":

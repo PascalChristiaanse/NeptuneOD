@@ -16,7 +16,7 @@ hydra:
     cpus_per_task: 1
     timeout_min: 60
   sweep:
-    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
   sweeper:
     max_batch_size: 36

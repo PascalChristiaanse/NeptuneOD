@@ -1,3 +1,5 @@
+import logging
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,7 +11,9 @@ from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.data.gaia_data import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.base import Plot, _snake_case
+
+logger = logging.getLogger(__name__)
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -123,6 +127,7 @@ class Residuals(Plot):
     def __init__(
         self,
         cfg: DictConfig,
+        use_figure_name: str | None = "residuals",
         observation_collection: obs.ObservationCollection | None = None,
         fig: plt.Figure | None = None,
         ax: plt.Axes | None = None,
@@ -131,6 +136,7 @@ class Residuals(Plot):
         collection_names: list[str] | None = None,
     ):
         super().__init__(cfg)
+        self.use_figure_name = use_figure_name
         self.observation_collection = observation_collection
         self.observation_parsers = observation_parsers
         self.observation_collections = observation_collections
@@ -159,6 +165,7 @@ class Residuals(Plot):
 
         self.fig = fig
         self.ax = ax
+        self.name = use_figure_name or _snake_case(self.__class__.__name__)
 
     def _collect_observation_sets(
         self,
@@ -234,7 +241,9 @@ class Residuals(Plot):
         """Plot pre-fit and post-fit residuals for the orbit determination."""
 
         # Load plotting configuration
-        plot_cfg = _cfg_get(cfg, "residuals", default=None)
+
+        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
+        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
 
@@ -286,7 +295,13 @@ class Residuals(Plot):
 
                 for obs_set in coll_sets:
                     if target_name is None:
-                        target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+                        link_ends = obs_set.link_definition.link_ends
+                        if links.transmitter in link_ends:
+                            target_name = link_ends[links.transmitter].body_name
+                        elif links.observed_body in link_ends:
+                            target_name = link_ends[links.observed_body].body_name
+                        else:
+                            target_name = list(link_ends.values())[-1].body_name
                     self._plot_single_observation_set(
                         axs, obs_set, color, marker, marker_size, name
                     )
@@ -295,20 +310,41 @@ class Residuals(Plot):
             observation_sets = self._collect_observation_sets()
             target_name = None
             for set_index, obs_set in enumerate(observation_sets):
-                observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-                if observatory_code == "":
-                    observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                    info = {"code": observatory_code}
-                    info["name"] = observatory_name
-                    info["region"] = "Geocentric"
-                elif int(observatory_code) < 0:
-                    observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                    info = {"code": observatory_code}
-                    info["name"] = observatory_name
-                    info["region"] = "Spacecraft"
+                link_ends = obs_set.link_definition.link_ends
+
+                # Resolve a display label for this observation set.
+                # Simulated observations (relative_cartesian_position etc.) use
+                # observed_body / observer link ends, while astrometric observations
+                # use transmitter / receiver.  Try receiver first, fall back to
+                # observer, then just use the first link end.
+                if links.receiver in link_ends:
+                    ref_point = link_ends[links.receiver].reference_point
+                    if ref_point == "":
+                        body = link_ends[links.receiver].body_name
+                        info = {"code": "", "name": body, "region": "Geocentric"}
+                    elif int(ref_point) < 0:
+                        body = link_ends[links.receiver].body_name
+                        info = {"code": ref_point, "name": body, "region": "Spacecraft"}
+                    else:
+                        info = get_observatory_info(cfg, ref_point)
+                elif links.observer in link_ends:
+                    body = link_ends[links.observer].body_name
+                    info = {"code": "", "name": body, "region": body}
                 else:
-                    info = get_observatory_info(cfg, observatory_code)
-                target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+                    # Fallback: use the first available link end
+                    first_key = next(iter(link_ends.keys()))
+                    body = link_ends[first_key].body_name
+                    info = {"code": "", "name": body, "region": body}
+
+                # Determine target (observed body) — try transmitter first,
+                # then observed_body, then the last link end.
+                if links.transmitter in link_ends:
+                    target_name = link_ends[links.transmitter].body_name
+                elif links.observed_body in link_ends:
+                    target_name = link_ends[links.observed_body].body_name
+                else:
+                    target_name = list(link_ends.values())[-1].body_name
+
                 color = colors(set_index % colors.N)
                 marker = marker_types[set_index % len(marker_types)]
 
@@ -371,11 +407,6 @@ class Residuals(Plot):
         axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
-
-        # Optionally save to file
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
 
         return fig, axs
 

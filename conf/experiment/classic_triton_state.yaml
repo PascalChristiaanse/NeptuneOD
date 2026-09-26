@@ -11,25 +11,25 @@ defaults:
   - /outlier_rejection: per_set_thresholds
   - /weighting: hybrid_geometric_v2
   - _self_ # Apply experiment config fields after collections
-  - /figures/residuals
+  - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
+  - /figures/prefit_residuals_prop@figures.prefit_residuals_prop
+  - /figures/postfit_residuals@figures.postfit_residuals
   - /figures/residual_histogram
   - /figures/residual_qq
   - /figures/residual_scatter
-  - /figures/dependent_variable
-  - /figures/dependent_variable_differenced@dependent_variable_differenced
   - /figures/parameter_correlation_heatmap
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses
   - /figures/RSW_distance
   - /figures/propagated_formal_errors_cartesian
   - /figures/propagated_formal_errors_rsw
-  
+  - /figures/RSW_distance_with_uncertainty
 seed: 42
 
 # Hydra settings
 hydra:
   run:
-    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
   job:
     chdir: false
 

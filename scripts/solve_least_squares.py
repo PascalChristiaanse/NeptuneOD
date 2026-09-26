@@ -38,6 +38,7 @@ from orbitdet.visualization import (
     ParameterHistoryPerIteration,
     PropagatedFormalErrorsCartesian,
     PropagatedFormalErrorsRSW,
+    RSWDistanceWithUncertainty,
     ResidualHistogram,
     ResidualQQ,
     ResidualRMSPerIteration,
@@ -98,26 +99,32 @@ def main(cfg: DictConfig):
     )
     logger.info(
         f"""Observation collection and observation simulators created """
-        f"""successfully with {len(observations.concatenated_times)}"""
-        f"""observation set(s)."""
+        f"""successfully with {len(observations.concatenated_times)} """
+        f"""observations."""
     )
 
-    if prop.processing_settings.set_integrated_result:
-        logger.info(
-            "Prefit residuals will be computed using the integrated result from the propagator."
-        )
-        sim.create_dynamics_simulator(bodies, prop)
-    else:
-        logger.info("Prefit residuals will be computed using the spice.")
-
-    # Populate residuals in the observations object for pre-fit residuals and plot them
+    ################################################################
+    ############################ PREFIT ############################
+    ################################################################
+    logger.info("Computing pre-fit residuals wrt spice...")
     obs.compute_residuals_and_dependent_variables(
         observations, ephemeris_observation_simulators, bodies
     )
-    Residuals(cfg, observations).plot()
-    logger.info("Pre-fit residuals computed successfully.")
+    # Wrt spice
+    Residuals(cfg, "prefit_residuals_spice", observations).plot()
+    logger.info("Pre-fit residuals computed and plotted successfully.")
 
-    # === Outlier rejection ===
+    logger.info("Computing pre-fit residuals wrt propagation...")
+    sim.create_dynamics_simulator(bodies, prop)
+    obs.compute_residuals_and_dependent_variables(
+        observations, ephemeris_observation_simulators, bodies
+    )
+    Residuals(cfg, "prefit_residuals_prop", observations).plot()
+    logger.info("Pre-fit residuals computed and plotted successfully.")
+
+    ################################################################
+    ###################### Outlier rejection #######################
+    ################################################################
     outlier_cfg = OmegaConf.select(cfg, "outlier_rejection")
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
@@ -143,7 +150,9 @@ def main(cfg: DictConfig):
     else:
         logger.info("Outlier rejection disabled.")
 
-    # === Weighting ===
+    ################################################################
+    ########################## Weighting ###########################
+    ################################################################
     weighting_cfg = OmegaConf.select(cfg, "weighting")
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
         logger.info("Applying weighting...")
@@ -192,6 +201,10 @@ def main(cfg: DictConfig):
             grp_table.to_excel(writer, sheet_name="Per group", index=False)
         logger.info("Excel weight summary tables saved to %s", output_dir)
 
+    ################################################################
+    ######################### ESTIMATION ###########################
+    ################################################################
+
     parameter_set = get_estimatable_parameters(cfg, ctx, prop, bodies)
     logger.info("Parameter set for estimation created successfully.")
     logger.info(f"Initial parameter set: {parameter_set.parameter_vector}")
@@ -203,8 +216,16 @@ def main(cfg: DictConfig):
         prop,
         False,
     )
+    max_iterations_without_improvement = cfg.estimation.get(
+        "max_iterations_without_improvement", cfg.estimation.max_iterations
+    )
     convergence_settings = est_an.estimation_convergence_checker(
-        maximum_iterations=cfg.estimation.max_iterations
+        maximum_iterations=cfg.estimation.max_iterations,
+        number_of_iterations_without_improvement=max_iterations_without_improvement,
+    )
+    logger.info(
+        f"Estimation convergence settings: max_iterations={cfg.estimation.max_iterations}, "
+        f"max_iterations_without_improvement={max_iterations_without_improvement}"
     )
     # Build inverse a priori covariance matrix from configuration
     inverse_apriori_covariance = get_apriori_covariance_matrix(cfg)
@@ -215,43 +236,48 @@ def main(cfg: DictConfig):
             inverse_apriori_covariance=inverse_apriori_covariance,
             convergence_checker=convergence_settings,
         )
+        logger.info(
+            "Estimation input created with inverse a priori covariance matrix of shape %s",
+            inverse_apriori_covariance.shape,
+        )
     else:
         estimation_input = est_an.EstimationInput(
             observations_and_times=observations,
             convergence_checker=convergence_settings,
         )
+        logger.info("Estimation input created without inverse a priori covariance matrix.")
     # Set methodological options
     estimation_input.define_estimation_settings(
-        save_state_history_per_iteration=True, save_residuals_and_parameters_per_iteration=True
+        save_state_history_per_iteration=False, save_residuals_and_parameters_per_iteration=True
     )
     from hydra.core.hydra_config import HydraConfig
 
     logger.info("Starting estimation...")
-    estimation_log_path = Path(HydraConfig.get().runtime.output_dir) / "estimation_progression.log"
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+    estimation_log_path = output_dir / "estimation_log.log"
     try:
         with redirect_std(str(estimation_log_path)):
             estimation_output = estimator.perform_estimation(estimation_input)
     except Exception as e:
         logger.error("Estimation failed: %s", e)
         logger.info("Estimation progression logged to %s", estimation_log_path)
-        if not estimation_log_path.exists():
+        if not output_dir.exists():
             logger.warning("Unable to find estimation log file at %s", estimation_log_path)
         raise
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
-    save_tudat_object(estimation_output, estimation_log_path.with_suffix(".tudat"))
-    save_tudat_object(observations, estimation_log_path.with_name("observations.tudat"))
-    logger.info("Estimation output saved to %s", estimation_log_path.with_suffix(".tudat"))
-    logger.info("Observations saved to %s", estimation_log_path.with_name("observations.tudat"))
+    save_tudat_object(estimation_output, output_dir.with_name("estimation_output"))
+    save_tudat_object(observations, output_dir.with_name("observations"))
+    logger.info("Estimation output saved to %s", output_dir.with_name("estimation_output"))
+    logger.info("Observations saved to %s", output_dir.with_name("observations"))
     logger.info("Estimation completed successfully.")
 
     logger.info("Final estimated parameters: %s", estimation_output.final_parameters)
-    logger.info("Propagating final estimated state to generate post-fit residuals...")
-    parameters = estimation_output.parameter_history[estimation_output.best_iteration]
-    prop.initial_states = parameters
-    final_result = sim.create_dynamics_simulator(bodies, prop)
 
-    # Log residual RMS per iteration to Aim
+    ############################################################################
+    ############################# LOG STATISTICS ###############################
+    ############################################################################
+
     num_iterations = estimation_output.residual_history.shape[1]
     logger.info("Logging per-iteration metrics to Aim...")
     for i in range(num_iterations):
@@ -279,35 +305,35 @@ def main(cfg: DictConfig):
     )
     logger.info("Logged summary metrics to Aim.")
 
-    logger.info("Estimation completed successfully.")
+
+    #################################################################
+    ######################## POST-FIT RESIDUALS #####################
+    #################################################################
+    logger.info("Propagating final estimated state to generate post-fit residuals...")
+    parameters = estimation_output.parameter_history[:, estimation_output.best_iteration]
+    prop.initial_states = parameters
+    final_result = sim.create_dynamics_simulator(bodies, prop)
+    Residuals(cfg, "postfit_residuals", observations).plot()
+
 
     #############################################################################
     ################################## Figures ##################################
     #############################################################################
-
     logger.info("Plotting figures...")
 
-    Residuals(cfg, observations).plot()
+    ResidualQQ(cfg, observations).plot()
+    ResidualScatter(cfg, observations).plot()
+    ResidualHistogram(cfg, observations).plot()
     ResidualRMSPerIteration(cfg, estimation_output).plot()
-
-    # residuals_psd_cfg = cfg.get("residuals_psd", {})
-    # window_length_days = residuals_psd_cfg.get("window_length_days", 30.0)
-    # fig_psd, ax_psd = ResidualsPSD(
-    #     cfg, observations, window_length_days, cfg.figures.get("residuals_psd", {})
-    # ).plot()
     ParameterCorrelationHeatmap(cfg, estimation_output).plot()
     ParameterHistoryPerIteration(cfg, estimation_output).plot()
     CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
     RSWDistance(
         cfg,
-        # estimation_output.simulation_results_per_iteration[-1].dynamics_results,
         final_result.propagation_results,
         dep_vars[0],
         central_body="Neptune",
     ).plot()
-    ResidualHistogram(cfg, observations).plot()
-    ResidualQQ(cfg, observations).plot()
-    ResidualScatter(cfg, observations).plot()
 
     # ====================================================================
     # Propagate covariance and plot formal errors
@@ -348,6 +374,21 @@ def main(cfg: DictConfig):
     PropagatedFormalErrorsRSW(cfg, epochs, fe_rsw).plot()
     logger.info("Propagated formal errors plotted.")
 
+    # Compute RSW position differences at covariance epochs for uncertainty-vs-distance plot
+    logger.info("Computing RSW distance at covariance propagation epochs ...")
+    rsw_at_cov_epochs = np.zeros((n_epochs, 3))
+    for i, epoch in enumerate(epochs):
+        spice_state = bodies.get("Triton Spice").ephemeris.cartesian_state(epoch)
+        triton_state = bodies.get("Triton").ephemeris.cartesian_state(epoch)
+        rel_pos = spice_state[:3] - triton_state[:3]
+        rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(triton_state)
+        rsw_at_cov_epochs[i] = rot_matrix @ rel_pos
+    rsw_sigma = fe_rsw[:, :3]
+
+    RSWDistanceWithUncertainty(cfg, epochs, rsw_at_cov_epochs, rsw_sigma).plot()
+    logger.info("RSW distance with uncertainty envelopes plotted.")
+    from matplotlib import pyplot as plt
+    plt.show()
     # Save propagated formal errors as NumPy archive
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     np.savez(
@@ -364,9 +405,9 @@ def main(cfg: DictConfig):
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact_reference(config_path)
-    aim_log_artifact_reference(estimation_log_path.with_name("observations.tudat"))
-    aim_log_artifact_reference(estimation_log_path.with_name("estimation_output.tudat"))
-    aim_log_artifact_reference(estimation_log_path.with_name("estimation_log.tudat"))
+    aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
+    aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
+    aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
     logger.info("Attached artifacts to Aim.")
 
 

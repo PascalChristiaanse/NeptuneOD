@@ -8,7 +8,7 @@ propagated_formal_errors_rsw:
   titles:
     title: "Propagated Formal Errors - RSW"
   axes:
-    x_label: "Epoch"
+    x_label: "Epoch [Date TDB]"
     y_label: "Formal Error [m]"
-    hover_x_label: "Epoch"
+    hover_x_label: "Epoch [Date TDB]"
     hover_y_label: "Formal Error [m]"

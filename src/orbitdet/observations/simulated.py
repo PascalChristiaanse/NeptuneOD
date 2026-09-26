@@ -25,45 +25,70 @@ def create_simulated_dataset(
     results or ephemeris data. Allows hybrid experiments mixing real and
     simulated observations in a single collection.
 
+    Supports two modes:
+
+    **Continuous mode** (default):
+    Uses ``start_date_observation_period`` / ``end_date_observation_period`` and
+    ``cadence`` to produce evenly spaced observations over the whole interval.
+
+    **Burst mode** (when ``bursts`` list is present):
+    Each burst is a dict with:
+
+    - ``start`` (str): ISO start date of the burst
+    - ``duration_hours`` (float): how long the burst lasts [h]
+    - ``cadence`` (float): time between observations within the burst [s]
+
+    All burst observation times are concatenated and sorted.
+
     Args:
-        cfg: Simulated observation configuration with observable types and cadence.
-        system_of_bodies: The environment containing the bodies for which to simulate observations.
+        cfg: Top-level configuration.
+        dataset_cfg: Dataset-specific configuration.
+        system_of_bodies: The environment containing the bodies.
 
     Returns:
-        Tuple of (ObservationCollection, ObservationModelSettings) for the simulated dataset.
-    Example:
-        cfg = OmegaConf.create({
-            'type': 'simulated',
-            'observable_type': 'relative_cartesian_position',
-            'target': 'Triton',
-            'observer': 'Neptune',
-            'cadence': 3600,  # seconds
-            'start_date_observation_period': '2025-01-01T00:00:00',
-            'end_date_observation_period': '2025-01-10T00:00:00',
-            'noise_sigma': 100.0,  # meters
-        })
-        dataset = create_simulated_dataset(cfg)
+        Tuple of (ObservationCollection, ObservationModelSettings).
     """
     logger.info(
-        f"""Creating simulated observation dataset with cadence={dataset_cfg.cadence} """
-        f"""for {dataset_cfg.target} w.r.t. {dataset_cfg.observer}."""
+        f"Creating simulated observation dataset for "
+        f"{dataset_cfg.target} w.r.t. {dataset_cfg.observer}."
     )
 
-    start_epoch = iso_string_to_epoch(dataset_cfg.start_date_observation_period)
-    end_epoch = iso_string_to_epoch(dataset_cfg.end_date_observation_period)
-
-    observation_times = np.linspace(
-        start_epoch,
-        end_epoch,
-        int(np.ceil((end_epoch - start_epoch) / dataset_cfg.cadence)) + 1,
-    )
-
-    logger.info(
-        f"""Generating observations at {len(observation_times)} epochs """
-        f"""from {dataset_cfg.start_date_observation_period}"""
-        f"""to {dataset_cfg.end_date_observation_period} with """
-        f"""cadence {dataset_cfg.cadence} seconds."""
-    )
+    # -- Build observation times ------------------------------------------------
+    bursts = dataset_cfg.get("bursts", None)
+    if bursts is not None and len(bursts) > 0:
+        # Burst mode: several short dense windows
+        obs_time_list: list[np.ndarray] = []
+        for b in bursts:
+            b_start = iso_string_to_epoch(b.start)
+            b_duration_s = b.duration_hours * 3600.0
+            b_cadence = b.cadence
+            b_times = np.arange(b_start, b_start + b_duration_s, b_cadence)
+            obs_time_list.append(b_times)
+            logger.info(
+                "Burst at %s: %d observations, cadence %.0f s, duration %.1f h",
+                b.start, len(b_times), b_cadence, b.duration_hours,
+            )
+        observation_times = np.sort(np.concatenate(obs_time_list))
+        logger.info(
+            "Total observations from %d bursts: %d",
+            len(bursts), len(observation_times),
+        )
+    else:
+        # Continuous mode: uniform cadence over full interval
+        start_epoch = iso_string_to_epoch(dataset_cfg.start_date_observation_period)
+        end_epoch = iso_string_to_epoch(dataset_cfg.end_date_observation_period)
+        observation_times = np.linspace(
+            start_epoch,
+            end_epoch,
+            int(np.ceil((end_epoch - start_epoch) / dataset_cfg.cadence)) + 1,
+        )
+        logger.info(
+            "Generating observations at %d epochs from %s to %s with cadence %.0f s.",
+            len(observation_times),
+            dataset_cfg.start_date_observation_period,
+            dataset_cfg.end_date_observation_period,
+            dataset_cfg.cadence,
+        )
 
     # Setup link ends
     link_ends = dict()

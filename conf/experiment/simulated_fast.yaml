@@ -1,0 +1,54 @@
+# @package _global_
+
+# Experiment: Fast simulated trial with burst-mode observations.
+# Uses:
+#   - Simulated Cartesian (XYZ) observations in 4 short bursts
+#   - Super-simplified dynamics (Neptune + Sun only, central gravity)
+#   - No outlier rejection, no weighting
+#   - Only initial_state estimation
+#   - Short 2-year time window
+#
+# Run with:
+#   python scripts/solve_least_squares.py --config-name=experiment/simulated_fast
+
+defaults:
+  - /data: simulated_fast
+  - /parameters: initial_state
+  - /logging: default
+  - /outlier_rejection: disabled
+  - /weighting: disabled
+  - _self_
+  - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
+  - /figures/prefit_residuals_prop@figures.prefit_residuals_prop
+  - /figures/postfit_residuals@figures.postfit_residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/RSW_distance
+  - /figures/propagated_formal_errors_cartesian
+  - /figures/propagated_formal_errors_rsw
+  - /figures/RSW_distance_with_uncertainty
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — tight 2-year window around the simulated data
+start_date: 2025-01-01T12:00:00
+end_date: 2026-01-01T12:00:00
+initial_epoch: 2025-01-01T12:00:00
+
+# Fast estimation: 3 iterations is plenty for a sanity check
+estimation:
+  max_iterations: 3
+  max_iterations_without_improvement: 4
+  parameters_to_estimate:
+    - initial_state

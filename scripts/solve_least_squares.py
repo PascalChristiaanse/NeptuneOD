@@ -173,8 +173,8 @@ def main(cfg: DictConfig):
         table_builder = WeightSummaryTable(cfg, weights_df)
         src_table = table_builder.build_source()
         grp_table = table_builder.build_group()
-        print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-        print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
+        # print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
+        # print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
 
         src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
         grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)

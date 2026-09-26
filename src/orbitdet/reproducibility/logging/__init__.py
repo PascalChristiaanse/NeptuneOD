@@ -26,6 +26,7 @@ from omegaconf import DictConfig
 
 from orbitdet.reproducibility.logging.config import (
     AIM_HANDLER_NAME,
+    STDERR_HANDLER_NAME,
     LoggingSettings,
     build_sink_payload,
 )
@@ -52,7 +53,8 @@ __all__ = [
 ]
 
 _lock = threading.Lock()
-_listener: BoundedQueueListener | None = None
+_console_listener: BoundedQueueListener | None = None
+_io_listener: BoundedQueueListener | None = None
 _aim_handler: AimLogHandler | None = None
 _configured = False
 _configured_run_dir: Path | None = None
@@ -78,9 +80,9 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-def get_listener() -> BoundedQueueListener | None:
-    """Return the active queue listener, or ``None`` when not configured."""
-    return _listener
+def get_listener() -> tuple[BoundedQueueListener | None, BoundedQueueListener | None]:
+    """Return the active (console, io) listeners, or ``(None, None)``."""
+    return _console_listener, _io_listener
 
 
 def get_aim_handler() -> AimLogHandler | None:
@@ -128,7 +130,7 @@ def configure_logging(
     Raises:
         ValueError: If ``use_queue`` is true but the listener cannot be started.
     """
-    global _listener, _aim_handler, _configured, _configured_run_dir
+    global _console_listener, _io_listener, _aim_handler, _configured, _configured_run_dir
 
     settings = LoggingSettings.from_config(cfg)
     resolved_run_dir = _resolve_run_dir(run_dir)
@@ -143,9 +145,6 @@ def configure_logging(
         return
 
     if already_configured:
-        # A different run directory means a new job in the same process (or a
-        # test reusing the global state). Tear the old pipeline down so logs
-        # cannot leak into the previous run's files.
         shutdown_logging()
 
     log_file = resolved_run_dir / settings.filename if resolved_run_dir is not None else None
@@ -155,31 +154,20 @@ def configure_logging(
 
     payload, sink_names = build_sink_payload(settings, log_file=log_file)
 
-    # Detach handlers from a previous configuration (e.g. Hydra's job_logging)
-    # before dictConfig installs the new root handler set.
     root = logging.getLogger()
     for existing in list(root.handlers):
         root.removeHandler(existing)
 
-    # Temporarily attach sink names to root so dictConfig gives them a strong
-    # reference.  Since Python 3.12, logging._handlers is a
-    # WeakValueDictionary; without this the handlers are freed before
-    # _resolve_sinks can retrieve them below.
     payload["root"]["handlers"] = list(sink_names)
 
     logging.config.dictConfig(payload)
 
     sinks = _resolve_sinks(sink_names)
 
-    # Detach the temporary strong references so the QueueListener or direct
-    # attachment below becomes the sole owner.  (If use_queue is True the root
-    # will later get a QueueHandler instead.)
     for h in sinks:
         root.removeHandler(h)
 
     if settings.aim.enabled:
-        # Start detached; the run does not exist yet. attach_aim_run() points it
-        # at the live run once initialize() has created one.
         aim_handler = AimLogHandler(
             run=None,
             level=settings.effective_aim_level,
@@ -191,39 +179,59 @@ def configure_logging(
 
     root.setLevel(settings.root_level)
 
-    if use_queue:
-        record_queue: queue.Queue = queue.Queue()
-        listener = BoundedQueueListener(record_queue, *sinks, join_timeout=join_timeout)
-        listener.start()
-        _listener = listener
-        root.addHandler(logging.handlers.QueueHandler(record_queue))
-    else:
-        for sink in sinks:
+    # Split sinks into console (fast, attach directly even in queued mode)
+    # and I/O (file + Aim, run on a background listener thread).
+    # Console writes are ~µs and must appear *before* a long C++ call that
+    # holds the GIL.  Queuing them would defer the write until the GIL is
+    # released (3+ minutes later for tudatpy propagation), making the
+    # terminal appear frozen.
+    console_sink_names = {"console", STDERR_HANDLER_NAME}
+    console_sinks: list[logging.Handler] = []
+    io_sinks: list[logging.Handler] = []
+    for sink in sinks:
+        (console_sinks if sink.name in console_sink_names else io_sinks).append(sink)
+
+    # Attach console sinks directly — they write on the main thread.
+    for sink in console_sinks:
+        root.addHandler(sink)
+
+    if use_queue and io_sinks:
+        io_queue: queue.Queue = queue.Queue()
+
+        io_listener = BoundedQueueListener(
+            io_queue, *io_sinks, join_timeout=join_timeout
+        )
+        io_listener.start()
+        _io_listener = io_listener
+
+        root.addHandler(logging.handlers.QueueHandler(io_queue))
+    elif io_sinks:
+        for sink in io_sinks:
             root.addHandler(sink)
 
 
 def shutdown_logging() -> None:
-    """Drain the queue, detach handlers, and flush.
+    """Drain both queues, detach handlers, and flush.
 
     Safe to call multiple times and safe to call when never configured. Also
     registered with :mod:`atexit`, so normal interpreter exit flushes logs
     without an explicit call.
     """
-    global _listener, _aim_handler, _configured, _configured_run_dir
+    global _console_listener, _io_listener, _aim_handler, _configured, _configured_run_dir
 
     with _lock:
-        listener = _listener
+        io_listener = _io_listener
         aim_handler = _aim_handler
-        _listener = None
+        _console_listener = None
+        _io_listener = None
         _aim_handler = None
         _configured = False
         _configured_run_dir = None
 
-    # Stop the listener first: it drains everything already queued, and those
-    # records must still reach the Aim run. Detaching the Aim handler before the
-    # drain would silently drop them.
-    if listener is not None:
-        listener.stop()
+    # Stop the I/O listener first (drains the queue so Aim records are not
+    # lost). Console sinks run on the main thread; there is nothing to stop.
+    if io_listener is not None:
+        io_listener.stop()
 
     if aim_handler is not None:
         aim_handler.attach_run(None)

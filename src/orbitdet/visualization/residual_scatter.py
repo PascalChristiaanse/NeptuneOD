@@ -123,15 +123,31 @@ class ResidualScatter(Plot):
             if len(obs_set.observation_times) == 0:
                 continue
 
-            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-            if observatory_code == "":
-                observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                info = {"code": observatory_code}
-                info["name"] = observatory_name
-                info["region"] = "Spacecraft"
+            link_ends = obs_set.link_definition.link_ends
+
+            # Resolve a display label for this observation set.
+            if links.receiver in link_ends:
+                ref_point = link_ends[links.receiver].reference_point
+                if ref_point == "":
+                    body = link_ends[links.receiver].body_name
+                    info = {"code": "", "name": body, "region": "Spacecraft"}
+                else:
+                    info = get_observatory_info(cfg, ref_point)
+            elif links.observer in link_ends:
+                body = link_ends[links.observer].body_name
+                info = {"code": "", "name": body, "region": body}
             else:
-                info = get_observatory_info(cfg, observatory_code)
-            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+                first_key = next(iter(link_ends.keys()))
+                body = link_ends[first_key].body_name
+                info = {"code": "", "name": body, "region": body}
+
+            # Determine target (observed body)
+            if links.transmitter in link_ends:
+                target_name = link_ends[links.transmitter].body_name
+            elif links.observed_body in link_ends:
+                target_name = link_ends[links.observed_body].body_name
+            else:
+                target_name = list(link_ends.values())[-1].body_name
             marker = marker_types[set_index % len(marker_types)]
 
             obs_times_sec_j2000 = np.array(
@@ -219,9 +235,5 @@ class ResidualScatter(Plot):
         ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.set_tight_layout(True)
 
-        # Optionally save to file
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
 
         return fig, ax

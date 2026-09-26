@@ -161,9 +161,21 @@ def configure_logging(
     for existing in list(root.handlers):
         root.removeHandler(existing)
 
+    # Temporarily attach sink names to root so dictConfig gives them a strong
+    # reference.  Since Python 3.12, logging._handlers is a
+    # WeakValueDictionary; without this the handlers are freed before
+    # _resolve_sinks can retrieve them below.
+    payload["root"]["handlers"] = list(sink_names)
+
     logging.config.dictConfig(payload)
 
     sinks = _resolve_sinks(sink_names)
+
+    # Detach the temporary strong references so the QueueListener or direct
+    # attachment below becomes the sole owner.  (If use_queue is True the root
+    # will later get a QueueHandler instead.)
+    for h in sinks:
+        root.removeHandler(h)
 
     if settings.aim.enabled:
         # Start detached; the run does not exist yet. attach_aim_run() points it

@@ -198,9 +198,7 @@ def configure_logging(
     if use_queue and io_sinks:
         io_queue: queue.Queue = queue.Queue()
 
-        io_listener = BoundedQueueListener(
-            io_queue, *io_sinks, join_timeout=join_timeout
-        )
+        io_listener = BoundedQueueListener(io_queue, *io_sinks, join_timeout=join_timeout)
         io_listener.start()
         _io_listener = io_listener
 

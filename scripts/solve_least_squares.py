@@ -38,13 +38,13 @@ from orbitdet.visualization import (
     ParameterHistoryPerIteration,
     PropagatedFormalErrorsCartesian,
     PropagatedFormalErrorsRSW,
-    RSWDistanceWithUncertainty,
     ResidualHistogram,
     ResidualQQ,
     ResidualRMSPerIteration,
     Residuals,
     ResidualScatter,
     RSWDistance,
+    RSWDistanceWithUncertainty,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,7 +307,6 @@ def main(cfg: DictConfig):
     )
     logger.info("Logged summary metrics to Aim.")
 
-
     #################################################################
     ######################## POST-FIT RESIDUALS #####################
     #################################################################
@@ -317,7 +316,6 @@ def main(cfg: DictConfig):
     prop.initial_states = parameters
     final_result = sim.create_dynamics_simulator(bodies, prop)
     Residuals(cfg, "postfit_residuals", observations).plot()
-
 
     #############################################################################
     ################################## Figures ##################################
@@ -343,7 +341,8 @@ def main(cfg: DictConfig):
     # ====================================================================
     logger.info("Propagating covariance over the full time arc ...")
     state_transition_interface = estimator.state_transition_interface
-    start_epoch = float(ctx.start_epoch.to_float())  # full arc: both forward and backward from initial_epoch
+    # full arc: both forward and backward from initial_epoch
+    start_epoch = float(ctx.start_epoch.to_float())
     end_epoch = float(ctx.end_epoch.to_float())
     step_days = OmegaConf.select(cfg, "propagation.step_days", default=10.0)
     step_seconds = step_days * 86400.0
@@ -367,9 +366,9 @@ def main(cfg: DictConfig):
     est_epochs_arr = np.array(list(est_state_history.keys()))
     est_states_arr = np.array(list(est_state_history.values()))
     # 6-DOF linear interpolation
-    est_states_interp = np.column_stack([
-        np.interp(epochs, est_epochs_arr, est_states_arr[:, i]) for i in range(6)
-    ])
+    est_states_interp = np.column_stack(
+        [np.interp(epochs, est_epochs_arr, est_states_arr[:, i]) for i in range(6)]
+    )
 
     # RSW rotation using the ESTIMATED state (consistent with RSWDistance class)
     n_epochs = len(epochs)

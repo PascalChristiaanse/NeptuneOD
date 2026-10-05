@@ -66,12 +66,16 @@ def create_simulated_dataset(
             obs_time_list.append(b_times)
             logger.info(
                 "Burst at %s: %d observations, cadence %.0f s, duration %.1f h",
-                b.start, len(b_times), b_cadence, b.duration_hours,
+                b.start,
+                len(b_times),
+                b_cadence,
+                b.duration_hours,
             )
         observation_times = np.sort(np.concatenate(obs_time_list))
         logger.info(
             "Total observations from %d bursts: %d",
-            len(bursts), len(observation_times),
+            len(bursts),
+            len(observation_times),
         )
     else:
         # Continuous mode: uniform cadence over full interval

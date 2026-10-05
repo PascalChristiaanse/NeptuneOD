@@ -102,9 +102,7 @@ class PropagatedFormalErrorsRSW(Plot):
                 ax.axvline(dt_start, color="b", linestyle="--", alpha=0.5)
                 ax.axvline(dt_end, color="b", linestyle="--", alpha=0.5)
 
-        title = _cfg_get(
-            plot_cfg, "titles", "title", default="Propagated Formal Errors - RSW"
-        )
+        title = _cfg_get(plot_cfg, "titles", "title", default="Propagated Formal Errors - RSW")
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Formal Error [m]")
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default=x_label)

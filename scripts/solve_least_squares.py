@@ -263,15 +263,17 @@ def main(cfg: DictConfig):
         logger.info("Estimation progression logged to %s", estimation_log_path)
         if not output_dir.exists():
             logger.warning("Unable to find estimation log file at %s", estimation_log_path)
-        raise
+        # raise
+        # Do not Raise, just log the error and return to avoid crashing the script
+        return
+    else:
+        logger.info("Estimation completed successfully.")
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
-    save_tudat_object(estimation_output, output_dir.with_name("estimation_output"))
-    save_tudat_object(observations, output_dir.with_name("observations"))
-    logger.info("Estimation output saved to %s", output_dir.with_name("estimation_output"))
-    logger.info("Observations saved to %s", output_dir.with_name("observations"))
-    logger.info("Estimation completed successfully.")
-
+    save_tudat_object(estimation_output, output_dir / "estimation_output")
+    save_tudat_object(observations, output_dir / "observations")
+    logger.info("Estimation output saved to %s", output_dir / "estimation_output.tudat")
+    logger.info("Observations saved to %s", output_dir / "observations.tudat")
     logger.info("Final estimated parameters: %s", estimation_output.final_parameters)
 
     ############################################################################
@@ -311,6 +313,7 @@ def main(cfg: DictConfig):
     #################################################################
     logger.info("Propagating final estimated state to generate post-fit residuals...")
     parameters = estimation_output.parameter_history[:, estimation_output.best_iteration]
+    logger.info(f"Best iteration {estimation_output.best_iteration} found parameters: {parameters}")
     prop.initial_states = parameters
     final_result = sim.create_dynamics_simulator(bodies, prop)
     Residuals(cfg, "postfit_residuals", observations).plot()
@@ -340,7 +343,7 @@ def main(cfg: DictConfig):
     # ====================================================================
     logger.info("Propagating covariance over the full time arc ...")
     state_transition_interface = estimator.state_transition_interface
-    start_epoch = float(ctx.start_epoch.to_float())
+    start_epoch = float(ctx.start_epoch.to_float())  # full arc: both forward and backward from initial_epoch
     end_epoch = float(ctx.end_epoch.to_float())
     step_days = OmegaConf.select(cfg, "propagation.step_days", default=10.0)
     step_seconds = step_days * 86400.0
@@ -358,11 +361,21 @@ def main(cfg: DictConfig):
     epochs = np.array(list(propagated_formal_errors.keys()))
     formal_errors = np.array(list(propagated_formal_errors.values()))
 
-    # RSW rotation
+    # Interpolate the estimated (post-fit) state to covariance epochs
+    logger.info("Interpolating estimated state to covariance epochs ...")
+    est_state_history = final_result.propagation_results.state_history
+    est_epochs_arr = np.array(list(est_state_history.keys()))
+    est_states_arr = np.array(list(est_state_history.values()))
+    # 6-DOF linear interpolation
+    est_states_interp = np.column_stack([
+        np.interp(epochs, est_epochs_arr, est_states_arr[:, i]) for i in range(6)
+    ])
+
+    # RSW rotation using the ESTIMATED state (consistent with RSWDistance class)
     n_epochs = len(epochs)
     fe_rsw = np.zeros((n_epochs, 6))
     for i, epoch in enumerate(epochs):
-        state_est = bodies.get("Triton").ephemeris.cartesian_state(epoch)
+        state_est = est_states_interp[i]
         rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(state_est)
         full_rot = np.block([[rot_matrix, np.zeros((3, 3))], [np.zeros((3, 3)), rot_matrix]])
         cov = propagated_covariances[epoch]
@@ -375,20 +388,21 @@ def main(cfg: DictConfig):
     logger.info("Propagated formal errors plotted.")
 
     # Compute RSW position differences at covariance epochs for uncertainty-vs-distance plot
+    # Uses estimated state for RSW frame definition (same pattern as RSWDistance class)
     logger.info("Computing RSW distance at covariance propagation epochs ...")
     rsw_at_cov_epochs = np.zeros((n_epochs, 3))
     for i, epoch in enumerate(epochs):
         spice_state = bodies.get("Triton Spice").ephemeris.cartesian_state(epoch)
-        triton_state = bodies.get("Triton").ephemeris.cartesian_state(epoch)
-        rel_pos = spice_state[:3] - triton_state[:3]
-        rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(triton_state)
+        est_state = est_states_interp[i]
+        rel_pos = spice_state[:3] - est_state[:3]
+        rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(est_state)
         rsw_at_cov_epochs[i] = rot_matrix @ rel_pos
     rsw_sigma = fe_rsw[:, :3]
 
     RSWDistanceWithUncertainty(cfg, epochs, rsw_at_cov_epochs, rsw_sigma).plot()
     logger.info("RSW distance with uncertainty envelopes plotted.")
-    from matplotlib import pyplot as plt
-    plt.show()
+    # from matplotlib import pyplot as plt
+    # plt.show()
     # Save propagated formal errors as NumPy archive
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     np.savez(

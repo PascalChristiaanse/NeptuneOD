@@ -23,4 +23,4 @@ hydra:
     params:
       parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity,state_plus_rotation,state_plus_gravity
       data: classical,classical_voyager,classical_voyager_gaia
-      weighting: hybrid_geometric_v2,timeframe,id_v2
+      weighting: id_v2,disabled

@@ -174,8 +174,4 @@ class RSWDistanceWithUncertainty(Plot):
         fig.align_ylabels(axes)
         fig.set_tight_layout(True)
 
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
-
         return fig, axes

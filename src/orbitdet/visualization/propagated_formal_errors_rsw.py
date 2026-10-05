@@ -120,8 +120,4 @@ class PropagatedFormalErrorsRSW(Plot):
 
         fig.set_tight_layout(True)
 
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
-
         return fig, ax

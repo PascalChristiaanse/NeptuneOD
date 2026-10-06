@@ -270,8 +270,8 @@ def main(cfg: DictConfig):
         logger.info("Estimation completed successfully.")
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
-    save_tudat_object(estimation_output, output_dir / "estimation_output")
-    save_tudat_object(observations, output_dir / "observations")
+    # save_tudat_object(estimation_output, output_dir / "estimation_output")
+    # save_tudat_object(observations, output_dir / "observations")
     logger.info("Estimation output saved to %s", output_dir / "estimation_output.tudat")
     logger.info("Observations saved to %s", output_dir / "observations.tudat")
     logger.info("Final estimated parameters: %s", estimation_output.final_parameters)
@@ -419,9 +419,9 @@ def main(cfg: DictConfig):
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact_reference(config_path)
-    aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
-    aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
-    aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
     logger.info("Attached artifacts to Aim.")
 
 

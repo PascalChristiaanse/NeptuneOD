@@ -1,4 +1,5 @@
 import logging
+import tarfile
 from pathlib import Path
 from typing import NoReturn
 
@@ -36,8 +37,111 @@ class KernelManager:
             self._fetch(url, file, self._cfg.data_folder)
 
     def download_all_kernels(self):
+        # First, download and extract any kernel sets (archives)
+        self._download_and_extract_all_kernel_sets()
+
+        # Then download individual kernels, skipping those that come from archives
+        archive_urls = self._get_kernel_set_urls()
         for kernel, url in self._cfg.kernels.items():
+            if url in archive_urls:
+                logger.info(
+                    "Kernel %s is part of a kernel set archive, skipping direct download",
+                    kernel,
+                )
+                continue
             self._fetch(url, kernel, self._cfg.kernel_folder)
+
+    # ------------------------------------------------------------------
+    # Kernel set (archive) support
+    # ------------------------------------------------------------------
+
+    def _get_kernel_set_urls(self) -> set[str]:
+        """Return the set of archive URLs defined in ``kernel_sets``."""
+        kernel_sets = getattr(self._cfg, "kernel_sets", None)
+        if not kernel_sets:
+            return set()
+        return {ks.url for ks in kernel_sets.values()}
+
+    def _download_and_extract_all_kernel_sets(self):
+        """Download and extract every kernel set archive."""
+        kernel_sets = getattr(self._cfg, "kernel_sets", None)
+        if not kernel_sets:
+            return
+
+        for ks_name, ks_config in kernel_sets.items():
+            self._download_and_extract_kernel_set(ks_name, ks_config)
+
+    def _download_and_extract_kernel_set(self, name: str, config: DictConfig):
+        """Download a single kernel-set archive and extract the requested files."""
+        archive_name = config.archive
+        archive_url = config.url
+        archive_type = getattr(config, "archive_type", "tar")
+        use_from_archive = config.use_from_archive
+
+        dest_path = Path(self._cfg.kernel_folder)
+        dest_path.mkdir(parents=True, exist_ok=True)
+
+        archive_path = dest_path / archive_name
+
+        # Download the archive if not already present
+        if not archive_path.exists():
+            logger.info(
+                "Downloading kernel set archive %s from %s",
+                archive_name,
+                archive_url,
+            )
+            response = requests.get(archive_url, stream=True)
+            response.raise_for_status()
+
+            with archive_path.open("wb") as fh:
+                content = getattr(response, "content", b"") or b""
+                if content:
+                    fh.write(content)
+                else:
+                    total = int(response.headers.get("content-length", 0) or 0)
+                    downloaded = 0
+                    chunk_size = 8192
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if not chunk:
+                            continue
+                        fh.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            percent = downloaded * 100 / total
+                            logger.debug(
+                                "%s: %d/%d bytes (%.1f%%)",
+                                archive_name,
+                                downloaded,
+                                total,
+                                percent,
+                            )
+                        else:
+                            logger.debug("%s: %d bytes", archive_name, downloaded)
+            logger.info("Download of archive %s complete.", archive_name)
+        else:
+            logger.info("Archive %s already exists, skipping download", archive_name)
+
+        # Extract the requested files
+        if archive_type == "tar":
+            self._extract_from_tar(archive_path, use_from_archive, dest_path)
+        else:
+            raise ValueError(f"Unsupported archive type: {archive_type}")
+
+    @staticmethod
+    def _extract_from_tar(archive_path: Path, files: list[str], dest: Path):
+        """Extract *files* from the tar archive at *archive_path* into *dest*."""
+        with tarfile.open(archive_path, "r:*") as tar:
+            for member_name in files:
+                member_path = dest / member_name
+                if member_path.exists():
+                    logger.info("File %s already extracted, skipping", member_name)
+                    continue
+                logger.info("Extracting %s from %s", member_name, archive_path.name)
+                tar.extract(member_name, path=dest)
+
+    # ------------------------------------------------------------------
+    # Single-file download
+    # ------------------------------------------------------------------
 
     def _fetch(self, url: str, name: str, dest: Path) -> NoReturn:
         """Download all required kernels
@@ -86,31 +190,80 @@ class KernelManager:
         else:
             logger.info(f"Kernel {name} already exists, skipping download")
 
+    # ------------------------------------------------------------------
+    # Kernel loading
+    # ------------------------------------------------------------------
+
     def furnish(self):
         """Load all required kernels"""
-        spice.load_standard_kernels()
-        logger.warning(
-            """Standard SPICE kernels loaded. This may lead to conflicts if """
-            """custom kernels have overlapping coverage."""
-        )
-        for kernel in self._cfg.kernels.keys():
-            path = Path(self._cfg.kernel_folder + "/" + kernel)
-            loaded_kernels = self.get_current_kernels()[0]
-            if kernel in loaded_kernels:
-                logger.warning(f"Kernel {kernel} already loaded, skipping")
-                continue
-            loaded_files = self.get_current_kernels()[1]
-            if str(path.resolve()) in loaded_files:
-                logger.error(f"Kernel {kernel} already loaded from {path}!")
-                raise RuntimeError(f"Kernel {kernel} already loaded from {path}!")
 
-            if not path.exists():
-                raise FileNotFoundError(f"Required kernel {kernel} not found at {path}")
-            logger.info(f"Loading kernel {kernel} from {path}")
-            spice.load_kernel(str(path.resolve()))
-            # spiceypy.furnsh(str(path.resolve())) spice and spiceypy share the same kernel pool,
-            # so loading with one library makes the kernels available to the other
-            # self.log_current_kernel_pool()
+        if self._cfg.use_default_kernels:
+            spice.load_standard_kernels()
+            logger.warning(
+                """Standard SPICE kernels loaded. This may lead to conflicts if """
+                """custom kernels have overlapping coverage."""
+            )
+
+        for kernel in self._get_all_kernel_names():
+            self._load_kernel(kernel)
+
+    def _get_all_kernel_names(self) -> list[str]:
+        """Return every kernel file that should be loaded.
+
+        Includes top-level ``kernels`` entries (excluding those that point to a
+        kernel-set archive) plus files listed in every
+        ``kernel_sets.*.use_from_archive``.
+
+        ``.mk`` (meta-kernel) files are excluded because SPICE resolves their
+        ``KERNELS_TO_LOAD`` relative paths against the current working directory
+        rather than the meta-kernel's own location.  The individual kernel files
+        that the meta-kernel would load are already listed in
+        ``use_from_archive`` and are loaded directly instead.
+        """
+        archive_urls = self._get_kernel_set_urls()
+        names: list[str] = []
+
+        # Regular kernels – skip entries whose URL is an archive URL
+        for kernel, url in self._cfg.kernels.items():
+            if url in archive_urls:
+                continue
+            names.append(kernel)
+
+        # Kernels extracted from archives – skip .mk files (see docstring)
+        kernel_sets = getattr(self._cfg, "kernel_sets", None)
+        if kernel_sets:
+            for ks_config in kernel_sets.values():
+                for fname in ks_config.use_from_archive:
+                    if fname.endswith(".mk"):
+                        logger.info(
+                            "Skipping meta-kernel %s; its individual kernel "
+                            "files are loaded directly",
+                            fname,
+                        )
+                        continue
+                    names.append(fname)
+
+        return names
+
+    def _load_kernel(self, kernel_name: str):
+        """Load a single kernel by *kernel_name*, guarding against duplicates."""
+        path = Path(self._cfg.kernel_folder, kernel_name)
+        loaded_kernels = self.get_current_kernels()[0]
+        if kernel_name in loaded_kernels:
+            logger.warning("Kernel %s already loaded, skipping", kernel_name)
+            return
+        loaded_files = self.get_current_kernels()[1]
+        if str(path.resolve()) in loaded_files:
+            logger.error("Kernel %s already loaded from %s!", kernel_name, path)
+            raise RuntimeError(f"Kernel {kernel_name} already loaded from {path}!")
+
+        if not path.exists():
+            raise FileNotFoundError(f"Required kernel {kernel_name} not found at {path}")
+        logger.info("Loading kernel %s from %s", kernel_name, path)
+        spice.load_kernel(str(path.resolve()))
+        # spiceypy.furnsh(str(path.resolve())) spice and spiceypy share the same kernel pool,
+        # so loading with one library makes the kernels available to the other
+        # self.log_current_kernel_pool()
 
     def log_current_kernel_pool(self):
         logger.info("Current loaded kernels:")

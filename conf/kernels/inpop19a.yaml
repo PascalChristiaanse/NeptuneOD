@@ -1,0 +1,26 @@
+# @package _global_
+
+# Kernel and data file settings for the classical (non-Voyager) experiments.
+
+kernel_folder: "data/kernels"
+use_default_kernels: false
+
+kernels:
+  pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
+  gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+  inpop19a_TDB_m1000_p1000_spice.tf: ""
+  inpop19a_TDB_m1000_p1000_spice.tpc: ""
+  inpop19a_TDB_m1000_p1000_spice.bpc: ""
+  inpop19a_TDB_m1000_p1000_spice_time.bsp: ""
+  inpop19a_TDB_m1000_p1000_spice.bsp: ""
+kernel_sets:
+  inpop19a:
+    url: "https://ftp.imcce.fr/pub/ephem/planets/inpop19a/inpop19a_TDB_m1000_p1000_spice.tar.gz"
+    archive: "inpop19a_TDB_m1000_p1000_spice.tar.gz"
+    archive_type: "tar"
+
+# Data files settings
+data_folder: "data/other"
+data_files:
+  observatories.txt: "https://www.projectpluto.com/mpc_stat.txt"

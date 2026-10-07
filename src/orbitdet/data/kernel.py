@@ -137,7 +137,7 @@ class KernelManager:
                     logger.info("File %s already extracted, skipping", member_name)
                     continue
                 logger.info("Extracting %s from %s", member_name, archive_path.name)
-                tar.extract(member_name, path=dest)
+                tar.extract(member_name, path=dest, filter="data")
 
     # ------------------------------------------------------------------
     # Single-file download

@@ -39,6 +39,7 @@ def get_estimatable_parameter_settings(
     # ``initial_states`` returns a sequence of EstimatableParameterSettings;
     # ensure we start with a flat list instead of nesting the sequence.
     estimated_parameters = list(param_setup.initial_states(prop_settings, bodies))
+    logger.info(f"Parameters to estimate ({len(estimated_parameters)})")
     for parameters in cfg.estimation.parameters_to_estimate:
         # Handle both string entries ("initial_state") and OmegaConf dict entries
         # ({"initial_state": {"apriori": [1.0e7, 1.0e2]}})
@@ -49,15 +50,18 @@ def get_estimatable_parameter_settings(
 
         match param_name:
             case "initial_state":
+                logger.info("\t - Initial State")
                 continue  # initial state is already added as a group parameter
             case "iau_rotation_model_pole":
                 estimated_parameters.append(
                     param_setup.iau_rotation_model_pole("Neptune")
                 )
+                logger.info("\t - IAU rotation model pole")
             case "iau_rotation_model_pole_rate":
                 estimated_parameters.append(
                     param_setup.iau_rotation_model_pole_rate("Neptune")
                 )
+                logger.info("\t - IAU rotation model pole rate")
             case "iau_rotation_model_pole_librations":
                 freqs = _resolve_libration_frequencies(parameters)
                 estimated_parameters.append(
@@ -65,10 +69,12 @@ def get_estimatable_parameter_settings(
                         "Neptune", freqs
                     )
                 )
+                logger.info(f"\t - IAU rotation model pole librations (frequencies: {freqs})")
             case "neptune_GM":
                 estimated_parameters.append(
                     param_setup.gravitational_parameter("Neptune")
                 )
+                logger.info("\t - Neptune gravitational parameter")
             case "neptune_j2_j4":
                 block_indices = [
                     (2, 0),  # C20 (J2)
@@ -81,6 +87,7 @@ def get_estimatable_parameter_settings(
                         body="Neptune", block_indices=block_indices
                     )
                 )
+                logger.info("\t - Neptune J2 and J4 spherical harmonics coefficients")
             case _:
                 raise ValueError(
                     f"Unknown parameter {param_name} specified for estimation"

@@ -1,7 +1,7 @@
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -28,6 +28,7 @@ FAKE_KERNEL_BYTES = b"DAF/SPK\x00" + b"\x00" * 120  # plausible-ish binary heade
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_kernel_set_config(
     archive_name: str = "inpop19a.tar.gz",

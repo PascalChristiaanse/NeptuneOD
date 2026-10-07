@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from pathlib import Path
 
 import hydra
@@ -426,4 +427,9 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as e:
+        logger.error("Unhandled exception: %s", e, exc_info=True)
+    finally:
+        sys.exit(0)

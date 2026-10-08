@@ -1,0 +1,15 @@
+# @package _global_
+
+integrator_error_vs_time_family:
+  output_file: "integrator_error_vs_time_family.pdf"
+  figure:
+    width: 10
+    height: 7
+  titles:
+    suptitle: "Max Error vs Integration Time — {strategy}"
+    title: "Max Error vs Integration Time — {strategy}"
+  axes:
+    x_label: "Integration Time [s]"
+    y_label: "Max ||Δr|| [m]"
+    hover_x_label: "Time [s]"
+    hover_y_label: "Max ||Δr|| [m]"

@@ -1,0 +1,33 @@
+# @package _global_
+
+# Experiment: Integrator validation via Richardson extrapolation.
+# Propagates Triton around Neptune with a fixed timestep, then repeats
+# with half the timestep. The difference is an estimate of the local error.
+
+defaults:
+  - /dynamics: validation_integrator
+  - /kernels: classical
+  - /logging: default
+  - _self_
+
+seed: 42
+
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — configurable via override
+start_date: 2000-1-1T12:00:00
+end_date: 2000-1-31T12:00:00
+initial_epoch: 2000-1-1T12:00:00
+
+# Validation settings
+validation:
+  # Timestep to investigate (seconds). Overridden by sweep.
+  timestep: 3600
+  # Validation strategy: "richardson" (Δt vs Δt/2) or "forward_backward" (round-trip)
+  strategy: "richardson"
+  # Whether to save the full state history (can be large for long arcs)
+  save_full_history: true

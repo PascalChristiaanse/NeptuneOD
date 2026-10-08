@@ -1,0 +1,33 @@
+# @package _global_
+
+# Sweep: Integrator validation over multiple timesteps and integrator types.
+# Run with:
+#   python scripts/validate_integrator.py --multirun --config-name sweep/validate_integrator
+
+defaults:
+  - /experiment: validate_integrator
+  - _self_
+  - override /hydra/launcher: submitit_local
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    stderr_to_stdout: false
+    tasks_per_node: 1
+    nodes: 1
+    gpus_per_node: 0
+    cpus_per_task: 1
+    timeout_min: 240
+  sweep:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  sweeper:
+    max_batch_size: 6
+    params:
+      # Timesteps: 0.5h, 1h, 2h, 4h, 8h, 16h, 32h (in seconds)
+      validation.timestep: 1800,3600,7200,14400,28800,57600,115200
+      # Integrator types to test
+      integrator.type: RKF78,RK4,RKF89,RKV89,RKF108,RKF1210,RKF1412,BulirschStoer6,BulirschStoer8,BulirschStoer10
+      # Validation strategy
+      validation.strategy: richardson

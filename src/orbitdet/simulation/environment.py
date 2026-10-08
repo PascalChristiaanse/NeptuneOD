@@ -66,11 +66,19 @@ def _setup_body_settings_from_config(cfg: DictConfig) -> env_setup.BodyListSetti
     bodies_to_use = set(cfg.bodies_to_create.keys()) & set(DEFAULT_BODIES)
     logger.info(f"Creating {len(bodies_to_use)} default bodies.")
 
-    body_settings = env_setup.get_default_body_settings(
-        bodies_to_use,
-        cfg.global_frame_origin,
-        cfg.global_frame_orientation,
-    )
+    if cfg.use_default_body_settings:
+        logger.info("Using default body settings for default bodies.")
+        body_settings = env_setup.get_default_body_settings(
+            bodies_to_use,
+            cfg.global_frame_origin,
+            cfg.global_frame_orientation,
+        )
+    else:
+        logger.info("Using empty body settings for default bodies.")
+        body_settings = env_setup.BodyListSettings()
+        for body_name in bodies_to_use:
+            body_settings.add_empty_settings(body_name)
+
 
     # Add bodies not in default bodies but specified in config
     custom_bodies = set(cfg.bodies_to_create.keys()) - DEFAULT_BODIES

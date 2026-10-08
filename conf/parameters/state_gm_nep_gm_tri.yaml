@@ -7,3 +7,4 @@ estimation:
   parameters_to_estimate:
     initial_state: true
     neptune_GM: true
+    triton_GM: true

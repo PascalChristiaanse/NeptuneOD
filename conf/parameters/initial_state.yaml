@@ -5,4 +5,4 @@ estimation:
   max_iterations: 5
   max_iterations_without_improvement: 3
   parameters_to_estimate:
-    - initial_state
+    initial_state: true

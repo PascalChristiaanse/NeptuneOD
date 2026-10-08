@@ -12,5 +12,5 @@ estimation:
   max_iterations: 5
   max_iterations_without_improvement: 3
   parameters_to_estimate:
-    - initial_state
-    - iau_rotation_model_pole_rate
+    initial_state: true
+    iau_rotation_model_pole_rate: true

@@ -1,0 +1,15 @@
+# @package _global_
+
+interpolator_family_comparison:
+  output_file: "interpolator_family_comparison.pdf"
+  figure:
+    width: 12
+    height: 8
+  titles:
+    suptitle: "Interpolator Family Comparison"
+    title: "Interpolator Family Comparison"
+  axes:
+    x_label: "Timestep Δt [s]"
+    y_label: "||Δr|| [m]"
+    hover_x_label: "Timestep [s]"
+    hover_y_label: "||Δr|| [m]"

@@ -674,3 +674,141 @@ class IntegratorErrorVsTimeFamily(Plot):
         fig.set_tight_layout(True)
 
         return fig, ax
+
+
+class InterpolatorFamilyComparison(Plot):
+    """Plot all interpolator types on a single comparison figure.
+
+    Each interpolator type gets a distinct color and marker shape. RMS is shown
+    as a solid line, Max as a dashed line, both on log-log axes.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    results_by_type : dict[str, dict[float, dict]]
+        Maps interpolator type name to its ``{timestep: result_data}`` dict.
+    """
+
+    def __init__(
+        self,
+        cfg: DictConfig,
+        results_by_type: dict[str, dict[float, dict]],
+    ):
+        super().__init__(cfg)
+        self.results_by_type = results_by_type
+
+    def _make_figure(self):
+        cfg = self.cfg
+        results_by_type = self.results_by_type
+
+        plot_cfg = _cfg_get(cfg, "interpolator_family_comparison", default=None)
+        fig_w = _cfg_get(plot_cfg, "figure", "width", default=12)
+        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8)
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+        markers = ["o", "s", "^", "D", "v", "<", ">", "p", "h", "8"]
+        colors = plt.cm.tab10.colors
+
+        sorted_types = sorted(results_by_type.keys())
+
+        plotted_lines = []
+
+        for idx, interpolator_type in enumerate(sorted_types):
+            type_results = results_by_type[interpolator_type]
+            sorted_timesteps = sorted(type_results.keys())
+            timesteps_arr = np.array(sorted_timesteps)
+            rms_arr = np.array([
+                np.sqrt(np.mean(type_results[dt]["pos_diff_norm"] ** 2))
+                for dt in sorted_timesteps
+            ])
+            max_arr = np.array([
+                np.max(type_results[dt]["pos_diff_norm"])
+                for dt in sorted_timesteps
+            ])
+
+            color = colors[idx % len(colors)]
+            marker = markers[idx % len(markers)]
+
+            line_rms, = ax.loglog(timesteps_arr, rms_arr, marker=marker, color=color,
+                                  linestyle="-", linewidth=2, markersize=7,
+                                  label=f"{interpolator_type} (RMS)")
+            line_max, = ax.loglog(timesteps_arr, max_arr, marker=marker, color=color,
+                                  linestyle="--", linewidth=1.2, markersize=5,
+                                  alpha=0.7,
+                                  label=f"{interpolator_type} (Max)")
+
+            plotted_lines.append((line_rms, interpolator_type, "RMS", timesteps_arr, rms_arr))
+            plotted_lines.append((line_max, interpolator_type, "Max", timesteps_arr, max_arr))
+
+        ax.set_title(
+            _cfg_get(
+                plot_cfg,
+                "titles",
+                "title",
+                default="Interpolator Family Comparison",
+            )
+        )
+        ax.set_xlabel(
+            _cfg_get(plot_cfg, "axes", "x_label", default="Timestep Δt [s]")
+        )
+        ax.set_ylabel(
+            _cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]")
+        )
+        ax.grid(True, alpha=0.3, which="both")
+        ax.legend(fontsize=7, ncol=2)
+
+        # Interactive hover annotation
+        hover_annot = ax.annotate(
+            "", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
+            fontsize=8, bbox=dict(boxstyle="round,pad=0.3", fc="wheat", alpha=0.8),
+            arrowprops=dict(arrowstyle="->", color="gray", lw=0.5),
+            visible=False,
+        )
+
+        def _find_nearest_line(xdata, ydata):
+            best_dist = np.inf
+            best_info = None
+            for line, name, kind, xs, ys in plotted_lines:
+                if len(xs) == 0:
+                    continue
+                dists = np.hypot(np.log10(xs) - np.log10(xdata),
+                                 np.log10(ys) - np.log10(ydata))
+                idx = np.argmin(dists)
+                d = dists[idx]
+                if d < best_dist:
+                    best_dist = d
+                    best_info = (name, kind, xs[idx], ys[idx])
+            return best_info
+
+        def _on_hover(event):
+            if event.inaxes != ax:
+                hover_annot.set_visible(False)
+                fig.canvas.draw_idle()
+                return
+            info = _find_nearest_line(event.xdata, event.ydata)
+            if info is None:
+                hover_annot.set_visible(False)
+                fig.canvas.draw_idle()
+                return
+            name, kind, dt, val = info
+            hover_annot.xy = (event.xdata, event.ydata)
+            hover_annot.set_text(f"{name} ({kind})\nΔt = {dt:.0f} s\n||Δr|| = {val:.3e} m")
+            hover_annot.set_visible(True)
+            fig.canvas.draw_idle()
+
+        fig.canvas.mpl_connect("motion_notify_event", _on_hover)
+
+        fig.suptitle(
+            _cfg_get(
+                plot_cfg,
+                "titles",
+                "suptitle",
+                default="Interpolator Family Comparison",
+            ),
+            fontsize=14,
+        )
+        fig.set_tight_layout(True)
+
+        return fig, ax

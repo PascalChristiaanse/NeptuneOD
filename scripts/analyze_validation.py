@@ -223,6 +223,22 @@ def analyze_interpolator(input_dir: Path):
                 "Convergence plot saved to %s", output_path,
             )
 
+        # Family comparison: all interpolator types on one figure
+        from omegaconf import OmegaConf
+        from orbitdet.visualization import InterpolatorFamilyComparison
+
+        import matplotlib.pyplot as plt
+
+        dummy_cfg = OmegaConf.create({})
+        family_plotter = InterpolatorFamilyComparison(
+            dummy_cfg, type_groups
+        )
+        fig, ax = family_plotter._make_figure()
+        output_path = input_dir / f"interpolator_family_comparison.pdf"
+        fig.savefig(output_path)
+        logger.info("Interpolator family comparison plot saved to %s", output_path)
+        plt.show()
+
 
 def main():
     parser = argparse.ArgumentParser(

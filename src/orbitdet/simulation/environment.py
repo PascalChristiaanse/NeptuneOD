@@ -75,7 +75,7 @@ def _setup_body_settings_from_config(cfg: DictConfig) -> env_setup.BodyListSetti
         )
     else:
         logger.info("Using empty body settings for default bodies.")
-        body_settings = env_setup.BodyListSettings()
+        body_settings = env_setup.BodyListSettings(cfg.global_frame_origin, cfg.global_frame_orientation)
         for body_name in bodies_to_use:
             body_settings.add_empty_settings(body_name)
 

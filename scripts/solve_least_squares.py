@@ -433,9 +433,4 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except BaseException as e:
-        logger.error("Unhandled exception: %s", e, exc_info=True)
-    finally:
-        sys.exit(0)
+    main()

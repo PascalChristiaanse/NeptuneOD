@@ -39,13 +39,13 @@ from orbitdet.visualization import (
     ParameterHistoryPerIteration,
     PropagatedFormalErrorsCartesian,
     PropagatedFormalErrorsRSW,
-    RSWDistanceWithUncertainty,
     ResidualHistogram,
     ResidualQQ,
     ResidualRMSPerIteration,
     Residuals,
     ResidualScatter,
     RSWDistance,
+    RSWDistanceWithUncertainty,
 )
 
 logger = logging.getLogger(__name__)

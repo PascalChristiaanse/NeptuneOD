@@ -185,7 +185,7 @@ class KernelManager:
     def furnish(self):
         """Load all required kernels"""
 
-        if self._cfg.use_default_kernels:
+        if getattr(self._cfg, "use_default_kernels", False):
             spice.load_standard_kernels()
             logger.warning(
                 """Standard SPICE kernels loaded. This may lead to conflicts if """

@@ -1,0 +1,39 @@
+# @package _global_
+
+# Experiment: Triton State Estimation using only classical data
+# estimating:
+# - Triton initial state
+
+defaults:
+  - /datasets/simulated_3d_point_1899@datasets.simulated
+  - /dynamics: jacobson2009
+  - /kernels: jacobson2009
+  - /parameters: initial_state
+  - /logging: default
+  - _self_ # Apply experiment config fields after collections
+  - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
+  - /figures/prefit_residuals_prop@figures.prefit_residuals_prop
+  - /figures/postfit_residuals@figures.postfit_residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/RSW_distance
+  - /figures/propagated_formal_errors_cartesian
+  - /figures/propagated_formal_errors_rsw
+  - /figures/RSW_distance_with_uncertainty
+seed: 42
+#
+# Hydra settings
+hydra:
+  run:
+    dir: results/fit_to_ephemeris/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 1899-10-20T12:00:00 # DE421 coverage starts on 1899 JUL 29 00:00:00.000 (ET)
+end_date: 2027-12-31T12:00:00 # DE421 coverage ends on 2053 OCT 09 00:00:00.000 (ET)
+initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton

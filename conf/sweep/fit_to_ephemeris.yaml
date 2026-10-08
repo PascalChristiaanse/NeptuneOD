@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - /experiment: fit_to_ephemeris
+  - _self_
+  - override /hydra/launcher: submitit_local
+
+hydra:
+  mode: MULTIRUN
+  launcher:
+    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    stderr_to_stdout: false
+    tasks_per_node: 1
+    nodes: 1
+    gpus_per_node: 0 # set if relevant
+    cpus_per_task: 1
+    timeout_min: 240 # 4 HOURS
+  sweep:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  sweeper:
+    max_batch_size: 36
+    params:
+      estimation.parameters_to_estimate.initial_state: [true]
+      estimation.parameters_to_estimate.neptune_GM: [true, false]
+      estimation.parameters_to_estimate.triton_GM: [true, false]
+      estimation.parameters_to_estimate.iau_rotation_model_pole: [true, false]
+      estimation.parameters_to_estimate.iau_rotation_model_pole_rate: [true, false]
+      estimation.parameters_to_estimate.neptune_j2_j4: [true, false]
+      

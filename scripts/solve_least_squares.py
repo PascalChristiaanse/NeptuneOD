@@ -317,6 +317,12 @@ def main(cfg: DictConfig):
     logger.info(f"Best iteration {estimation_output.best_iteration} found parameters: {parameters}")
     prop.initial_states = parameters
     final_result = sim.create_dynamics_simulator(bodies, prop)
+    try: 
+        save_tudat_object(final_result.propagation_results, output_dir / "final_propagation_result")
+        logger.info("Final propagation result saved to %s", output_dir / "final_propagation_result.tudat")
+    except TypeError as e:
+        logger.warning("Failed to save final propagation result: %s", e)
+
     Residuals(cfg, "postfit_residuals", observations).plot()
 
 

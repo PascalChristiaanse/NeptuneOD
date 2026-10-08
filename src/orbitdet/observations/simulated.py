@@ -115,11 +115,12 @@ def create_simulated_dataset(
                     reference_link_end_type=obs_model_setup.links.LinkEndType.observed_body,
                 )
             )
-            obs_setup.random_noise.add_gaussian_noise_to_observable(
-                [single_setting],
-                dataset_cfg.noise_sigma,
-                obs_model_setup.model_settings.relative_position_observable_type,
-            )
+            if dataset_cfg.noise_sigma > 0:
+                obs_setup.random_noise.add_gaussian_noise_to_observable(
+                    [single_setting],
+                    dataset_cfg.noise_sigma,
+                    obs_model_setup.model_settings.relative_position_observable_type,
+                )
     # Create observation simulators
     ephemeris_observation_simulators = (
         obs_setup.observations_simulation_settings.create_observation_simulators(

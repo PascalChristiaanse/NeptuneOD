@@ -1,0 +1,42 @@
+# @package _global_
+
+# Experiment: Interpolator validation via Richardson extrapolation.
+# Propagates Triton with a very fine reference timestep, downsamples to
+# Δt and Δt/2, creates tudatpy interpolators, and compares the interpolated
+# values at the reference epochs.
+
+defaults:
+  - /dynamics: validation_integrator
+  - /kernels: classical
+  - /logging: default
+  - _self_
+
+seed: 42
+
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — configurable via override
+start_date: 2000-1-1T12:00:00
+end_date: 2001-1-1T12:00:00
+initial_epoch: 2000-1-1T12:00:00
+
+# Validation settings
+validation:
+  # Timestep to investigate (seconds). Overridden by sweep.
+  timestep: 3600
+  # Reference trajectory timestep (RKF78, 1800 s)
+  reference_timestep: 1800
+  # Reference Lagrange interpolator order
+  reference_lagrange_order: 8
+  # Test Lagrange interpolator order (overridden by sweep)
+  lagrange_order: 4
+  # Buffer: number of samples to skip at each boundary to avoid Runge's
+  # phenomenon. Should be >= max(reference_lagrange_order, lagrange_order).
+  # The first and last `buffer` epochs are excluded from comparison.
+  buffer: 120
+  # Whether to save the full state history
+  save_full_history: true

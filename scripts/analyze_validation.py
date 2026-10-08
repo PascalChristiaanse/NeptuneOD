@@ -56,10 +56,17 @@ def _discover_results(input_dir: Path) -> list[dict]:
 def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict[float, dict]]]:
     """Group results by (strategy, integrator/interpolator type), then by timestep.
 
+    Applies a buffer slice to each result to exclude boundary regions where
+    Runge's phenomenon may inflate error statistics. For interpolator data the
+    buffer comes from metadata (or falls back to the interpolator order). For
+    integrator data it uses the integrator order.
+
     Warns if multiple results share the same key (only the last one is kept).
 
     Returns a nested dict: ``strategy -> type -> timestep -> result_data``.
     """
+    from orbitdet.visualization.validation import _integrator_order
+
     grouped: dict[str, dict[str, dict[float, dict]]] = {}
     for r in results:
         meta = r["metadata"]
@@ -70,6 +77,27 @@ def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict
         # Load the NPZ data
         data = np.load(r["npz_path"])
         pos_diff = data["pos_diff_norm"]
+
+        # Determine buffer: how many samples to skip at each boundary
+        if meta.get("interpolator_type"):
+            # Interpolator data: use buffer from metadata, or fall back to order
+            buffer = meta.get("buffer", 0)
+            if buffer == 0:
+                test_order = meta.get("test_lagrange_order", 0)
+                ref_order = meta.get("reference_lagrange_order", 8)
+                buffer = max(ref_order, test_order) // 2
+        else:
+            # Integrator data: use the integrator order
+            buffer = _integrator_order(type_key)
+
+        # Apply buffer slice if we have enough samples
+        if buffer > 0 and len(pos_diff) > 2 * buffer:
+            pos_diff = pos_diff[buffer:-buffer]
+            epochs = data["epochs"][buffer:-buffer]
+            vel_diff = data["vel_diff_norm"][buffer:-buffer]
+        else:
+            epochs = data["epochs"]
+            vel_diff = data["vel_diff_norm"]
 
         # Warn about duplicate keys
         existing = grouped.get(strategy, {}).get(type_key, {}).get(timestep)
@@ -82,9 +110,9 @@ def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict
             )
 
         result_data = {
-            "epochs": data["epochs"],
+            "epochs": epochs,
             "pos_diff_norm": pos_diff,
-            "vel_diff_norm": data["vel_diff_norm"],
+            "vel_diff_norm": vel_diff,
             "integration_time": float(data.get("integration_time", np.nan)),
             "output_dir": r["output_dir"],
         }
@@ -258,6 +286,8 @@ def main():
             analyze_interpolator(input_dir)
         else:
             analyze_integrator(input_dir)
+    from matplotlib import pyplot as plt
+    plt.show()
 
 
 if __name__ == "__main__":

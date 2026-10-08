@@ -61,6 +61,44 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
     return _format
 
 
+def _integrator_order(integrator_type: str) -> int:
+    """Return the nominal order of an integrator type.
+
+    Used to determine how many initial samples to skip when computing
+    error statistics, avoiding Runge's phenomenon at the start of the arc.
+    """
+    match integrator_type:
+        case "Euler":
+            return 1
+        case "RK3" | "ralston_3":
+            return 3
+        case "RK4" | "Ralston4" | "ralston_4" | "three_eight_rule_rk_4":
+            return 4
+        case "RKF78":
+            return 8
+        case "RKF89":
+            return 9
+        case "RKV89":
+            return 9
+        case "RKF108":
+            return 10
+        case "RKF1210":
+            return 12
+        case "RKF1412":
+            return 14
+        case "BulirschStoer6":
+            return 6
+        case "BulirschStoer8":
+            return 8
+        case "BulirschStoer10":
+            return 10
+        case _:
+            # Default: try to extract a number from the type string
+            import re
+            nums = re.findall(r"\d+", integrator_type)
+            return int(nums[-1]) if nums else 4
+
+
 class IntegratorConvergence(Plot):
     """Plot integrator convergence results from a sweep.
 

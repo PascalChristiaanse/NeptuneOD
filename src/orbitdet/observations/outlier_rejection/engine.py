@@ -149,7 +149,7 @@ class OutlierEngine:
 
         filtered_sets: list[obs.SingleObservationSet] = []
         rejected_sets: list[obs.SingleObservationSet] = []
-        per_set_metadata: dict[str, Any] = {}
+        per_set_metadata: list[dict[str, Any]] = []
 
         for obs_set in all_sets:
             set_id = get_set_identifier(obs_set)
@@ -193,7 +193,7 @@ class OutlierEngine:
             rejected_set = _build_rejected_set(obs_set, current_set)
             rejected_sets.append(rejected_set)
 
-            per_set_metadata[set_id] = set_metadata
+            per_set_metadata.append(set_metadata)
 
             logger.debug(
                 "Set '%s': %d accepted, %d rejected out of %d",
@@ -208,9 +208,9 @@ class OutlierEngine:
         rejected_collection = obs.ObservationCollection(rejected_sets)
 
         # Aggregate summary
-        total_accepted = sum(m["n_accepted"] for m in per_set_metadata.values())
-        total_rejected = sum(m["n_rejected"] for m in per_set_metadata.values())
-        total_obs = sum(m["n_total"] for m in per_set_metadata.values())
+        total_accepted = sum(m["n_accepted"] for m in per_set_metadata)
+        total_rejected = sum(m["n_rejected"] for m in per_set_metadata)
+        total_obs = sum(m["n_total"] for m in per_set_metadata)
         summary = {
             "n_sets": len(filtered_sets),
             "n_total_observations": total_obs,

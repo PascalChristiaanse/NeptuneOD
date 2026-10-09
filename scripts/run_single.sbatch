@@ -14,5 +14,5 @@
 export HYDRA_FULL_ERROR=1
 module load miniconda3
 conda activate NeptuneOD
-cd ~/NeptuneOD
-srun python ~/NeptuneOD/scripts/solve_least_squares.py --config-name=experiment/classic_triton_state
+cd ~/Documents/NeptuneOD
+srun python ~/Documents/NeptuneOD/scripts/solve_least_squares.py --config-name=experiment/classic_triton_state

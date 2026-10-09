@@ -1,0 +1,9 @@
+# @package _global_
+
+# Data variant: simulated bursts with super-simple dynamics.
+# Use this for fast test runs in lieu of real NSDB / Voyager / Gaia data.
+
+defaults:
+  - /collection: simulated_bursts
+  - /dynamics: simulated_fast
+  - /kernels: classical

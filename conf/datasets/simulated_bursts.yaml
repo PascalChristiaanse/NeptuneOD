@@ -1,0 +1,27 @@
+# @package _global_
+
+# Simulated Triton data: a few dense observation bursts over ~1 year.
+# This is designed for fast test runs — small number of observations
+# spread across short windows that mimic real observing campaigns.
+
+name: "Simulated Triton bursts"
+type: simulated
+file: null
+target: Triton
+observer: Neptune
+observable_type: relative_cartesian_position
+noise_sigma: 100  # meters
+
+bursts:
+  - start: "2025-01-15T12:00:00"
+    duration_hours: 24.0   # one night
+    cadence: 1800.0        # every 30 minutes → 48 obs
+  - start: "2025-04-10T00:00:00"
+    duration_hours: 48.0   # two nights
+    cadence: 3600.0        # every hour → 48 obs
+  - start: "2025-07-01T06:00:00"
+    duration_hours: 36.0   # 1.5 nights
+    cadence: 1800.0        # every 30 min → 72 obs
+  - start: "2025-10-20T18:00:00"
+    duration_hours: 24.0   # one night
+    cadence: 3600.0        # every hour → 24 obs

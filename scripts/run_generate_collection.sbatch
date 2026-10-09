@@ -14,5 +14,5 @@
 export HYDRA_FULL_ERROR=1
 module load miniconda3
 conda activate NeptuneOD
-cd ~/NeptuneOD
+cd ~/Documents/NeptuneOD
 srun python scripts/generate_collection.py

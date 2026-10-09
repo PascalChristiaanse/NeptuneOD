@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from pathlib import Path
 
 import hydra
@@ -7,7 +8,8 @@ import numpy as np
 import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
-from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
+from tudatpy.astro import frame_conversion
+from tudatpy.astro.time_representation import DateTime, iso_string_to_epoch_time_object
 from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import estimation_analysis as est_an
 from tudatpy.estimation import observations as obs
@@ -31,178 +33,28 @@ from orbitdet.simulation import (
     get_propagator_settings,
 )
 from orbitdet.utility import save_tudat_object
+from orbitdet.visualization import (
+    CovarianceEllipses,
+    ParameterCorrelationHeatmap,
+    ParameterHistoryPerIteration,
+    PropagatedFormalErrorsCartesian,
+    PropagatedFormalErrorsRSW,
+    ResidualHistogram,
+    ResidualQQ,
+    ResidualRMSPerIteration,
+    Residuals,
+    ResidualScatter,
+    RSWDistance,
+    RSWDistanceWithUncertainty,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _build_timestamp_series(
-    dataframe: pd.DataFrame, year_col: str, month_col: str, day_col: str
-) -> pd.Series:
-    """Combine year/month/day columns into a pandas timestamp series.
-
-    The day column may contain a fractional part (e.g. ``24.583229``), which is
-    interpreted as the fraction of the day elapsed.
-
-    Args:
-        dataframe: The DataFrame with the observation data.
-        year_col: Name of the year column.
-        month_col: Name of the month column.
-        day_col: Name of the day column (may include a fractional part).
-
-    Returns:
-        A pandas Series with datetime64 values; missing/invalid rows become NaT.
-    """
-    day = pd.to_numeric(dataframe[day_col], errors="coerce")
-    day_integer = np.floor(day)
-    day_fraction_seconds = (day - day_integer) * 86400.0
-
-    timestamps = pd.to_datetime(
-        pd.DataFrame(
-            {
-                "year": pd.to_numeric(dataframe[year_col], errors="coerce"),
-                "month": pd.to_numeric(dataframe[month_col], errors="coerce"),
-                "day": day_integer,
-            }
-        ),
-        errors="coerce",
-    )
-    return timestamps + pd.to_timedelta(day_fraction_seconds, unit="s")
-
-
-def _dataset_time_columns(dataset_cfg: DictConfig) -> tuple[str, str, str] | None:
-    """Find the year, month and day column names for a dataset config.
-
-    The NSDB dataset configs describe the columns of the associated data file via
-    ``format_columns`` (a mapping of 1-based column index to column name). This
-    function locates the column names matching the year, month and day of the
-    moment of observation. Alternative spellings ("Day of the moment of
-    observation" without "with decimals") are also accepted, and month may be
-    written as "Month" or "Month of the moment of observation".
-
-    Args:
-        dataset_cfg: The dataset config containing the ``format_columns`` mapping.
-
-    Returns:
-        A tuple of (year, month, day) column names, or None when not all three
-        columns could be identified (e.g. datasets that only contain a Julian
-        date, or micrometric relative observations).
-    """
-    fmt = dataset_cfg.get("format_columns", {})
-    if not fmt:
-        return None
-
-    def _find(candidates: list[str]) -> str | None:
-        for index, name in fmt.items():
-            normalized = str(name).strip().lower()
-            if any(candidate in normalized for candidate in candidates):
-                return str(name)
-        return None
-
-    year_col = _find(["year"])
-    month_col = _find(["month"])
-    day_col = _find(["day"]) if year_col is not None else None
-
-    if year_col is None or month_col is None or day_col is None:
-        return None
-    return year_col, month_col, day_col
-
-
-def detect_date_bounds_from_datasets(cfg: DictConfig) -> tuple[str | None, str | None]:
-    """Detect the observation date bounds from the configured datasets.
-
-    Walks through all datasets listed in the experiment configuration and, for
-    each one that references a data file with year/month/day columns, reads the
-    file to find the earliest and latest observation time. The overall bounds
-    across all datasets are returned as ISO-8601 strings.
-
-    Datasets that do not expose year/month/day columns (e.g. relative position
-    angle and separation micrometric observations, or data with a single Julian
-    date column) are skipped.
-
-    Args:
-        cfg: The Hydra experiment configuration containing the ``datasets`` list.
-
-    Returns:
-        A tuple of (start_date, end_date) as ISO-8601 strings, or (None, None)
-        when no dates could be detected.
-    """
-    datasets = OmegaConf.select(cfg, "datasets")
-    if datasets is None:
-        return None, None
-
-    min_timestamp = None
-    max_timestamp = None
-    for set_name, dataset_cfg in datasets.items():
-        columns = _dataset_time_columns(dataset_cfg)
-        if columns is None:
-            logger.debug(
-                "Skipping dataset %s: no year/month/day columns found in format_columns.",
-                set_name,
-            )
-            continue
-
-        file_path = Path(dataset_cfg.file)
-        if not file_path.exists():
-            logger.warning("Skipping dataset %s: data file %s does not exist.", set_name, file_path)
-            continue
-
-        try:
-            dataframe = pd.read_csv(
-                file_path, sep=r"\s+", header=None, comment="#", engine="python"
-            )
-        except Exception as exc:
-            logger.warning("Skipping dataset %s: could not read data file: %s", set_name, exc)
-            continue
-
-        # Map the format_columns indices (1-based) to the positional column names.
-        fmt = dict(dataset_cfg.format_columns)
-        col_names = list(dataframe.columns)
-
-        def _keyfunc(k):
-            try:
-                return int(k)
-            except Exception:
-                return str(k)
-
-        for index in sorted(fmt.keys(), key=_keyfunc):
-            name = fmt.get(index, fmt.get(str(index), None))
-            pos = None
-            try:
-                pos = int(index) - 1
-            except Exception:
-                try:
-                    pos = int(index)
-                except Exception:
-                    pos = None
-            if pos is not None and 0 <= pos < len(col_names):
-                col_names[pos] = name if name is not None else col_names[pos]
-
-        dataframe.columns = col_names
-        timestamps = _build_timestamp_series(dataframe, *columns)
-        timestamps = timestamps.dropna()
-        if timestamps.empty:
-            logger.warning("Skipping dataset %s: no valid timestamps found.", set_name)
-            continue
-
-        dataset_min = timestamps.min()
-        dataset_max = timestamps.max()
-        logger.debug(
-            "Dataset %s: observation dates from %s to %s", set_name, dataset_min, dataset_max
-        )
-        if min_timestamp is None or dataset_min < min_timestamp:
-            min_timestamp = dataset_min
-        if max_timestamp is None or dataset_max > max_timestamp:
-            max_timestamp = dataset_max
-
-    if min_timestamp is None or max_timestamp is None:
-        return None, None
-    return min_timestamp.isoformat(), max_timestamp.isoformat()
 
 
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="experiment/generate_prefit_residuals",
+    config_name="experiment/classic_triton_state",
 )
 @enforce_initialization
 def main(cfg: DictConfig):
@@ -213,52 +65,23 @@ def main(cfg: DictConfig):
     ctx.start_epoch = iso_string_to_epoch_time_object(cfg.start_date)
     ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
     ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
-
-    # Detect the actual observation date bounds from the configured datasets
-    # detected_start, detected_end = detect_date_bounds_from_datasets(cfg)
-    # if detected_start is not None and detected_end is not None:
-    #     ctx.start_epoch = iso_string_to_epoch_time_object(detected_start)
-    #     ctx.end_epoch = iso_string_to_epoch_time_object(detected_end)
-    #     logger.info(
-    #         "Detected observation date bounds from datasets: %s to %s.",
-    #         detected_start,
-    #         detected_end,
-    #     )
-
-    #     # Add a buffer around the observation dates to cover the propagation
-    #     # arc before the first and after the last observation.
-    #     ctx.start_epoch = ctx.start_epoch - 365.25 * 24 * 3600
-    #     ctx.end_epoch = ctx.end_epoch + 365.25 * 24 * 360
-    # else:
-    #     logger.warning(
-    #         "Could not detect observation date bounds from datasets; "
-    #         "using configured start_date/end_date instead."
-    #     )
-
-    from tudatpy.astro.time_representation import DateTime
-
-    logger.info(
-        "Detected start epoch from datasets: "
-        f"{DateTime.from_epoch_time_object(ctx.start_epoch).to_iso_string()}"
-        " (with one year buffer)."
-    )
-    logger.info(
-        "Detected end epoch from datasets: "
-        f"{DateTime.from_epoch_time_object(ctx.end_epoch).to_iso_string()}"
-        " (with one year buffer)."
+    logging.info(
+        f"""Running simulation from epochs"""
+        f"""{DateTime.from_epoch_time_object(ctx.start_epoch).to_iso_string()}"""
+        f"""to {DateTime.from_epoch_time_object(ctx.end_epoch).to_iso_string()}"""
     )
 
+    # Load kernels
+    logger.info("Loading kernels...")
     km: KernelManager = KernelManager(cfg)
     km.download_all_kernels()
     km.furnish()
-    logger.info("Configuration loaded and runtime initialized successfully.")
+    logger.info("Kernels loaded and furnished successfully.")
 
+    # Prep environment
     bodies = get_environment(cfg, ctx)
-    logger.info("Environment created successfully.")
     acc = get_dynamical_model(cfg, ctx, bodies)
-    logger.info("Dynamical model created successfully.")
     integ = get_integrator_settings(cfg, ctx)
-    logger.info("Integrator settings created successfully.")
     dep_vars = [
         prop_setup.dependent_variable.relative_position("Triton Spice", "Triton"),
         prop_setup.dependent_variable.keplerian_state("Triton", "Neptune"),
@@ -266,30 +89,43 @@ def main(cfg: DictConfig):
         # prop_setup.dependent_variable.relative_velocity("Triton Spice", "Triton"),
     ]
     prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=dep_vars)
-    logger.info("Propagator settings created successfully.")
+    logger.info("Environment and propagator settings created successfully.")
 
-    logger.info("Generating observations from collection...")
+    # Create observation collection
+    logger.info("Creating observation collection...")
     observations, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
-    logger.info("Observations generated successfully.")
-
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies
     )
-    logger.info("Observation simulators created successfully.")
+    logger.info(
+        f"""Observation collection and observation simulators created """
+        f"""successfully with {len(observations.concatenated_times)} """
+        f"""observations."""
+    )
 
-    if prop.processing_settings.set_integrated_result:
-        logger.info(
-            "Prefit residuals will be computed using the integrated result from the propagator."
-        )
-        sim.create_dynamics_simulator(bodies, prop)
-
-    # Populate residuals in SingleObservationSets
+    ################################################################
+    ############################ PREFIT ############################
+    ################################################################
+    logger.info("Computing pre-fit residuals wrt spice...")
     obs.compute_residuals_and_dependent_variables(
         observations, ephemeris_observation_simulators, bodies
     )
+    # Wrt spice
+    Residuals(cfg, "prefit_residuals_spice", observations).plot()
+    logger.info("Pre-fit residuals computed and plotted successfully.")
 
-    # === Outlier rejection ===
+    logger.info("Computing pre-fit residuals wrt propagation...")
+    sim.create_dynamics_simulator(bodies, prop)
+    obs.compute_residuals_and_dependent_variables(
+        observations, ephemeris_observation_simulators, bodies
+    )
+    Residuals(cfg, "prefit_residuals_prop", observations).plot()
+    logger.info("Pre-fit residuals computed and plotted successfully.")
+
+    ################################################################
+    ###################### Outlier rejection #######################
+    ################################################################
     outlier_cfg = OmegaConf.select(cfg, "outlier_rejection")
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
@@ -315,7 +151,9 @@ def main(cfg: DictConfig):
     else:
         logger.info("Outlier rejection disabled.")
 
-    # === Weighting ===
+    ################################################################
+    ########################## Weighting ###########################
+    ################################################################
     weighting_cfg = OmegaConf.select(cfg, "weighting")
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
         logger.info("Applying weighting...")
@@ -345,8 +183,8 @@ def main(cfg: DictConfig):
         table_builder = WeightSummaryTable(cfg, weights_df)
         src_table = table_builder.build_source()
         grp_table = table_builder.build_group()
-        print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-        print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
+        # print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
+        # print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
 
         src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
         grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)
@@ -364,11 +202,9 @@ def main(cfg: DictConfig):
             grp_table.to_excel(writer, sheet_name="Per group", index=False)
         logger.info("Excel weight summary tables saved to %s", output_dir)
 
-    # Plot and save pre-fit residuals before estimation modifies them
-    from orbitdet.visualization import Residuals
-
-    fig_prefit_residuals, ax_prefit_residuals = Residuals(cfg, observations).plot()
-    logger.info("Pre-fit residuals computed successfully.")
+    ################################################################
+    ######################### ESTIMATION ###########################
+    ################################################################
 
     parameter_set = get_estimatable_parameters(cfg, ctx, prop, bodies)
     logger.info("Parameter set for estimation created successfully.")
@@ -381,8 +217,16 @@ def main(cfg: DictConfig):
         prop,
         False,
     )
+    max_iterations_without_improvement = cfg.estimation.get(
+        "max_iterations_without_improvement", cfg.estimation.max_iterations
+    )
     convergence_settings = est_an.estimation_convergence_checker(
-        maximum_iterations=cfg.estimation.max_iterations
+        maximum_iterations=cfg.estimation.max_iterations,
+        number_of_iterations_without_improvement=max_iterations_without_improvement,
+    )
+    logger.info(
+        f"Estimation convergence settings: max_iterations={cfg.estimation.max_iterations}, "
+        f"max_iterations_without_improvement={max_iterations_without_improvement}"
     )
     # Build inverse a priori covariance matrix from configuration
     inverse_apriori_covariance = get_apriori_covariance_matrix(cfg)
@@ -393,44 +237,50 @@ def main(cfg: DictConfig):
             inverse_apriori_covariance=inverse_apriori_covariance,
             convergence_checker=convergence_settings,
         )
+        logger.info(
+            "Estimation input created with inverse a priori covariance matrix of shape %s",
+            inverse_apriori_covariance.shape,
+        )
     else:
         estimation_input = est_an.EstimationInput(
             observations_and_times=observations,
             convergence_checker=convergence_settings,
         )
+        logger.info("Estimation input created without inverse a priori covariance matrix.")
     # Set methodological options
     estimation_input.define_estimation_settings(
-        save_state_history_per_iteration=True, save_residuals_and_parameters_per_iteration=True
+        save_state_history_per_iteration=False, save_residuals_and_parameters_per_iteration=True
     )
     from hydra.core.hydra_config import HydraConfig
 
-    # estimation_input.save_to_binary(HydraConfig.get().runtime.output_dir + "/estimation_input")
     logger.info("Starting estimation...")
-
-    # tudatpy's estimator prints its progression directly to the console from
-    # C++, bypassing Python logging. redirect_std captures that output to a
-    # per-run file; the file itself is attached to Aim below. The output is
-    # intentionally NOT re-logged into the pipeline afterwards (it used to be
-    # read back and re-emitted, which duplicated the whole run log).
-    estimation_log_path = Path(HydraConfig.get().runtime.output_dir) / "estimation_progression.log"
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+    estimation_log_path = output_dir / "estimation_log.log"
     try:
         with redirect_std(str(estimation_log_path)):
             estimation_output = estimator.perform_estimation(estimation_input)
     except Exception as e:
         logger.error("Estimation failed: %s", e)
         logger.info("Estimation progression logged to %s", estimation_log_path)
-        if not estimation_log_path.exists():
+        if not output_dir.exists():
             logger.warning("Unable to find estimation log file at %s", estimation_log_path)
-        raise
+        # raise
+        # Do not Raise, just log the error and return to avoid crashing the script
+        return
+    else:
+        logger.info("Estimation completed successfully.")
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
-    save_tudat_object(estimation_output, estimation_log_path.with_suffix(".tudat"))
-    save_tudat_object(observations, estimation_log_path.with_name("observations.tudat"))
-    logger.info("Estimation output saved to %s", estimation_log_path.with_suffix(".tudat"))
-    logger.info("Observations saved to %s", estimation_log_path.with_name("observations.tudat"))
-    logger.info("Estimation completed successfully.")
+    # save_tudat_object(estimation_output, output_dir / "estimation_output")
+    # save_tudat_object(observations, output_dir / "observations")
+    logger.info("Estimation output saved to %s", output_dir / "estimation_output.tudat")
+    logger.info("Observations saved to %s", output_dir / "observations.tudat")
+    logger.info("Final estimated parameters: %s", estimation_output.final_parameters)
 
-    # Log residual RMS per iteration to Aim
+    ############################################################################
+    ############################# LOG STATISTICS ###############################
+    ############################################################################
+
     num_iterations = estimation_output.residual_history.shape[1]
     logger.info("Logging per-iteration metrics to Aim...")
     for i in range(num_iterations):
@@ -458,108 +308,128 @@ def main(cfg: DictConfig):
     )
     logger.info("Logged summary metrics to Aim.")
 
-    logger.info("Estimation completed successfully.")
 
-    # Plot post-fit residuals
-    from orbitdet.visualization import Residuals
+    #################################################################
+    ######################## POST-FIT RESIDUALS #####################
+    #################################################################
+    logger.info("Propagating final estimated state to generate post-fit residuals...")
+    parameters = estimation_output.parameter_history[:, estimation_output.best_iteration]
+    logger.info(f"Best iteration {estimation_output.best_iteration} found parameters: {parameters}")
+    prop.initial_states = parameters
+    final_result = sim.create_dynamics_simulator(bodies, prop)
+    try: 
+        save_tudat_object(final_result.propagation_results, output_dir / "final_propagation_result")
+        logger.info("Final propagation result saved to %s", output_dir / "final_propagation_result.tudat")
+    except TypeError as e:
+        logger.warning("Failed to save final propagation result: %s", e)
 
-    fig_residuals, ax_residuals = Residuals(cfg, observations).plot()
+    Residuals(cfg, "postfit_residuals", observations).plot()
 
-    # Plot residual PSD
-    # residuals_psd_cfg = cfg.get("residuals_psd", {})
-    # window_length_days = residuals_psd_cfg.get("window_length_days", 30.0)
-    # fig_psd, ax_psd = ResidualsPSD(
-    #     cfg, observations, window_length_days, cfg.figures.get("residuals_psd", {})
-    # ).plot()
 
-    # Plot residual RMS per iteration
-    from orbitdet.visualization import ResidualRMSPerIteration
+    #############################################################################
+    ################################## Figures ##################################
+    #############################################################################
+    logger.info("Plotting figures...")
 
-    fig_rms, ax_rms = ResidualRMSPerIteration(cfg, estimation_output).plot()
-
-    # Plot parameter correlation heatmap
-    from orbitdet.visualization import ParameterCorrelationHeatmap
-
-    fig_corr, ax_corr = ParameterCorrelationHeatmap(cfg, estimation_output).plot()
-
-    # Plot parameter history per iteration
-    from orbitdet.visualization import ParameterHistoryPerIteration
-
-    fig_param, ax_param = ParameterHistoryPerIteration(cfg, estimation_output).plot()
-
-    # Plot covariance ellipses
-    from orbitdet.visualization import CovarianceEllipses
-
-    fig_ellipses, axes_ellipses = CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
-
-    from orbitdet.visualization import DifferencedDependentVariables
-
-    fig_diff, axes_diff = DifferencedDependentVariables(
+    ResidualQQ(cfg, observations).plot()
+    ResidualScatter(cfg, observations).plot()
+    ResidualHistogram(cfg, observations).plot()
+    ResidualRMSPerIteration(cfg, estimation_output).plot()
+    ParameterCorrelationHeatmap(cfg, estimation_output).plot()
+    ParameterHistoryPerIteration(cfg, estimation_output).plot()
+    CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
+    RSWDistance(
         cfg,
-        reference_result=estimation_output.simulation_results_per_iteration[0].dynamics_results,
-        comparison_results=[estimation_output.simulation_results_per_iteration[0].dynamics_results],
-        reference_dependent_variable=dep_vars[2],
-        comparison_dependent_variables=[dep_vars[1]],
-    ).plot()
-
-    # Plot RSW decomposition of relative position (Triton Spice vs Triton)
-    from orbitdet.visualization import RSWDistance
-
-    fig_rsw, axes_rsw = RSWDistance(
-        cfg,
-        estimation_output.simulation_results_per_iteration[-1].dynamics_results,
+        final_result.propagation_results,
         dep_vars[0],
         central_body="Neptune",
     ).plot()
 
-    # Plot dependent variable (Triton Spice relative position, Keplerian states)
-    from orbitdet.visualization import DependentVariable
+    # ====================================================================
+    # Propagate covariance and plot formal errors
+    # ====================================================================
+    logger.info("Propagating covariance over the full time arc ...")
+    state_transition_interface = estimator.state_transition_interface
+    start_epoch = float(ctx.start_epoch.to_float())  # full arc: both forward and backward from initial_epoch
+    end_epoch = float(ctx.end_epoch.to_float())
+    step_days = OmegaConf.select(cfg, "propagation.step_days", default=10.0)
+    step_seconds = step_days * 86400.0
+    output_times = np.arange(start_epoch, end_epoch, step_seconds)
 
-    fig_dep_relpos, axes_dep_relpos = DependentVariable(
-        cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[0]
-    ).plot()
-    fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
-        cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[1]
-    ).plot()
-    fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
-        cfg, estimation_output.simulation_results_per_iteration[-1].dynamics_results, dep_vars[2]
-    ).plot()
+    propagated_covariances = est_an.propagate_covariance(
+        estimation_output.covariance, state_transition_interface, output_times
+    )
+    propagated_formal_errors = est_an.propagate_formal_errors(
+        initial_covariance=estimation_output.covariance,
+        state_transition_interface=state_transition_interface,
+        output_times=output_times,
+    )
 
-    # Plot residual histogram, Q-Q, and scatter
-    from orbitdet.visualization import ResidualHistogram, ResidualQQ, ResidualScatter
+    epochs = np.array(list(propagated_formal_errors.keys()))
+    formal_errors = np.array(list(propagated_formal_errors.values()))
 
-    fig_hist, axes_hist = ResidualHistogram(cfg, observations).plot()
-    fig_qq, axes_qq = ResidualQQ(cfg, observations).plot()
-    fig_scatter, ax_scatter = ResidualScatter(cfg, observations).plot()
+    # Interpolate the estimated (post-fit) state to covariance epochs
+    logger.info("Interpolating estimated state to covariance epochs ...")
+    est_state_history = final_result.propagation_results.state_history
+    est_epochs_arr = np.array(list(est_state_history.keys()))
+    est_states_arr = np.array(list(est_state_history.values()))
+    # 6-DOF linear interpolation
+    est_states_interp = np.column_stack([
+        np.interp(epochs, est_epochs_arr, est_states_arr[:, i]) for i in range(6)
+    ])
 
-    # Save all figures to the output directory
+    # RSW rotation using the ESTIMATED state (consistent with RSWDistance class)
+    n_epochs = len(epochs)
+    fe_rsw = np.zeros((n_epochs, 6))
+    for i, epoch in enumerate(epochs):
+        state_est = est_states_interp[i]
+        rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(state_est)
+        full_rot = np.block([[rot_matrix, np.zeros((3, 3))], [np.zeros((3, 3)), rot_matrix]])
+        cov = propagated_covariances[epoch]
+        cov_rsw = full_rot @ cov @ full_rot.T
+        fe_rsw[i] = np.sqrt(np.diag(cov_rsw))
+
+    logger.info("Plotting propagated formal errors ...")
+    PropagatedFormalErrorsCartesian(cfg, epochs, formal_errors).plot()
+    PropagatedFormalErrorsRSW(cfg, epochs, fe_rsw).plot()
+    logger.info("Propagated formal errors plotted.")
+
+    # Compute RSW position differences at covariance epochs for uncertainty-vs-distance plot
+    # Uses estimated state for RSW frame definition (same pattern as RSWDistance class)
+    logger.info("Computing RSW distance at covariance propagation epochs ...")
+    rsw_at_cov_epochs = np.zeros((n_epochs, 3))
+    for i, epoch in enumerate(epochs):
+        spice_state = bodies.get("Triton Spice").ephemeris.cartesian_state(epoch)
+        est_state = est_states_interp[i]
+        rel_pos = spice_state[:3] - est_state[:3]
+        rot_matrix = frame_conversion.inertial_to_rsw_rotation_matrix(est_state)
+        rsw_at_cov_epochs[i] = rot_matrix @ rel_pos
+    rsw_sigma = fe_rsw[:, :3]
+
+    RSWDistanceWithUncertainty(cfg, epochs, rsw_at_cov_epochs, rsw_sigma).plot()
+    logger.info("RSW distance with uncertainty envelopes plotted.")
+    # from matplotlib import pyplot as plt
+    # plt.show()
+    # Save propagated formal errors as NumPy archive
+    output_dir = Path(HydraConfig.get().runtime.output_dir)
+    np.savez(
+        output_dir / "propagated_formal_errors.npz",
+        epochs=epochs,
+        formal_errors=formal_errors,
+        formal_errors_rsw=fe_rsw,
+    )
+    logger.info("Propagated formal errors saved to %s", output_dir / "propagated_formal_errors.npz")
+
+    # Log artifacts to Aim
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save TudatPy objects to binary .tudat files
-    logger.info("Saving TudatPy objects to disk...")
-    observations_path = save_tudat_object(observations, output_dir / "observations")
-    logger.info("Observation collection saved to %s", observations_path)
-
-    estimation_output_path = save_tudat_object(estimation_output, output_dir / "estimation_output")
-    logger.info("Estimation output saved to %s", estimation_output_path)
-
-    # The Plot base class already saved each figure as a PDF, logged it to Aim
-    # as a static image, and attached the PDF as an artifact reference. Only
-    # the config and binary TudatPy objects still need explicit references.
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact_reference(config_path)
-    aim_log_artifact_reference(observations_path.with_suffix(".tudat"))
-    aim_log_artifact_reference(estimation_output_path.with_suffix(".tudat"))
-    aim_log_artifact_reference(estimation_log_path.with_suffix(".tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
     logger.info("Attached artifacts to Aim.")
-
-    # fig_traj_path = output_dir / "triton_trajectory.pdf"
-    # fig_traj.savefig(fig_traj_path)
-    # logger.info(f"Triton trajectory plot saved to {fig_traj_path}")
-
-    # plt.show()
 
 
 if __name__ == "__main__":

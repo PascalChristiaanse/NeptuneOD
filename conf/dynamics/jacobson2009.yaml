@@ -1,0 +1,77 @@
+# @package _global_
+
+# Classical dynamical model for Triton state estimation.
+# Propagates Triton around Neptune within a full planetary system.
+
+# Frame settings
+global_frame_origin: "SSB"        # Jacobson formulates in ICRF from Neptune barycenter, but we use SSB for consistency with tudatpy.
+global_frame_orientation: "J2000" # J2000 or EME2000 is ICRF
+
+# Environment settings
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+use_default_body_settings: false
+
+bodies_to_create:
+  Neptune:
+    ephemeris:
+      type: "direct_spice"
+    gravity: "Jacobson2009"
+    rotation_model:
+      type: "Pole_Model_Jacobson2009"     # Appears to have incorrect values for pole orientation
+  Triton:
+    placeholder: True
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Sun:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+  Jupiter Barycenter:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+  Saturn Barycenter:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+  Uranus Barycenter:
+    gravity: "central"
+    ephemeris:
+      type: "direct_spice"
+  Mercury Barycenter:                # Augment Solar mass with mercury mass. This affects tritons orbit by 3m over 200 years (R. Jacobson, 2009).
+    gravity: "augmented_solar"
+  Venus Barycenter:                  # Augment Solar mass with mercury mass
+    gravity: "augmented_solar"
+  Earth Barycenter:
+    gravity: "augmented_solar"    # Augment Solar mass with mercury mass
+    ephemeris:
+      type: "direct_spice"
+    shape_model:
+      type: "oblate_spherical_spice"
+    rotation_model:
+      type: "GCRS_to_ITRS"
+      nutation_model: "iau_2006"
+  Mars Barycenter:               # Augment Solar mass with mercury mass
+    gravity: "augmented_solar"
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+
+# Integrator settings
+integrator:
+  type: "RKF78"
+  fixed_step_size: 3600

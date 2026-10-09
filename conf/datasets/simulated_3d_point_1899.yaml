@@ -1,0 +1,14 @@
+# Synthetic observations from ephemeris for reproducing the results of Jacobson et al. (2009) for Triton orbit determination
+# DE421 ephemeris coverage: 1899-10-20 to 2027-12-31; older observations exist, dont use this set if not using DE421 ephemeris
+
+name: "Synthetic observations from ephemeris"
+type: simulated
+file: null
+target: Triton
+observer: Neptune
+start_date_observation_period: "1890-01-01T12:00:00" # Start of DE421 coverage
+end_date_observation_period: "2026-12-31T12:00:00" # End of actual observations
+cadence: 86400.0 # Observation cadence in seconds
+observable_type: relative_cartesian_position
+noise_sigma: 0 # Standard deviation in meters
+

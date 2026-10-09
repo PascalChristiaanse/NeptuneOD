@@ -1,0 +1,50 @@
+# @package _global_
+
+# Experiment: WA-FIT-PL (Weighting Analysis — Fitted Pole + Libration).
+# Corresponds to the WA-FIT-PL analysis from thesis Chapter 6.
+#
+# Estimates:
+#   - Triton initial state
+#   - Neptune pole precession rates (alpha_dot, delta_dot)
+#
+# Uses:
+#   - Classical + Voyager data (combined)
+#   - IAU 2015 pole model (default dynamics; override for NEP097-fitted pole)
+#   - Residual-threshold outlier rejection (1.5 arcsec)
+#   - ID v2 weighting by default (override for weighting comparison)
+#
+# Reference trajectory: IAU 2015 propagation (override dynamics for FitPole).
+# For full thesis-faithful WA-FIT-PL, override dynamics with the
+# NEP097-fitted pole parameters (see Ch. 5 results).
+
+defaults:
+  - /data: classical_voyager
+  - /parameters: state_plus_pole_libration
+  - /weighting: id_v2
+  - /outlier_rejection: residual_threshold
+  - /logging: default
+  - _self_
+  - /figures/residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/dependent_variable
+  - /figures/dependent_variable_differenced@dependent_variable_differenced
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/RSW_distance
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 1963-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+initial_epoch: 1989-08-25T12:00:00  # Voyager 2 closest approach to Triton

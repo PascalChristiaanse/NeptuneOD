@@ -360,7 +360,7 @@ def test_direct_mode_attaches_sinks_to_root(tmp_path):
     od_logging.configure_logging(cfg, run_dir=tmp_path, use_queue=False)
 
     root = logging.getLogger()
-    assert od_logging.get_listener() is None
+    assert od_logging.get_listener() == (None, None)
     # No queued indirection in fallback mode.
     assert not any(isinstance(h, logging.handlers.QueueHandler) for h in root.handlers)
 

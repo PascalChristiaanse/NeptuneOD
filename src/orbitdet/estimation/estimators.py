@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 from omegaconf import DictConfig
 from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import parameters as param
@@ -39,10 +40,10 @@ def get_estimatable_parameter_settings(
                 estimated_parameters.append(param_setup.iau_rotation_model_pole_rate("Neptune"))
                 logger.info("\t - IAU rotation model pole rate")
             case "iau_rotation_model_pole_librations":
-                freqs: list[float] = []
-                estimated_parameters.append(
-                    param_setup.iau_rotation_model_pole_librations("Neptune", freqs)
-                )
+                w_n_1 = np.deg2rad(52.3836218446110/36525/24/3600)
+                w_n_2 = 2*np.deg2rad(52.3836218446110/36525/24/3600)                
+                freqs: list[float] = [w_n_1, w_n_2]
+                estimated_parameters.append(param_setup.iau_rotation_model_pole_librations('Neptune',freqs))
                 logger.info(f"\t - IAU rotation model pole librations (frequencies: {freqs})")
             case "neptune_GM":
                 estimated_parameters.append(param_setup.gravitational_parameter("Neptune"))

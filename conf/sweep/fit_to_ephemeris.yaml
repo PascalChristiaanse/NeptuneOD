@@ -21,10 +21,12 @@ hydra:
   sweeper:
     max_batch_size: 36
     params:
-      estimation.parameters_to_estimate.initial_state: [true]
       estimation.parameters_to_estimate.neptune_GM: [true, false]
       estimation.parameters_to_estimate.triton_GM: [true, false]
       estimation.parameters_to_estimate.iau_rotation_model_pole: [true, false]
       estimation.parameters_to_estimate.iau_rotation_model_pole_rate: [true, false]
-      estimation.parameters_to_estimate.neptune_j2_j4: [true, false]
+      estimation.parameters_to_estimate.iau_rotation_model_pole_librations: [true, false]
+
+estimation.parameters_to_estimate.initial_state: [true]
+estimation.parameters_to_estimate.neptune_j2_j4: [false]
       

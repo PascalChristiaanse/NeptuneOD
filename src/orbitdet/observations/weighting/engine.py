@@ -130,12 +130,40 @@ class WeightEngine:
                 logger.warning("WeightEngine: no weights computed for set '%s'", set_id)
                 continue
 
-            # Assign weights via Tudat's set_tabulated_weights
-            try:
-                obs_set.set_tabulated_weights(weights_array)
-            except Exception as exc:
-                logger.error("WeightEngine: failed to set weights for set '%s': %s", set_id, exc)
-                raise
+            if getattr(obs_set, "has_full_weight_matrix_contribution", False) and getattr(
+                self._strategy, "preserve_full_weight_matrix", False
+            ):
+                # The set carries a full (off-diagonal) archive weight matrix (e.g. the Gaia
+                # transit covariance).  Tudat adds the tabulated base weights on top of the full
+                # matrix, so applying the strategy weights here would double-count them.  Leave
+                # the full matrix untouched and only record the strategy weights for reporting.
+                logger.info(
+                    "WeightEngine [%s]: full archive weight matrix present; leaving weights "
+                    "untouched (strategy '%s' recorded for reporting only).",
+                    set_id,
+                    self._strategy.__class__.__name__,
+                )
+            else:
+                # Clear any pre-existing full weight-matrix contribution so it does not stack
+                # additively on top of the base weights we are about to assign.
+                if getattr(obs_set, "has_full_weight_matrix_contribution", False):
+                    try:
+                        obs_set.set_full_weight_matrix(np.zeros((0, 0)))
+                    except Exception as exc:
+                        logger.warning(
+                            "WeightEngine [%s]: could not clear full weight matrix: %s",
+                            set_id,
+                            exc,
+                        )
+
+                # Assign weights via Tudat's set_tabulated_weights
+                try:
+                    obs_set.set_tabulated_weights(weights_array)
+                except Exception as exc:
+                    logger.error(
+                        "WeightEngine: failed to set weights for set '%s': %s", set_id, exc
+                    )
+                    raise
 
             # Enrich with dataset metadata — pop FIFO per set_id
             meta_queue = meta_queues.get(set_id, [])
@@ -219,6 +247,37 @@ class WeightEngine:
                 if fs is not None:
                     fixed_sigmas = dict(fs)
             strategy_instance = strategy_cls(fixed_sigmas=fixed_sigmas)
+        elif strategy_name == "per_set":
+            per_set_config = {}
+            ps = OmegaConf.select(cfg, "per_set")
+            if ps is not None:
+                per_set_config = {str(k): dict(v) for k, v in ps.items()}
+            strategy_instance = strategy_cls(per_set_config=per_set_config)
+        elif strategy_name == "gaia_archive":
+            covariance_mode = str(
+                OmegaConf.select(cfg, "gaia_archive.covariance_mode", default="full_matrix")
+            )
+            scale = float(OmegaConf.select(cfg, "gaia_archive.scale", default=1.0))
+            strategy_instance = strategy_cls(covariance_mode=covariance_mode, scale=scale)
+        elif strategy_name == "voyager_fixed_gaia_archive":
+            node = OmegaConf.select(cfg, "voyager_fixed_gaia_archive")
+            if node is None:
+                node = OmegaConf.select(cfg, "weighting.voyager_fixed_gaia_archive")
+            voyager_ids = OmegaConf.select(node, "voyager_set_ids", default=None)
+            gaia_ids = OmegaConf.select(node, "gaia_set_ids", default=None)
+            gaia_mode = str(
+                OmegaConf.select(node, "gaia_covariance_mode", default="full_matrix")
+            )
+            gaia_scale = float(OmegaConf.select(node, "gaia_scale", default=1.0))
+            strategy_instance = strategy_cls(
+                voyager_set_ids=list(voyager_ids) if voyager_ids else None,
+                gaia_set_ids=list(gaia_ids) if gaia_ids else None,
+                gaia_covariance_mode=gaia_mode,
+                gaia_scale=gaia_scale,
+            )
+            # Let the strategy derive Voyager section sigmas from the grouping config.
+            if hasattr(strategy_instance, "set_grouping"):
+                strategy_instance.set_grouping(grouping)
         else:
             strategy_instance = strategy_cls()
 

@@ -1,0 +1,23 @@
+# @package _global_
+
+# Weighting: fixed sigmas for Voyager 2 pre/post encounter.
+# Pre-encounter: 1.0 arcsec per observation
+# Post-encounter: 4.0 arcsec per observation
+# Ground-based and other sets: residual-driven ID v2 weighting
+
+weighting:
+  enabled: true
+  strategy: fixed
+  min_sigma_arcsec: 0.005
+  grouping:
+    levels:
+      - type: section
+        sections:
+          - {name: "pre_encounter", start: -1e30, end: 618600000.0}
+          - {name: "post_encounter", start: 618600000.0, end: 1e30}
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1
+    fixed_sigmas:
+      "Voyager 2_pre_encounter": {ra: 1.0, dec: 1.0}
+      "Voyager 2_post_encounter": {ra: 4.0, dec: 4.0}

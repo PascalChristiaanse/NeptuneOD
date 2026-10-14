@@ -6,7 +6,7 @@ from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import environment_setup as env_setup
 from tudatpy.interface import spice
 
-from orbitdet.data.gaia_data import get_gaia_ephemeris
+from orbitdet.data.gaia import get_gaia_ephemeris
 from orbitdet.data.voyager_data import build_voyager_tabulated_state_history
 from orbitdet.reproducibility.runtime import RuntimeContext
 

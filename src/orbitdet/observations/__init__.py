@@ -39,7 +39,10 @@ from .weighting import (
     WeightingConfig,
     WeightStrategy,
     build_group_list,
+    clear_gaia_weights,
+    get_gaia_weights,
     register_weight_strategy,
+    store_gaia_weights,
 )
 from .weighting import (
     get_strategy_class as get_weight_strategy_class,
@@ -88,4 +91,7 @@ __all__ = [
     "register_weight_strategy",
     "get_weight_strategy_class",
     "list_registered_weight_strategies",
+    "store_gaia_weights",
+    "get_gaia_weights",
+    "clear_gaia_weights",
 ]

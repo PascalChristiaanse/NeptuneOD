@@ -1,0 +1,13 @@
+# @package _global_
+
+# Weighting: fixed sigma for Gaia observations.
+# Assigns a constant 10 mas sigma to all Gaia observations.
+# Ground-based and other sets: residual-driven ID v2 weighting.
+
+weighting:
+  enabled: true
+  strategy: fixed
+  min_sigma_arcsec: 0.005
+  grouping:
+    fixed_sigmas:
+      "Gaia": {ra: 0.100, dec: 0.100}

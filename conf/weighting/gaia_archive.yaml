@@ -1,0 +1,30 @@
+# @package _global_
+
+# Weighting: Gaia archive weights (from the Gaia transit covariance).
+#
+# The archive provides, per transit, the random + systematic error components
+# (with RA/DEC correlations).  Within a transit every RA/DEC sample is coupled
+# to every other sample (a 2N x 2N block for N CCD crossings), so this is the
+# only strategy that accounts for the Gaia intra-transit systematic correlation.
+# Ground-based and other sets are unaffected by these options (the strategy only
+# acts on sets that carry cached Gaia archive weights).
+#
+# Options (under `weighting.gaia_archive`):
+#   covariance_mode: "full_matrix" | "diagonal"
+#       - "full_matrix" (default): use the archive's full off-diagonal transit
+#         weight matrix.  The full matrix is carried by the Gaia observation
+#         sets; this strategy leaves it untouched.
+#       - "diagonal": use only the per-observation diagonal of the archive
+#         weight matrix (i.e. ignore the intra-transit correlations).  Taken
+#         from the diagonal of the archive weight matrix, so it equals
+#         1 / (random + systematic variance) per RA/DEC component.
+#   scale: <float> (default 1.0)
+#       Multiplicative factor applied to the archive weights.  Use > 1 to
+#       down-weight Gaia relative to other datasets, or < 1 to up-weight it.
+
+weighting:
+  enabled: true
+  strategy: gaia_archive
+  gaia_archive:
+    covariance_mode: full_matrix
+    scale: 1.0

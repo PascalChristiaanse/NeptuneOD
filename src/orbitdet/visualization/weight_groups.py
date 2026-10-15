@@ -86,8 +86,9 @@ class WeightGroups(Plot):
         alpha = _cfg_get(plot_cfg, "styling", "alpha", default=0.6)
         span_alpha = _cfg_get(plot_cfg, "styling", "span_alpha", default=0.08)
 
-        # Identify unique groups for colouring
-        unique_groups = sorted(df["group_id"].unique())
+        # Identify unique groups for colouring.  Coerce to str so a mixed-type
+        # column (e.g. a strategy that omitted group_id -> NaN) cannot raise.
+        unique_groups = sorted(df["group_id"].astype(str).unique())
         cmap = plt.get_cmap(cmap_name, len(unique_groups))
         group_to_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
 

@@ -12,9 +12,24 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
+from ..grouping import Group, GroupList
 from .base import WeightStrategy
+from .dataframe import (
+    build_weights_df as _build_weights_df,
+)
+from .dataframe import (
+    interleave_weights as _interleave_weights,
+)
+from .dataframe import (
+    observable_type_str as _observable_type_str,
+)
+from .dataframe import (
+    residuals_array as _residuals_array,
+)
+from .dataframe import (
+    rms as _rms,
+)
 from .gaia_cache import get_gaia_weights
-from .grouping import Group, GroupList
 from .registry import get_strategy_class, register_weight_strategy
 
 logger = logging.getLogger(__name__)
@@ -23,97 +38,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _ARCSEC_TO_RAD = np.pi / (180.0 * 3600.0)
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _rms(values: np.ndarray) -> float:
-    """Root-mean-square of finite values; returns 0 if no finite values."""
-    finite = values[np.isfinite(values)]
-    if finite.size == 0:
-        return 0.0
-    return float(np.sqrt(np.mean(np.square(finite))))
-
-
-def _residuals_array(observation_set: obs.SingleObservationSet) -> np.ndarray:
-    """Extract residuals as (n_obs, 2) array in radians.
-
-    Guards against 1D empty arrays.
-    """
-    residuals = np.array(observation_set.residuals)
-    if residuals.ndim == 1:
-        if residuals.shape[0] == 0:
-            return np.empty((0, 2))
-        # Single observation: shape (2,) -> (1, 2)
-        return residuals.reshape(1, 2)
-    return residuals
-
-
-def _build_weights_df(
-    n_obs: int,
-    times: np.ndarray,
-    residuals_rad: np.ndarray,
-    groups: GroupList,
-    weights_ra: np.ndarray,
-    weights_dec: np.ndarray,
-    strategy_name: str,
-    set_id: str,
-    level: str,
-    observable_type: str = "astrometric",
-) -> pd.DataFrame:
-    """Build a per-observation metadata DataFrame.
-
-    Each row corresponds to one observation and carries the group assignment
-    at the specified level, the RA/DEC residuals, and the assigned weights.
-
-    Parameters
-    ----------
-    observable_type : str
-        Human-readable type (e.g. ``"absolute"``, ``"relative"``).
-    """
-    # Build a group-id array at the finest granularity
-    group_ids = np.full(n_obs, "", dtype=object)
-    group_ra_rms = np.full(n_obs, np.nan)
-    group_dec_rms = np.full(n_obs, np.nan)
-    parent_ids = np.full(n_obs, "", dtype=object)
-    parent_levels = np.full(n_obs, "", dtype=object)
-
-    for g in groups:
-        if g.level == level:
-            ra_rms = _rms(residuals_rad[g.indices, 0])
-            dec_rms = _rms(residuals_rad[g.indices, 1])
-            for idx in g.indices:
-                group_ids[idx] = g.group_id
-                group_ra_rms[idx] = ra_rms
-                group_dec_rms[idx] = dec_rms
-                if g.parent_id:
-                    parent_ids[idx] = g.parent_id
-                if g.parent_level:
-                    parent_levels[idx] = g.parent_level
-
-    return pd.DataFrame(
-        {
-            "set_id": set_id,
-            "strategy": strategy_name,
-            "group_level": level,
-            "observable_type": observable_type,
-            "group_id": group_ids,
-            "parent_id": parent_ids,
-            "parent_level": parent_levels,
-            "time": times,
-            "ra_residual_rad": residuals_rad[:, 0],
-            "dec_residual_rad": residuals_rad[:, 1],
-            "ra_residual_arcsec": np.rad2deg(residuals_rad[:, 0]) * 3600.0,
-            "dec_residual_arcsec": np.rad2deg(residuals_rad[:, 1]) * 3600.0,
-            "group_ra_rms_arcsec": np.rad2deg(group_ra_rms) * 3600.0,
-            "group_dec_rms_arcsec": np.rad2deg(group_dec_rms) * 3600.0,
-            "weight_ra": weights_ra,
-            "weight_dec": weights_dec,
-        }
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1553,50 +1477,3 @@ class VoyagerFixedGaiaArchiveWeight(WeightStrategy):
         # Everything else: residual-driven ID v2 weighting.
         return IDv2Weight().compute_weights(observation_set, groups, set_id, min_sigma_arcsec)
 
-
-# ---------------------------------------------------------------------------
-# Shared utility
-# ---------------------------------------------------------------------------
-
-
-def _interleave_weights(
-    weights_ra: np.ndarray,
-    weights_dec: np.ndarray,
-) -> np.ndarray:
-    """Interleave RA and DEC weights into a flat array.
-
-    Tudat's ``set_tabulated_weights`` expects RA at even indices and DEC at
-    odd indices.
-    """
-    n = len(weights_ra)
-    result = np.empty(2 * n, dtype=float)
-    result[0::2] = weights_ra
-    result[1::2] = weights_dec
-    return result
-
-
-def _observable_type_str(observation_set: obs.SingleObservationSet) -> str:
-    """Return a human-readable string for the observable type.
-
-    Maps Tudat's ``ObservableType`` enum to a short label.
-
-    Currently supported:
-        - ``angular_position`` (type 1) → ``"absolute"``
-        - ``relative_angular_position`` (type 9) → ``"relative"``
-
-    Extend ``_OBSERVABLE_TYPE_LABELS`` to add new types.
-    """
-    from tudatpy.estimation.observable_models_setup import model_settings as obs_model_settings
-
-    _OBSERVABLE_TYPE_LABELS: dict[int, str] = {
-        1: "absolute",  # angular_position_type
-        9: "relative",  # relative_angular_position_type
-    }
-
-    obs_type = observation_set.observable_type
-    for type_id, label in _OBSERVABLE_TYPE_LABELS.items():
-        if obs_type == obs_model_settings.ObservableType(type_id):
-            return label
-    # Fallback for unrecognised types
-    logger.debug("Unrecognised observable type %s, falling back to 'absolute'", obs_type)
-    return "absolute"

@@ -130,7 +130,9 @@ def main(cfg: DictConfig):
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
         outlier_engine = OutlierEngine.from_config(outlier_cfg)
-        observations, rejection_metadata = outlier_engine.apply(observations, bodies)
+        observations, rejection_metadata = outlier_engine.apply(
+            observations, bodies, dataset_metadata=dataset_metadata
+        )
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
             rejection_metadata["n_accepted"],

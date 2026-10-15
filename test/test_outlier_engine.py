@@ -407,8 +407,8 @@ class TestOutlierEngineApply:
 
         filtered, metadata = engine.apply(collection, bodies)
 
-        def _find_set(per_set: list, set_id: str) -> dict | None:
-            return next((m for m in per_set if m["set_id"] == set_id), None)
+        def _find_set(per_set: dict, set_id: str) -> dict | None:
+            return next((m for m in per_set.values() if m["set_id"] == set_id), None)
 
         assert _find_set(metadata["per_set"], "689") is not None
         assert _find_set(metadata["per_set"], "690") is not None

@@ -28,11 +28,11 @@ hydra:
     timeout_min: 60
   sweep:
     dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
-    subdir: ${hydra.job.override_dirname}
+    subdir: ${hydra.job.num}
   sweeper:
     max_batch_size: 2
     params:
-      parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity,state_plus_rotation,state_plus_gravity
+      parameters: initial_state,state_plus_neptune_GM_rotation,state_plus_rotation,state_plus_pole_libration,state_plus_pole_position_libration
       data: classical_voyager,classical_voyager_gaia
 
 

@@ -14,7 +14,7 @@ hydra:
     nodes: 1
     gpus_per_node: 0 # set if relevant
     cpus_per_task: 1
-    timeout_min: 60
+    timeout_min: 240 # 4 HOURS
   sweep:
     dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.override_dirname}

@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from pathlib import Path
 
 import hydra
@@ -31,7 +32,6 @@ from orbitdet.simulation import (
     get_integrator_settings,
     get_propagator_settings,
 )
-from orbitdet.utility import save_tudat_object
 from orbitdet.visualization import (
     CovarianceEllipses,
     ParameterCorrelationHeatmap,
@@ -133,8 +133,10 @@ def main(cfg: DictConfig):
     outlier_cfg = OmegaConf.select(cfg, "outlier_rejection")
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
-        outlier_engine = OutlierEngine.from_config(outlier_cfg, default_grouping=default_grouping)
-        observations, rejection_metadata = outlier_engine.apply(observations, bodies)
+        outlier_engine = OutlierEngine.from_config(outlier_cfg)
+        observations, rejection_metadata = outlier_engine.apply(
+            observations, bodies, dataset_metadata=dataset_metadata
+        )
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
             rejection_metadata["n_accepted"],
@@ -275,8 +277,8 @@ def main(cfg: DictConfig):
         logger.info("Estimation completed successfully.")
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
-    save_tudat_object(estimation_output, output_dir / "estimation_output")
-    save_tudat_object(observations, output_dir / "observations")
+    # save_tudat_object(estimation_output, output_dir / "estimation_output")
+    # save_tudat_object(observations, output_dir / "observations")
     logger.info("Estimation output saved to %s", output_dir / "estimation_output.tudat")
     logger.info("Observations saved to %s", output_dir / "observations.tudat")
     logger.info("Final estimated parameters: %s", estimation_output.final_parameters)
@@ -423,11 +425,16 @@ def main(cfg: DictConfig):
     config_path = output_dir / "config.yaml"
     if config_path.exists():
         aim_log_artifact_reference(config_path)
-    aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
-    aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
-    aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
+    # aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
     logger.info("Attached artifacts to Aim.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as e:
+        logger.error("Unhandled exception: %s", e, exc_info=True)
+    finally:
+        sys.exit(0)

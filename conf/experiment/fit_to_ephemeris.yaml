@@ -5,7 +5,7 @@
 # - Triton initial state
 
 defaults:
-  - /datasets/simulated_3d_point_1899@datasets.simulated
+  - /datasets/simulated_3d_point_1950@datasets.simulated
   - /dynamics: jacobson2009
   - /kernels: jacobson2009
   - /parameters: all_supported
@@ -34,6 +34,6 @@ hydra:
     chdir: false
 
 # Time settings
-start_date: 1899-10-20T12:00:00 # DE421 coverage starts on 1899 JUL 29 00:00:00.000 (ET)
+start_date: 1949-10-20T12:00:00 # DE421 coverage starts on 1899 JUL 29 00:00:00.000 (ET)
 end_date: 2027-12-31T12:00:00 # DE421 coverage ends on 2053 OCT 09 00:00:00.000 (ET)
 initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton (Time is incorrect, its more like 09:10 UTC but this is fine)

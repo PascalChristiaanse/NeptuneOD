@@ -16,6 +16,14 @@ from .configs import (
     SimulatedObservationConfig,
 )
 from .factory import create_observation_dataset
+from .grouping import (
+    Group,
+    GroupList,
+    build_group_list,
+    partition_by_sections,
+    partition_by_set,
+    partition_by_timeframes,
+)
 from .helpers import get_observatory_info
 from .outlier_rejection import (
     OutlierEngine,
@@ -32,17 +40,8 @@ from .outlier_rejection import (
     list_registered_strategies as list_registered_outlier_strategies,
 )
 from .registry import get_factory, list_registered_types, register_dataset_factory
-from .grouping import (
-    Group,
-    GroupList,
-    build_group_list,
-    partition_by_sections,
-    partition_by_set,
-    partition_by_timeframes,
-)
 from .weighting import (
     WeightEngine,
-    WeightingConfig,
     WeightStrategy,
     clear_gaia_weights,
     get_gaia_weights,
@@ -89,7 +88,7 @@ __all__ = [
     # Weighting
     "WeightStrategy",
     "WeightEngine",
-    "WeightingConfig",
+    # Grouping (shared by weighting and outlier rejection)
     "Group",
     "GroupList",
     "build_group_list",

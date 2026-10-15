@@ -294,6 +294,12 @@ def main(cfg: DictConfig):
     # Log final residual summary metrics to Aim
     final_residuals = estimation_output.final_residuals
     logger.info("Logging summary metrics to Aim...")
+    try: 
+        covariance_condition = float(np.linalg.cond(estimation_output.covariance))
+    except np.linalg.LinAlgError as e:
+        logger.warning("Failed to compute covariance condition number: %s", e)
+        covariance_condition = float("nan")
+
     aim_log_metrics(
         {
             "residuals_rms": float(np.sqrt(np.mean(np.square(final_residuals)))),
@@ -303,7 +309,7 @@ def main(cfg: DictConfig):
             "num_observations": final_residuals.size,
             "num_iterations": num_iterations,
             "parameter_norm": float(np.linalg.norm(estimation_output.final_parameters)),
-            "covariance_condition": float(np.linalg.cond(estimation_output.covariance)),
+            "covariance_condition": covariance_condition,
         },
         context={"metric_type": "summary"},
     )

@@ -26,7 +26,7 @@ bodies_to_create:
     rotation_model:
       type: "Pole_Model_Jacobson2009"     # Appears to have incorrect values for pole orientation
   Triton:
-    placeholder: True
+    gravity: "central"
     ephemeris:
       type: "interpolated_spice"
       interpolator_cadance: 480

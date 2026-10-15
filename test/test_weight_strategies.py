@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from orbitdet.observations.weighting.grouping import Group, GroupList
+from orbitdet.observations.grouping import Group, GroupList
 
 # Re-import for the hybrid strategy
 from orbitdet.observations.weighting.strategies import (

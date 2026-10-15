@@ -32,13 +32,18 @@ from .outlier_rejection import (
     list_registered_strategies as list_registered_outlier_strategies,
 )
 from .registry import get_factory, list_registered_types, register_dataset_factory
-from .weighting import (
+from .grouping import (
     Group,
     GroupList,
+    build_group_list,
+    partition_by_sections,
+    partition_by_set,
+    partition_by_timeframes,
+)
+from .weighting import (
     WeightEngine,
     WeightingConfig,
     WeightStrategy,
-    build_group_list,
     clear_gaia_weights,
     get_gaia_weights,
     register_weight_strategy,
@@ -88,6 +93,9 @@ __all__ = [
     "Group",
     "GroupList",
     "build_group_list",
+    "partition_by_set",
+    "partition_by_timeframes",
+    "partition_by_sections",
     "register_weight_strategy",
     "get_weight_strategy_class",
     "list_registered_weight_strategies",

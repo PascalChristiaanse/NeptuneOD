@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from .grouping import GroupList
+from ..grouping import GroupList
 
 
 class WeightStrategy(ABC):

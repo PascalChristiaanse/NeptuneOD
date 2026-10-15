@@ -4,15 +4,15 @@ import numpy as np
 import pytest
 from omegaconf import OmegaConf
 
-from orbitdet.observations.weighting.grouping import (
+from orbitdet.observations.grouping import (
     Group,
     GroupList,
-    _split_by_gap,
     build_group_list,
     partition_by_sections,
     partition_by_set,
     partition_by_timeframes,
 )
+from orbitdet.observations.grouping.partitioners import _split_by_gap
 
 # ===========================================================================
 # Group data structure
@@ -502,8 +502,12 @@ class TestBuildGroupList:
         with pytest.raises(ValueError, match="must have 'name', 'start', and 'end'"):
             build_group_list(times, "obs1", config)
 
-    def test_set_level_type_is_ignored(self):
-        """An explicit 'set' level type should be a no-op."""
+    def test_explicit_set_level_is_addressable(self):
+        """An explicit 'set' level produces a real, addressable layer.
+
+        This supports strategies whose primary partition is "the whole set"
+        (e.g. per-file RMSE) and whose secondary partition is finer.
+        """
         times = np.array([0.0, 100.0, 200.0])
         config = OmegaConf.create(
             {
@@ -514,8 +518,15 @@ class TestBuildGroupList:
             }
         )
         gl = build_group_list(times, "obs1", config)
-        assert len(gl) == 1  # single timeframe (no gaps)
-        assert gl[0].level == "timeframe"
+        # One explicit set-level group + one timeframe group (no gaps).
+        assert len(gl) == 2
+        set_groups = gl.by_level("set")
+        assert len(set_groups) == 1
+        assert set_groups[0].layer == 0
+        tf_groups = gl.by_level("timeframe")
+        assert len(tf_groups) == 1
+        assert tf_groups[0].layer == 1
+        assert tf_groups[0].parent_id == "obs1"
 
     def test_empty_times(self):
         times = np.array([])

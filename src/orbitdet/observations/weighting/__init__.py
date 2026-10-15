@@ -10,7 +10,7 @@ from .base import WeightStrategy
 from .configs import WeightingConfig
 from .engine import WeightEngine
 from .gaia_cache import clear_gaia_weights, get_gaia_weights, store_gaia_weights
-from .grouping import Group, GroupList, build_group_list
+from ..grouping import Group, GroupList, build_group_list
 from .registry import get_strategy_class, list_registered_strategies, register_weight_strategy
 
 __all__ = [

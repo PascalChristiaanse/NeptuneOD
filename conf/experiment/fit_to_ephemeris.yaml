@@ -36,4 +36,4 @@ hydra:
 # Time settings
 start_date: 1899-10-20T12:00:00 # DE421 coverage starts on 1899 JUL 29 00:00:00.000 (ET)
 end_date: 2027-12-31T12:00:00 # DE421 coverage ends on 2053 OCT 09 00:00:00.000 (ET)
-initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton
+initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton (Time is incorrect, its more like 09:10 UTC but this is fine)

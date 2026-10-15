@@ -26,9 +26,7 @@ RECEIVER_KEY = "receiver"
 def _patch_links_receiver(monkeypatch):
     import tudatpy.estimation.observable_models_setup
 
-    monkeypatch.setattr(
-        tudatpy.estimation.observable_models_setup.links, "receiver", RECEIVER_KEY
-    )
+    monkeypatch.setattr(tudatpy.estimation.observable_models_setup.links, "receiver", RECEIVER_KEY)
 
 
 def _mock_time(epoch: float):
@@ -215,9 +213,7 @@ class TestGroupScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        grouping = OmegaConf.create(
-            {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
-        )
+        grouping = OmegaConf.create({"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]})
         # Group ids are "<set>_tf_0000"/"<set>_tf_0001"; match the first night.
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
@@ -243,9 +239,7 @@ class TestGroupScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        grouping = OmegaConf.create(
-            {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
-        )
+        grouping = OmegaConf.create({"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]})
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
             set_filter=None,

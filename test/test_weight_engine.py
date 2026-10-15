@@ -139,17 +139,31 @@ class TestWeightEngineFromConfig:
                     "type": "layered",
                     "combine": "geometric",
                     "layers": [
-                        {"level": "section", "mode": "fixed",
-                         "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0}},
+                        {
+                            "level": "section",
+                            "mode": "fixed",
+                            "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
+                        },
                         {"level": "timeframe", "mode": "rmse_descaled"},
                     ],
                 },
                 "grouping": {
                     "levels": [
-                        {"type": "section", "sections": [
-                            {"name": "pre_encounter", "start": -1e30, "end": -326688543.8172541},
-                            {"name": "post_encounter", "start": -326688543.8172541, "end": 1e30},
-                        ]},
+                        {
+                            "type": "section",
+                            "sections": [
+                                {
+                                    "name": "pre_encounter",
+                                    "start": -1e30,
+                                    "end": -326688543.8172541,
+                                },
+                                {
+                                    "name": "post_encounter",
+                                    "start": -326688543.8172541,
+                                    "end": 1e30,
+                                },
+                            ],
+                        },
                         {"type": "timeframe", "gap_threshold_hours": 8.0},
                     ],
                 },
@@ -396,8 +410,11 @@ class TestWeightEngineApply:
                 "strategy": {
                     "type": "layered",
                     "layers": [
-                        {"level": "set", "mode": "fixed",
-                         "sigmas": {"689": {"ra": 0.15, "dec": 0.15}}},
+                        {
+                            "level": "set",
+                            "mode": "fixed",
+                            "sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
+                        },
                     ],
                 },
                 "grouping": {"levels": [{"type": "set"}]},
@@ -418,8 +435,11 @@ class TestWeightEngineApply:
                 "strategy": {
                     "type": "layered",
                     "layers": [
-                        {"level": "set", "mode": "fixed",
-                         "sigmas": {"689": {"ra": 0.1, "dec": 0.2}}},
+                        {
+                            "level": "set",
+                            "mode": "fixed",
+                            "sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
+                        },
                     ],
                 },
                 "grouping": {"levels": [{"type": "set"}]},

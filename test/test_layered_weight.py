@@ -90,8 +90,10 @@ class TestLayeredWeightCompute:
                 {
                     "level": "section",
                     "mode": "fixed",
-                    "sigmas": {"pre_encounter": {"ra": 1.0, "dec": 1.0},
-                               "post_encounter": {"ra": 4.0, "dec": 4.0}},
+                    "sigmas": {
+                        "pre_encounter": {"ra": 1.0, "dec": 1.0},
+                        "post_encounter": {"ra": 4.0, "dec": 4.0},
+                    },
                 },
                 {"level": "timeframe", "mode": "rmse_descaled"},
             ],
@@ -139,8 +141,11 @@ class TestLayeredWeightCompute:
     def test_arithmetic_combine(self):
         strategy = LayeredWeight(
             layers=[
-                {"level": "section", "mode": "fixed", "sigmas": {"pre_encounter": 1.0,
-                                                                 "post_encounter": 4.0}},
+                {
+                    "level": "section",
+                    "mode": "fixed",
+                    "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
+                },
                 {"level": "timeframe", "mode": "rmse_descaled"},
             ],
             combine="arithmetic",

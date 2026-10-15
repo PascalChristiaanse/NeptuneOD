@@ -51,9 +51,7 @@ def build_strategy(spec: Any, grouping: Any = None):
     elif hasattr(spec, "items"):
         plain = to_plain(spec)
         if "type" not in plain:
-            raise ValueError(
-                f"Strategy descriptor must have a 'type' key, got keys {list(plain)}."
-            )
+            raise ValueError(f"Strategy descriptor must have a 'type' key, got keys {list(plain)}.")
         name = str(plain["type"])
         params = {k: v for k, v in plain.items() if k != "type"}
     else:

@@ -173,16 +173,30 @@ class TestRouterCompute:
                     "source": {
                         "type": "layered",
                         "layers": [
-                            {"level": "section", "mode": "fixed",
-                             "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0}},
+                            {
+                                "level": "section",
+                                "mode": "fixed",
+                                "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
+                            },
                         ],
                     },
                     "grouping": {
                         "levels": [
-                            {"type": "section", "sections": [ # ignore line too long 
-                                {"name": "pre_encounter", "start": -1e30, "end": -326688543.8172541}, # noqa: E501
-                                {"name": "post_encounter", "start": -326688543.8172541, "end": 1e30}, # noqa: E501
-                            ]},
+                            {
+                                "type": "section",
+                                "sections": [  # ignore line too long
+                                    {
+                                        "name": "pre_encounter",
+                                        "start": -1e30,
+                                        "end": -326688543.8172541,
+                                    },  # noqa: E501
+                                    {
+                                        "name": "post_encounter",
+                                        "start": -326688543.8172541,
+                                        "end": 1e30,
+                                    },  # noqa: E501
+                                ],
+                            },
                         ]
                     },
                 }
@@ -190,8 +204,10 @@ class TestRouterCompute:
             default="id",
         )
         obs_set = _make_obs_set(
-            [-326688643.8172541, 618600100.0], [[1e-6, 1e-6], [1e-6, 1e-6]],
-            body_name="Voyager 2", reference_point="",
+            [-326688643.8172541, 618600100.0],
+            [[1e-6, 1e-6], [1e-6, 1e-6]],
+            body_name="Voyager 2",
+            reference_point="",
         )
         # Engine-level groups are wrong for this route; the route must rebuild.
         engine_groups = GroupList(
@@ -211,11 +227,17 @@ class TestRouterFromConfig:
                     "type": "router",
                     "default": {"type": "id_v2"},
                     "routes": [
-                        {"match": {"set_id_contains": ["Gaia"]},
-                         "source": {"type": "gaia_archive"}},
-                        {"match": {"set_id_contains": ["Voyager 2"]},
-                         "source": {"type": "layered",
-                                    "layers": [{"level": "set", "mode": "rmse"}]}},
+                        {
+                            "match": {"set_id_contains": ["Gaia"]},
+                            "source": {"type": "gaia_archive"},
+                        },
+                        {
+                            "match": {"set_id_contains": ["Voyager 2"]},
+                            "source": {
+                                "type": "layered",
+                                "layers": [{"level": "set", "mode": "rmse"}],
+                            },
+                        },
                     ],
                 },
                 "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},

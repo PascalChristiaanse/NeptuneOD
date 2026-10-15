@@ -884,5 +884,3 @@ class TestHybridArithmeticWeight:
         w, df = strategy.compute_weights(obs_set, groups, "obs1")
         assert len(w) == 2
         assert df["group_level"].iloc[0] == "set"
-
-

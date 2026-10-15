@@ -332,9 +332,7 @@ class OutlierEngine:
             t_start = g.metadata.get("t_start")
             t_end = g.metadata.get("t_end")
             if t_start is None or t_end is None:
-                logger.warning(
-                    "Group '%s' has no time bounds; cannot scope by group.", g.name
-                )
+                logger.warning("Group '%s' has no time bounds; cannot scope by group.", g.name)
                 continue
             windows.append((float(t_start), float(t_end)))
             n_group += g.size
@@ -458,9 +456,7 @@ class OutlierEngine:
                 kwargs["epochs_to_remove"] = list(kwargs.pop("epochs"))
 
             strategy_instance = cls_strategy(**kwargs)
-            scoped_strategies.append(
-                _ScopedStrategy(strategy_instance, set_filter, group_filter)
-            )
+            scoped_strategies.append(_ScopedStrategy(strategy_instance, set_filter, group_filter))
 
         return cls(scoped_strategies, grouping=grouping)
 

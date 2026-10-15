@@ -93,8 +93,11 @@ def test_layered_group_id_is_string_not_nan():
     """Regression: layered previously omitted group_id, yielding NaN on concat."""
     strategy = LayeredWeight(
         layers=[
-            {"level": "section", "mode": "fixed",
-             "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0}},
+            {
+                "level": "section",
+                "mode": "fixed",
+                "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
+            },
             {"level": "timeframe", "mode": "rmse_descaled"},
         ]
     )
@@ -102,14 +105,34 @@ def test_layered_group_id_is_string_not_nan():
     obs_set = _make_obs_set([0.0, 1.0, 2.0, 100.0], residuals)
     groups = GroupList(
         [
-            Group(indices=np.array([0, 1, 2], dtype=int), group_id="689_pre_encounter",
-                  level="section", layer=0, metadata={"section_name": "pre_encounter"}),
-            Group(indices=np.array([3], dtype=int), group_id="689_post_encounter",
-                  level="section", layer=0, metadata={"section_name": "post_encounter"}),
-            Group(indices=np.array([0, 1, 2], dtype=int), group_id="689_tf_0000",
-                  level="timeframe", layer=1, metadata={"t_start": 0.0, "t_end": 2.0}),
-            Group(indices=np.array([3], dtype=int), group_id="689_tf_0001",
-                  level="timeframe", layer=1, metadata={"t_start": 100.0, "t_end": 100.0}),
+            Group(
+                indices=np.array([0, 1, 2], dtype=int),
+                group_id="689_pre_encounter",
+                level="section",
+                layer=0,
+                metadata={"section_name": "pre_encounter"},
+            ),
+            Group(
+                indices=np.array([3], dtype=int),
+                group_id="689_post_encounter",
+                level="section",
+                layer=0,
+                metadata={"section_name": "post_encounter"},
+            ),
+            Group(
+                indices=np.array([0, 1, 2], dtype=int),
+                group_id="689_tf_0000",
+                level="timeframe",
+                layer=1,
+                metadata={"t_start": 0.0, "t_end": 2.0},
+            ),
+            Group(
+                indices=np.array([3], dtype=int),
+                group_id="689_tf_0001",
+                level="timeframe",
+                layer=1,
+                metadata={"t_start": 100.0, "t_end": 100.0},
+            ),
         ]
     )
 

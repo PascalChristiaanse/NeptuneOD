@@ -939,5 +939,3 @@ class GaiaArchiveWeight(WeightStrategy):
             dec_id_v2_sigma if tf_groups else dec_sigma,
         )
         return weights_array, df
-
-

@@ -125,10 +125,15 @@ def main(cfg: DictConfig):
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
+    # Shared top-level grouping.  Each subsystem may override it with its own
+    # `grouping:` node (an outlier-rejection group need not equal a weighting
+    # group), but by default both use the same partitioning.
+    default_grouping = OmegaConf.select(cfg, "grouping")
+
     outlier_cfg = OmegaConf.select(cfg, "outlier_rejection")
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
-        outlier_engine = OutlierEngine.from_config(outlier_cfg)
+        outlier_engine = OutlierEngine.from_config(outlier_cfg, default_grouping=default_grouping)
         observations, rejection_metadata = outlier_engine.apply(observations, bodies)
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
@@ -156,7 +161,7 @@ def main(cfg: DictConfig):
     weighting_cfg = OmegaConf.select(cfg, "weighting")
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
         logger.info("Applying weighting...")
-        weight_engine = WeightEngine.from_config(weighting_cfg)
+        weight_engine = WeightEngine.from_config(weighting_cfg, default_grouping=default_grouping)
         from hydra.core.hydra_config import HydraConfig
 
         output_dir = Path(HydraConfig.get().runtime.output_dir)

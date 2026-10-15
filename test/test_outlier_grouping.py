@@ -285,7 +285,7 @@ class TestSectionScopedApplication:
     def test_pre_encounter_tighter_than_post(self, patch_tudat_filtering):
         encounter = -326688543.8172541
         epochs = [
-            -100.0,      # pre
+            encounter - 100.0,  # pre
             encounter + 100.0,  # post
         ]
         residuals = np.array([[9e-6, 9e-6], [9e-6, 9e-6]])

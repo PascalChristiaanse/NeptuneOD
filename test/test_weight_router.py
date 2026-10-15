@@ -190,8 +190,8 @@ class TestRouterCompute:
             default="id",
         )
         obs_set = _make_obs_set(
-            [-100.0, 618600100.0], [[1e-6, 1e-6], [1e-6, 1e-6]], body_name="Voyager 2",
-            reference_point="",
+            [-326688643.8172541, 618600100.0], [[1e-6, 1e-6], [1e-6, 1e-6]],
+            body_name="Voyager 2", reference_point="",
         )
         # Engine-level groups are wrong for this route; the route must rebuild.
         engine_groups = GroupList(

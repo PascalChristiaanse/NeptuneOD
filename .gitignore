@@ -5,6 +5,7 @@ data/kernels
 data/raw
 data/other
 conf/datasets/generated
+*.code-workspace
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

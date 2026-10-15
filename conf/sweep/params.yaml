@@ -1,0 +1,39 @@
+# @package _global_
+
+# Sweep: 8 experiments = 6 parameter combos x 2 data variants (with/without Voyager).
+# Run with: python scripts/solve_least_squares.py --multirun --config-name sweep/params_x_data
+
+defaults:
+  - /experiment: classic_triton_state
+  - _self_
+  - override /hydra/launcher: submitit_local
+  - override /weighting: voyager_fixed_gaia_archive
+hydra:
+  mode: MULTIRUN
+  launcher:
+    # One directory per submitit job under the sweep output dir. The submitit
+    # plugin writes "<job_id>_<task>_log.out" / ".err" into this folder, so the
+    # "/%j" segment is what gives each job its own directory. Overriding this to
+    # ${hydra.sweep.dir} (as it once was) flattened every job's logs into a
+    # single folder where files could only be told apart by PID.
+    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
+    # Keep stderr separate from stdout so a job's .err file contains the
+    # WARNING/ERROR records routed there by the logging pipeline, rather than
+    # the whole run log. See docs/LOGGING_ARCHITECTURE_REPORT.md.
+    stderr_to_stdout: false
+    tasks_per_node: 1
+    nodes: 1
+    gpus_per_node: 0 # set if relevant
+    cpus_per_task: 1
+    timeout_min: 60
+  sweep:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  sweeper:
+    max_batch_size: 2
+    params:
+      parameters: initial_state,state_plus_neptune_GM,state_plus_neptune_GM_rotation,state_plus_neptune_GM_gravity,state_plus_rotation,state_plus_gravity
+      data: classical_voyager,classical_voyager_gaia
+
+
+weighting.stragegy.default.type: id_v2

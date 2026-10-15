@@ -53,6 +53,7 @@ bodies_to_create:
     gravity: "augmented_solar"
   Earth Barycenter:
     gravity: "augmented_solar"    # Augment Solar mass with mercury mass
+  Earth:
     ephemeris:
       type: "direct_spice"
     shape_model:

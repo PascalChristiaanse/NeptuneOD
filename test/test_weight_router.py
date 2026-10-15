@@ -179,9 +179,9 @@ class TestRouterCompute:
                     },
                     "grouping": {
                         "levels": [
-                            {"type": "section", "sections": [
-                                {"name": "pre_encounter", "start": -1e30, "end": -326688543.8172541},
-                                {"name": "post_encounter", "start": -326688543.8172541, "end": 1e30},
+                            {"type": "section", "sections": [ # ignore line too long 
+                                {"name": "pre_encounter", "start": -1e30, "end": -326688543.8172541}, # noqa: E501
+                                {"name": "post_encounter", "start": -326688543.8172541, "end": 1e30}, # noqa: E501
                             ]},
                         ]
                     },

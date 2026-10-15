@@ -31,7 +31,7 @@ export HYDRA_FULL_ERROR=1
 
 module load miniconda3
 conda activate NeptuneOD
-cd ~/NeptuneOD || { echo "FAIL: ~/NeptuneOD not found"; exit 1; }
+cd ~/Documents/NeptuneOD || { echo "FAIL: ~/NeptuneOD not found"; exit 1; }
 
 echo "=== WP7 validation: logging-pipeline soak ==="
 echo "Host: $(hostname)"

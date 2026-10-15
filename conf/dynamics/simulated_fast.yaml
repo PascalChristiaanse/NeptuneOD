@@ -1,0 +1,40 @@
+# @package _global_
+
+# Super-simplified dynamics model for fast test runs.
+# Only Neptune, the Sun, and Triton are included.
+# No Earth, no other planets, no rotation models.
+
+global_frame_origin: "SSB"
+global_frame_orientation: "ECLIPJ2000"
+
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+bodies_to_create:
+  Neptune:
+    gravity: "central"
+  Triton:
+    gravity: "central"
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Sun:
+    gravity: "central"
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+
+integrator:
+  type: "RKF78"
+  fixed_step_size: 7200   # 2-hour step (faster than 1-hour)

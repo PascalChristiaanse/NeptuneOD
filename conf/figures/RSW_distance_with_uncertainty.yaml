@@ -1,0 +1,24 @@
+# @package _global_
+
+RSW_distance_with_uncertainty:
+  output_file: "rsw_distance_with_uncertainty.pdf"
+  figure:
+    width: 16.54
+    height: 11.0
+  titles:
+    r: "Radial (R)"
+    s: "Transverse (S)"
+    w: "Cross-track (W)"
+    norm: "L2 Norm of RSW"
+    suptitle: "RSW Distance with 1-σ and 3-σ Uncertainty Envelopes"
+  axes:
+    x_label: "Epoch"
+    y_label: "Distance [m]"
+    hover_x_label: "Epoch"
+    hover_y_label: "Distance [m]"
+  style:
+    line: "k-"
+    linewidth: 0.8
+    envelope_color: "#0CA5B0"
+    sigma1_alpha: 0.25
+    sigma3_alpha: 0.1

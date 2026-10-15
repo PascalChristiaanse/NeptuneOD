@@ -112,17 +112,31 @@ class ResidualQQ(Plot):
             if len(obs_set.observation_times) == 0:
                 continue
 
-            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-            if observatory_code == "":
-                # Missing reference points imply spacecraft which use receiver name instead for info
-                # lookup and labeling
-                observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                info = {"code": observatory_code}
-                info["name"] = observatory_name
-                info["region"] = "Spacecraft"
+            link_ends = obs_set.link_definition.link_ends
+
+            # Resolve a display label for this observation set.
+            if links.receiver in link_ends:
+                ref_point = link_ends[links.receiver].reference_point
+                if ref_point == "":
+                    body = link_ends[links.receiver].body_name
+                    info = {"code": "", "name": body, "region": "Spacecraft"}
+                else:
+                    info = get_observatory_info(cfg, ref_point)
+            elif links.observer in link_ends:
+                body = link_ends[links.observer].body_name
+                info = {"code": "", "name": body, "region": body}
             else:
-                info = get_observatory_info(cfg, observatory_code)
-            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+                first_key = next(iter(link_ends.keys()))
+                body = link_ends[first_key].body_name
+                info = {"code": "", "name": body, "region": body}
+
+            # Determine target (observed body)
+            if links.transmitter in link_ends:
+                target_name = link_ends[links.transmitter].body_name
+            elif links.observed_body in link_ends:
+                target_name = link_ends[links.observed_body].body_name
+            else:
+                target_name = list(link_ends.values())[-1].body_name
             color = colors(set_index % colors.N)
             marker = marker_types[set_index % len(marker_types)]
 

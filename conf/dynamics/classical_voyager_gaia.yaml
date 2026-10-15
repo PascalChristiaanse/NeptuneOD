@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - /dynamics/classical
+  - _self_
+
+# Extend with Gaia body
+bodies_to_create:
+  Gaia:
+    ephemeris:
+      type: "tabulated_from_gaia"
+      source_ids: [-4293959295]
+      geocentric: True
+      filter_outcomes: false
+  Voyager 2:
+    ephemeris:
+      relative_to: "Neptune Barycenter"
+      type: "tabulated_from_ancillary_file"

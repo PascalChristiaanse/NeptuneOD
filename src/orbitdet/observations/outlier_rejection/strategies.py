@@ -79,7 +79,7 @@ class ResidualThresholdOutlier(OutlierStrategy):
             use_opposite_condition=True,
         )
         rejected_set = obs.create_filtered_observation_set(observation_set, reject_filter)
-        
+
         # Collect metadata
         epochs_all = _get_epochs_float(observation_set)
         epochs_kept = _get_epochs_float(filtered_set)
@@ -89,7 +89,7 @@ class ResidualThresholdOutlier(OutlierStrategy):
             raise ValueError(
                 "ResidualThresholdOutlier: accepted + rejected epochs do not match total epochs"
             )
-        
+
         metadata: dict[str, Any] = {
             "strategy": "residual_threshold",
             "threshold_arcsec": self._threshold_rad / _ARCSEC_TO_RAD,

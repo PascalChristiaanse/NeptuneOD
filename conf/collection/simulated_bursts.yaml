@@ -1,0 +1,7 @@
+# @package _global_
+# Example observation collection: Simulated bursts only
+
+defaults:
+  - /datasets/simulated_bursts@datasets.simulated
+
+name: "Simulated bursts collection"

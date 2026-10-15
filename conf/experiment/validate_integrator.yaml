@@ -21,9 +21,9 @@ hydra:
     chdir: false
 
 # Time settings — configurable via override
-start_date: 2000-1-1T12:00:00
-end_date: 2000-1-31T12:00:00
-initial_epoch: 2000-1-1T12:00:00
+start_date: 1989-08-25T12:00:00
+end_date: 2025-1-31T12:00:00
+initial_epoch: 1989-08-25T12:00:00
 
 # Validation settings
 validation:

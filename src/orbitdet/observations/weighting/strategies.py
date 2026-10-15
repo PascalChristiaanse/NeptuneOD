@@ -30,6 +30,7 @@ from .dataframe import (
     rms as _rms,
 )
 from .gaia_cache import get_gaia_weights
+from .layered import LayeredWeight  # noqa: F401  (registers the "layered" strategy)
 from .registry import get_strategy_class, register_weight_strategy
 
 logger = logging.getLogger(__name__)

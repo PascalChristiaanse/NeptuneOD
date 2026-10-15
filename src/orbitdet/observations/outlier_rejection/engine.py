@@ -90,6 +90,7 @@ class OutlierEngine:
         self,
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
+        dataset_metadata: dict[str, list[dict]] | None = None,
     ) -> tuple[obs.ObservationCollection, dict[str, Any]]:
         """Apply all strategies in sequence to every observation set.
 
@@ -99,6 +100,12 @@ class OutlierEngine:
             The observation collection to filter.  Not modified in place.
         bodies : SystemOfBodies
             The system of bodies (passed to each strategy).
+        dataset_metadata : dict[str, list[dict]], optional
+            Mapping from observatory-code set_id to a list of metadata dicts
+            (one per dataset config that produced observations for that
+            observatory).  Each dict has a ``dataset_id`` key (e.g. ``nm0083``).
+            When provided, the per-set report uses ``{dataset_id}_{obs_code}``
+            as the set identifier, giving unique and meaningful keys.
 
         Returns
         -------
@@ -109,7 +116,7 @@ class OutlierEngine:
               with per-strategy metadata as values.
         """
         filtered_collection, rejected_collection, summary = self.apply_with_rejected(
-            collection, bodies
+            collection, bodies, dataset_metadata=dataset_metadata
         )
         return filtered_collection, summary
 
@@ -117,6 +124,7 @@ class OutlierEngine:
         self,
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
+        dataset_metadata: dict[str, list[dict]] | None = None,
     ) -> tuple[obs.ObservationCollection, obs.ObservationCollection, dict[str, Any]]:
         """Apply all strategies and also return the rejected observations.
 
@@ -130,6 +138,12 @@ class OutlierEngine:
             The observation collection to filter.  Not modified in place.
         bodies : SystemOfBodies
             The system of bodies (passed to each strategy).
+        dataset_metadata : dict[str, list[dict]], optional
+            Mapping from observatory-code set_id to a list of metadata dicts
+            (one per dataset config that produced observations for that
+            observatory).  Each dict has a ``dataset_id`` key (e.g. ``nm0083``).
+            When provided, the per-set report uses ``{dataset_id}_{obs_code}``
+            as the set identifier, giving unique and meaningful keys.
 
         Returns
         -------
@@ -147,17 +161,34 @@ class OutlierEngine:
             len(all_sets),
         )
 
+        # Build a FIFO queue per observatory-code set_id from dataset_metadata
+        meta_queues: dict[str, list[dict]] = {}
+        if dataset_metadata:
+            meta_queues = {k: list(v) for k, v in dataset_metadata.items()}
+
         filtered_sets: list[obs.SingleObservationSet] = []
         rejected_sets: list[obs.SingleObservationSet] = []
         per_set_metadata: list[dict[str, Any]] = []
 
         for obs_set in all_sets:
-            set_id = get_set_identifier(obs_set)
+            obs_code = get_set_identifier(obs_set)
             current_set = obs_set
+
+            # Resolve a unique, meaningful set_id using dataset_metadata
+            meta_queue = meta_queues.get(obs_code, [])
+            if meta_queue:
+                meta = meta_queue.pop(0)
+                dataset_id = meta.get("dataset_id", obs_code)
+                set_id = f"{dataset_id}_{obs_code}"
+            else:
+                set_id = obs_code
+
             set_metadata: dict[str, Any] = {"set_id": set_id, "strategies": []}
 
             for scoped in self._strategies:
-                if not scoped.applies_to(set_id):
+                # The sets filter in configs uses observatory codes (e.g. "689", "Voyager 2"),
+                # so we check against the raw observatory code, not the composite key.
+                if not scoped.applies_to(obs_code):
                     logger.debug(
                         "Skipping strategy '%s' for set '%s' (not in filter)",
                         scoped.strategy.__class__.__name__,

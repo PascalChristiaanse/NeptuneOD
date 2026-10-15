@@ -1,23 +1,38 @@
 # @package _global_
 
-# Weighting: fixed sigmas for Voyager 2 pre/post encounter.
-# Pre-encounter: 1.0 arcsec per observation
-# Post-encounter: 4.0 arcsec per observation
-# Ground-based and other sets: residual-driven ID v2 weighting
+# Weighting: Voyager 2 fixed 1" pre / 4" post encounter (others -> ID v2).
+#
+# Router-shaped: the Voyager 2 set is routed to a `layered` strategy whose only
+# layer is a fixed section sigma (no timeframe clustering).  Other sets use
+# ID v2.  Add a timeframe layer to `layers` for the clustered variant.
 
 weighting:
   enabled: true
-  strategy: fixed
   min_sigma_arcsec: 0.005
+  strategy:
+    type: router
+    default:
+      type: id_v2
+    routes:
+      - match:
+          set_id_contains: ["Voyager 2"]
+        source:
+          type: layered
+          combine: geometric
+          layers:
+            - level: section
+              mode: fixed
+              sigmas:
+                pre_encounter:  {ra: 1.0, dec: 1.0}
+                post_encounter: {ra: 4.0, dec: 4.0}
+        grouping:
+          levels:
+            - type: section
+              sections:
+                - {name: "pre_encounter",  start: -1e30,       end: -326688543.8172541}
+                - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
   grouping:
     levels:
-      - type: section
-        sections:
-          - {name: "pre_encounter", start: -1e30, end: 618600000.0}
-          - {name: "post_encounter", start: 618600000.0, end: 1e30}
       - type: timeframe
         gap_threshold_hours: 8.0
         min_obs_per_frame: 1
-    fixed_sigmas:
-      "Voyager 2_pre_encounter": {ra: 1.0, dec: 1.0}
-      "Voyager 2_post_encounter": {ra: 4.0, dec: 4.0}

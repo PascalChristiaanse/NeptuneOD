@@ -235,5 +235,4 @@ class ResidualScatter(Plot):
         ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.set_tight_layout(True)
 
-
         return fig, ax

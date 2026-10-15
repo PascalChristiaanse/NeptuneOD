@@ -53,27 +53,19 @@ def get_estimatable_parameter_settings(
                 logger.info("\t - Initial State")
                 continue  # initial state is already added as a group parameter
             case "iau_rotation_model_pole":
-                estimated_parameters.append(
-                    param_setup.iau_rotation_model_pole("Neptune")
-                )
+                estimated_parameters.append(param_setup.iau_rotation_model_pole("Neptune"))
                 logger.info("\t - IAU rotation model pole")
             case "iau_rotation_model_pole_rate":
-                estimated_parameters.append(
-                    param_setup.iau_rotation_model_pole_rate("Neptune")
-                )
+                estimated_parameters.append(param_setup.iau_rotation_model_pole_rate("Neptune"))
                 logger.info("\t - IAU rotation model pole rate")
             case "iau_rotation_model_pole_librations":
                 freqs = _resolve_libration_frequencies(parameters)
                 estimated_parameters.append(
-                    param_setup.iau_rotation_model_pole_librations(
-                        "Neptune", freqs
-                    )
+                    param_setup.iau_rotation_model_pole_librations("Neptune", freqs)
                 )
                 logger.info(f"\t - IAU rotation model pole librations (frequencies: {freqs})")
             case "neptune_GM":
-                estimated_parameters.append(
-                    param_setup.gravitational_parameter("Neptune")
-                )
+                estimated_parameters.append(param_setup.gravitational_parameter("Neptune"))
                 logger.info("\t - Neptune gravitational parameter")
             case "neptune_j2_j4":
                 block_indices = [
@@ -89,9 +81,7 @@ def get_estimatable_parameter_settings(
                 )
                 logger.info("\t - Neptune J2 and J4 spherical harmonics coefficients")
             case _:
-                raise ValueError(
-                    f"Unknown parameter {param_name} specified for estimation"
-                )
+                raise ValueError(f"Unknown parameter {param_name} specified for estimation")
 
     return estimated_parameters
 

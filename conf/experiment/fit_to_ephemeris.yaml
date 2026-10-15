@@ -8,7 +8,7 @@ defaults:
   - /datasets/simulated_3d_point_1899@datasets.simulated
   - /dynamics: jacobson2009
   - /kernels: jacobson2009
-  - /parameters: initial_state
+  - /parameters: all_supported
   - /logging: default
   - _self_ # Apply experiment config fields after collections
   - /figures/prefit_residuals_spice@figures.prefit_residuals_spice

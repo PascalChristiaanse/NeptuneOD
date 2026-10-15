@@ -5,10 +5,12 @@
 # with half the timestep. The difference is an estimate of the local error.
 
 defaults:
-  - /dynamics: validation_integrator
+  - /dynamics: classical
   - /kernels: classical
   - /logging: default
   - _self_
+
+use_default_kernels: true
 
 seed: 42
 

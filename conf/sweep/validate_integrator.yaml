@@ -28,6 +28,6 @@ hydra:
       # Timesteps: 0.5h, 1h, 2h, 4h, 8h, 16h, 32h (in seconds)
       validation.timestep: 1800,3600,7200,14400,28800,57600,115200
       # Integrator types to test
-      integrator.type: RKF78,RK4,RKF89,RKV89,RKF108,RKF1210,RKF1412,BulirschStoer6,BulirschStoer8,BulirschStoer10
+      integrator.type: RKF78,RKF89,RKV89,RKF108,RKF1210,RKF1412,BulirschStoer6,BulirschStoer8,BulirschStoer10
       # Validation strategy
       validation.strategy: richardson

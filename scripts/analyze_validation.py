@@ -10,6 +10,13 @@ Usage
 
     python scripts/analyze_validation.py --input-dir results/validate_integrator/<run>/
     python scripts/analyze_validation.py --input-dir results/validate_interpolator/<run>/
+
+Every figure draws a configurable horizontal reference line on the error
+(y) axis. It defaults to 14 km — one tenth of Gaia's estimated resolution of
+Triton (~140 km) — and can be overridden on the command line::
+
+    python scripts/analyze_validation.py --reference-line-value 5000 --reference-line-label "5 km"
+    python scripts/analyze_validation.py --no-reference-line
 """
 
 import argparse
@@ -19,6 +26,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from omegaconf import OmegaConf
 
 from orbitdet.visualization import (
     IntegratorConvergence,
@@ -28,6 +36,44 @@ from orbitdet.visualization import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Directory holding the per-figure YAML configs (relative to the repo root).
+_FIGURES_CONF_DIR = Path(__file__).resolve().parent.parent / "conf" / "figures"
+
+
+def _load_figure_cfg(name: str, reference_line: dict | None = None):
+    """Load a figure config from ``conf/figures/<name>.yaml``.
+
+    Parameters
+    ----------
+    name : str
+        Figure config name without extension (e.g. ``"integrator_convergence"``).
+    reference_line : dict | None
+        Optional overrides merged into the config's ``reference_line`` section
+        (e.g. ``{"value": 5000.0, "label": "5 km"}``). ``None`` values are
+        ignored so callers can pass partially-populated dicts.
+
+    Returns
+    -------
+    DictConfig
+        The loaded (and possibly overridden) config, or an empty config if the
+        YAML file does not exist.
+    """
+    cfg_path = _FIGURES_CONF_DIR / f"{name}.yaml"
+    if cfg_path.exists():
+        cfg = OmegaConf.load(cfg_path)
+    else:
+        logger.warning("Figure config not found: %s", cfg_path)
+        cfg = OmegaConf.create({})
+
+    if reference_line:
+        overrides = {k: v for k, v in reference_line.items() if v is not None}
+        if overrides:
+            section = cfg.get(name, OmegaConf.create({}))
+            ref = section.get("reference_line", OmegaConf.create({}))
+            cfg[name] = OmegaConf.merge(section, {"reference_line": OmegaConf.merge(ref, overrides)})
+
+    return cfg
 
 
 def _discover_results(input_dir: Path) -> list[dict]:
@@ -122,8 +168,18 @@ def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict
     return grouped
 
 
-def analyze_integrator(input_dir: Path):
-    """Analyze integrator validation results and produce convergence plots."""
+def analyze_integrator(input_dir: Path, reference_line: dict | None = None):
+    """Analyze integrator validation results and produce convergence plots.
+
+    Parameters
+    ----------
+    input_dir : Path
+        Directory containing the ``validation_results.npz`` files.
+    reference_line : dict | None
+        Optional overrides for the horizontal reference line drawn on the
+        error (y) axis of every figure (keys: ``enabled``, ``value``,
+        ``label``, ``color``, ``linestyle``, ``linewidth``).
+    """
     results = _discover_results(input_dir)
     if not results:
         logger.error("No validation_results.npz found under %s", input_dir)
@@ -131,6 +187,8 @@ def analyze_integrator(input_dir: Path):
 
     logger.info("Found %d result files under %s", len(results), input_dir)
     grouped = _group_by_type_and_strategy(results)
+
+    import matplotlib.pyplot as plt
 
     for strategy, type_groups in grouped.items():
         for integrator_type, type_results in type_groups.items():
@@ -140,11 +198,9 @@ def analyze_integrator(input_dir: Path):
                 strategy,
                 len(type_results),
             )
-            from omegaconf import OmegaConf
-
-            dummy_cfg = OmegaConf.create({})
+            cfg = _load_figure_cfg("integrator_convergence", reference_line)
             plotter = IntegratorConvergence(
-                dummy_cfg, type_results, integrator_type, strategy=strategy
+                cfg, type_results, integrator_type, strategy=strategy
             )
             # Use _make_figure() directly — publish() requires HydraConfig
             fig, axes = plotter._make_figure()
@@ -153,27 +209,27 @@ def analyze_integrator(input_dir: Path):
             logger.info(
                 "Convergence plot saved to %s", output_path,
             )
+            plt.close(fig)
 
         # Family comparison: all integrator types on one figure per strategy
-        from omegaconf import OmegaConf
         from orbitdet.visualization import IntegratorFamilyComparison
 
-        import matplotlib.pyplot as plt
-
         plt.close("all")
-        dummy_cfg = OmegaConf.create({})
+        cfg = _load_figure_cfg("integrator_family_comparison", reference_line)
         family_plotter = IntegratorFamilyComparison(
-            dummy_cfg, type_groups, strategy=strategy
+            cfg, type_groups, strategy=strategy
         )
         fig, ax = family_plotter._make_figure()
         output_path = input_dir / f"integrator_family_comparison_{strategy}.pdf"
         fig.savefig(output_path)
         logger.info("Family comparison plot saved to %s", output_path)
+        plt.close(fig)
 
         # Per-type error vs time
         for integrator_type, type_results in type_groups.items():
+            cfg = _load_figure_cfg("integrator_error_vs_time", reference_line)
             evt_plotter = IntegratorErrorVsTime(
-                dummy_cfg, type_results, integrator_type, strategy=strategy
+                cfg, type_results, integrator_type, strategy=strategy
             )
             fig_evt, ax_evt = evt_plotter._make_figure()
             evt_path = input_dir / f"integrator_error_vs_time_{integrator_type}_{strategy}.pdf"
@@ -182,18 +238,29 @@ def analyze_integrator(input_dir: Path):
             plt.close(fig_evt)
 
         # Family error vs time
+        cfg = _load_figure_cfg("integrator_error_vs_time_family", reference_line)
         evt_family = IntegratorErrorVsTimeFamily(
-            dummy_cfg, type_groups, strategy=strategy
+            cfg, type_groups, strategy=strategy
         )
         fig_evtf, ax_evtf = evt_family._make_figure()
         evtf_path = input_dir / f"integrator_error_vs_time_family_{strategy}.pdf"
         fig_evtf.savefig(evtf_path)
         logger.info("Error-vs-time family plot saved to %s", evtf_path)
-        plt.show()
+        plt.close(fig_evtf)
 
 
-def analyze_interpolator(input_dir: Path):
-    """Analyze interpolator validation results and produce convergence plots."""
+def analyze_interpolator(input_dir: Path, reference_line: dict | None = None):
+    """Analyze interpolator validation results and produce convergence plots.
+
+    Parameters
+    ----------
+    input_dir : Path
+        Directory containing the ``validation_results.npz`` files.
+    reference_line : dict | None
+        Optional overrides for the horizontal reference line drawn on the
+        error (y) axis of every figure (keys: ``enabled``, ``value``,
+        ``label``, ``color``, ``linestyle``, ``linewidth``).
+    """
     results = _discover_results(input_dir)
     if not results:
         logger.error("No validation_results.npz found under %s", input_dir)
@@ -201,6 +268,8 @@ def analyze_interpolator(input_dir: Path):
 
     logger.info("Found %d result files under %s", len(results), input_dir)
     grouped = _group_by_type_and_strategy(results)
+
+    import matplotlib.pyplot as plt
 
     for strategy, type_groups in grouped.items():
         for interpolator_type, type_results in type_groups.items():
@@ -210,11 +279,9 @@ def analyze_interpolator(input_dir: Path):
                 strategy,
                 len(type_results),
             )
-            from omegaconf import OmegaConf
-
-            dummy_cfg = OmegaConf.create({})
+            cfg = _load_figure_cfg("interpolator_convergence", reference_line)
             plotter = InterpolatorConvergence(
-                dummy_cfg, type_results, interpolator_type
+                cfg, type_results, interpolator_type
             )
             fig, axes = plotter._make_figure()
             output_path = input_dir / f"interpolator_convergence_{interpolator_type}_{strategy}.pdf"
@@ -222,22 +289,20 @@ def analyze_interpolator(input_dir: Path):
             logger.info(
                 "Convergence plot saved to %s", output_path,
             )
+            plt.close(fig)
 
         # Family comparison: all interpolator types on one figure
-        from omegaconf import OmegaConf
         from orbitdet.visualization import InterpolatorFamilyComparison
 
-        import matplotlib.pyplot as plt
-
-        dummy_cfg = OmegaConf.create({})
+        cfg = _load_figure_cfg("interpolator_family_comparison", reference_line)
         family_plotter = InterpolatorFamilyComparison(
-            dummy_cfg, type_groups
+            cfg, type_groups
         )
         fig, ax = family_plotter._make_figure()
         output_path = input_dir / f"interpolator_family_comparison.pdf"
         fig.savefig(output_path)
         logger.info("Interpolator family comparison plot saved to %s", output_path)
-        plt.show()
+        plt.close(fig)
 
 
 def main():
@@ -259,7 +324,34 @@ def main():
         default="auto",
         help="Analysis mode. 'auto' detects from metadata.",
     )
+    parser.add_argument(
+        "--reference-line-value",
+        type=float,
+        default=None,
+        help="Y-value [m] of the horizontal reference line drawn on the error "
+             "(y) axis of every figure. Defaults to the value in the figure "
+             "config (14000 m = one tenth of Gaia's Triton resolution).",
+    )
+    parser.add_argument(
+        "--reference-line-label",
+        type=str,
+        default=None,
+        help="Legend label for the horizontal reference line. Defaults to the "
+             "label in the figure config.",
+    )
+    parser.add_argument(
+        "--no-reference-line",
+        action="store_true",
+        help="Disable the horizontal reference line on all figures.",
+    )
     args = parser.parse_args()
+
+    reference_line = {
+        "value": args.reference_line_value,
+        "label": args.reference_line_label,
+    }
+    if args.no_reference_line:
+        reference_line["enabled"] = False
 
     if args.input_dir is not None:
         input_dir = Path(args.input_dir)
@@ -286,9 +378,9 @@ def main():
         sys.exit(1)
 
     if args.mode == "integrator":
-        analyze_integrator(input_dir)
+        analyze_integrator(input_dir, reference_line)
     elif args.mode == "interpolator":
-        analyze_interpolator(input_dir)
+        analyze_interpolator(input_dir, reference_line)
     else:
         # Auto-detect: check if any metadata has interpolator_type
         results = _discover_results(input_dir)
@@ -299,9 +391,9 @@ def main():
             r["metadata"].get("interpolator_type") for r in results
         )
         if has_interpolator:
-            analyze_interpolator(input_dir)
+            analyze_interpolator(input_dir, reference_line)
         else:
-            analyze_integrator(input_dir)
+            analyze_integrator(input_dir, reference_line)
     from matplotlib import pyplot as plt
     plt.show()
 

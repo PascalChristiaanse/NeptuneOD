@@ -61,6 +61,68 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
     return _format
 
 
+# Default horizontal reference line drawn on the error (y) axis of the
+# validation figures. 14 km is one tenth of Gaia's estimated resolution of
+# Triton (~140 km); the integrator precision must be better than this.
+DEFAULT_REFERENCE_LINE_VALUE = 14_000.0  # [m]
+DEFAULT_REFERENCE_LINE_LABEL = "Gaia resolution / 10 (14 km)"
+
+
+def _add_reference_line(
+    ax: plt.Axes,
+    plot_cfg,
+    default_value: float = DEFAULT_REFERENCE_LINE_VALUE,
+    default_label: str = DEFAULT_REFERENCE_LINE_LABEL,
+):
+    """Draw a configurable horizontal reference line on the error (y) axis.
+
+    The line is configured under the plot's config section, e.g.::
+
+        integrator_convergence:
+          reference_line:
+            enabled: true
+            value: 14000.0
+            label: "Gaia resolution / 10 (14 km)"
+            color: "red"
+            linestyle: "--"
+            linewidth: 1.5
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to draw the line on.
+    plot_cfg : DictConfig | dict | None
+        The plot's config section (e.g. ``cfg.integrator_convergence``).
+    default_value : float
+        Y-value [m] used when the config does not specify one.
+    default_label : str
+        Legend label used when the config does not specify one.
+
+    Returns
+    -------
+    matplotlib.lines.Line2D | None
+        The created line, or ``None`` if the reference line is disabled.
+    """
+    ref_cfg = _cfg_get(plot_cfg, "reference_line", default=None)
+    if not _cfg_get(ref_cfg, "enabled", default=True):
+        return None
+
+    value = _cfg_get(ref_cfg, "value", default=default_value)
+    label = _cfg_get(ref_cfg, "label", default=default_label)
+    color = _cfg_get(ref_cfg, "color", default="red")
+    linestyle = _cfg_get(ref_cfg, "linestyle", default="--")
+    linewidth = _cfg_get(ref_cfg, "linewidth", default=1.5)
+
+    return ax.axhline(
+        value,
+        color=color,
+        linestyle=linestyle,
+        linewidth=linewidth,
+        label=label,
+        zorder=1,
+    )
+
+
 def _integrator_order(integrator_type: str) -> int:
     """Return the nominal order of an integrator type.
 
@@ -175,6 +237,7 @@ class IntegratorConvergence(Plot):
         ax1.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label_diff", default=y_label)
         )
+        _add_reference_line(ax1, plot_cfg)
         ax1.legend(fontsize=8)
         ax1.grid(True, alpha=0.3, which="both")
         ax1.format_coord = _make_hover_formatter(
@@ -222,6 +285,7 @@ class IntegratorConvergence(Plot):
         ax2.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label_rms", default="||Δr|| [m]")
         )
+        _add_reference_line(ax2, plot_cfg)
         ax2.grid(True, alpha=0.3, which="both")
         ax2.format_coord = _make_hover_formatter(
             _cfg_get(plot_cfg, "axes", "hover_x_label_rms", default="Timestep [s]"),
@@ -300,6 +364,7 @@ class InterpolatorConvergence(Plot):
         ax1.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label_diff", default="||Δr|| [m]")
         )
+        _add_reference_line(ax1, plot_cfg)
         ax1.legend(fontsize=8)
         ax1.grid(True, alpha=0.3, which="both")
         ax1.format_coord = _make_hover_formatter(
@@ -346,6 +411,7 @@ class InterpolatorConvergence(Plot):
         ax2.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label_rms", default="||Δr|| [m]")
         )
+        _add_reference_line(ax2, plot_cfg)
         ax2.grid(True, alpha=0.3, which="both")
         ax2.format_coord = _make_hover_formatter(
             _cfg_get(plot_cfg, "axes", "hover_x_label_rms", default="Timestep [s]"),
@@ -454,6 +520,7 @@ class IntegratorFamilyComparison(Plot):
         ax.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]")
         )
+        _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.legend(fontsize=7, ncol=2)
 
@@ -575,6 +642,7 @@ class IntegratorErrorVsTime(Plot):
         ax.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label", default="Max ||Δr|| [m]")
         )
+        _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.format_coord = _make_hover_formatter(
             _cfg_get(plot_cfg, "axes", "hover_x_label", default="Time [s]"),
@@ -655,6 +723,7 @@ class IntegratorErrorVsTimeFamily(Plot):
         ax.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label", default="Max ||Δr|| [m]")
         )
+        _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.legend(fontsize=8)
         ax.format_coord = _make_hover_formatter(
@@ -756,6 +825,7 @@ class InterpolatorFamilyComparison(Plot):
         ax.set_ylabel(
             _cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]")
         )
+        _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.legend(fontsize=7, ncol=2)
 

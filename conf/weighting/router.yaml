@@ -1,0 +1,78 @@
+# @package _global_
+
+# Weighting: REFERENCE config -- the single supported mechanism.
+#
+# EVERY weighting config uses the same shape: a `router` with a `default`
+# (applied to unmatched sets) and optional `routes` (match a set, give it a
+# specific strategy, optionally override its grouping).
+#
+# This example uses all three datasets at once:
+#   - Gaia      -> archive full transit matrix (off-diagonal, preserved as-is)
+#   - Voyager 2 -> layered: fixed 1"/4" pre/post encounter x timeframe clustering
+#   - NSDB      -> layered: set-level 1/RMSE**2 x timeframe clustering
+#   - anything else -> ID v2
+#
+# See docs/WEIGHTING_CONFIGURATION_GUIDE.md.
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+  strategy:
+    type: router
+
+    # Fallback for unmatched sets (e.g. generic ground-based observatories).
+    default:
+      type: id_v2
+
+    routes:
+      # --- Gaia: keep the archive transit matrix -------------------------
+      - match:
+          set_id_contains: ["Gaia"]
+        source:
+          type: gaia_archive
+          covariance_mode: full_matrix
+          scale: 1.0
+
+      # --- Voyager 2: fixed pre/post encounter + timeframe clustering ----
+      - match:
+          set_id_contains: ["Voyager 2"]
+        source:
+          type: layered
+          combine: geometric
+          layers:
+            - level: section
+              mode: fixed
+              sigmas:
+                pre_encounter:  {ra: 1.0, dec: 1.0}
+                post_encounter: {ra: 4.0, dec: 4.0}
+            - level: timeframe
+              mode: rmse_descaled
+        grouping:
+          levels:
+            - type: section
+              sections:
+                - {name: "pre_encounter",  start: -1e30,       end: -326688543.8172541}
+                - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
+            - type: timeframe
+              gap_threshold_hours: 8.0
+              min_obs_per_frame: 1
+
+      # --- NSDB / ground-based observatories: set primary + timeframe ----
+      # Set identifiers are numeric observatory codes (e.g. "689", "675") and
+      # the NSDB set name.  Adjust the list to your actual observatories.
+      - match:
+          set_id_contains: ["689", "675", "NSDB"]
+        source:
+          type: layered
+          combine: geometric
+          layers:
+            - level: set
+              mode: rmse
+            - level: timeframe
+              mode: rmse_descaled
+        grouping:
+          levels:
+            - type: set
+            - type: timeframe
+              gap_threshold_hours: 8.0
+              min_obs_per_frame: 1

@@ -72,7 +72,7 @@ def main(cfg: DictConfig):
     # ESA kernel shows mainly interpolator error rather than the physical
     # discrepancy at the observation epochs. The differences are interpolated
     # onto the observation epochs and plotted as a scatter.
-    from orbitdet.data.gaia_data import GaiaQuery
+    from orbitdet.data.gaia import GaiaQuery
     from orbitdet.visualization import DifferencedDependentVariables
 
     source_ids = list(cfg.bodies_to_create.Gaia.ephemeris.source_ids)

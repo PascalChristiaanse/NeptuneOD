@@ -1,20 +1,17 @@
 # @package _global_
 
-# Weighting: per-file RMSE (ID).
-# Assigns a single constant inverse-variance weight to all observations in each
-# file, computed from the file-wide residual RMSE.
+# Weighting: ID (plain per-file RMSE) scheme.
 #
-# This is the most commonly used scheme in the literature (see thesis §3.2.2).
-# Does NOT account for temporal clustering or within-file quality variations.
-#
-# Per-file RMSE:
-#   epsilon_f = RMS(r_i)  for all i in file f
-#   w_f = 1 / epsilon_f^2
+# Router-shaped: single-strategy via a router `default`.  Thesis label
+# "per file" maps here.
 
 weighting:
   enabled: true
-  strategy: id
   min_sigma_arcsec: 0.01
+  strategy:
+    type: router
+    default:
+      type: id
   grouping:
     levels:
       - type: timeframe

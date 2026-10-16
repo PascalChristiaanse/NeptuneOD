@@ -25,7 +25,7 @@ bodies_to_create:
     placeholder: True
     ephemeris:
       type: "interpolated_spice"
-      interpolator_cadance: 480
+      interpolator_cadance: 7200
       coverage_buffer: 8640000
   Sun:
     gravity: "central"

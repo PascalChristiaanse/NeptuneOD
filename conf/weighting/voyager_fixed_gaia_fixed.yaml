@@ -1,0 +1,51 @@
+# @package _global_
+
+# Weighting: Voyager 2 fixed pre/post encounter + Gaia fixed 10 mas (others -> ID v2).
+#
+# Router-shaped: both Voyager 2 and Gaia are routed to `layered` fixed schemes;
+# everything else uses ID v2.
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+  strategy:
+    type: router
+    default:
+      type: id_v2
+    routes:
+      - match:
+          set_id_contains: ["Voyager 2"]
+        source:
+          type: layered
+          combine: geometric
+          layers:
+            - level: section
+              mode: fixed
+              sigmas:
+                pre_encounter:  {ra: 1.0, dec: 1.0} # 0.5 sigma
+                post_encounter: {ra: 4.0, dec: 4.0} # 2 sigma
+        grouping:
+          levels:
+            - type: section
+              sections:
+                - {name: "pre_encounter",  start: -1e30,       end: -326688543.8172541}
+                - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
+
+      - match:
+          set_id_contains: ["Gaia"]
+        source:
+          type: layered
+          combine: geometric
+          layers:
+            - level: set
+              mode: fixed
+              sigmas:
+                Gaia: {ra: 0.01, dec: 0.01}
+        grouping:
+          levels:
+            - type: set
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1

@@ -5,11 +5,11 @@
 # - Triton initial state
 
 defaults:
-  - /data: classical
+  - /data: classical_voyager_gaia
   - /parameters: initial_state
   - /logging: default
   - /outlier_rejection: per_set_thresholds
-  - /weighting: hybrid_geometric_v2
+  - /weighting: voyager_fixed_gaia_archive
   - _self_ # Apply experiment config fields after collections
   - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
   - /figures/prefit_residuals_prop@figures.prefit_residuals_prop
@@ -38,4 +38,4 @@ hydra:
 # Time settings
 start_date: 1963-1-1T12:00:00
 end_date: 2025-1-1T12:00:00
-initial_epoch: 1989-08-25T12:00:00 # Voyager 2 closest approach to Triton
+initial_epoch: 1989-08-25 09:10:56.182745873928070 # Voyager 2 closest approach to Triton (TDB epoch)

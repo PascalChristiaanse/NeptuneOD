@@ -29,6 +29,9 @@ def get_dynamical_model(
             )
         for perturbing_body, settings in cfg.bodies_to_create.items():
             if affected_body == perturbing_body:
+                logger.debug(
+                    f"Skipping self-acceleration for {affected_body} (perturbing body is the same)"
+                )
                 continue  # skip self-acceleration
 
             gravity_type = getattr(settings, "gravity", None)

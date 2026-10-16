@@ -21,6 +21,8 @@ defaults:
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses
   - /figures/RSW_distance
+  - /figures/prefit_rsw
+  - /figures/postfit_rsw
   - /figures/propagated_formal_errors_cartesian
   - /figures/propagated_formal_errors_rsw
   - /figures/RSW_distance_with_uncertainty

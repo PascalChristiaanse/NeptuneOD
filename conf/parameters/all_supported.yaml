@@ -1,0 +1,14 @@
+# @package _global_
+
+# Estimation settings
+estimation:
+  max_iterations: 5
+  max_iterations_without_improvement: 3
+  parameters_to_estimate:
+    initial_state: True
+    neptune_GM: True
+    triton_GM: True
+    iau_rotation_model_pole: True
+    iau_rotation_model_pole_rate: True
+    iau_rotation_model_pole_librations: True
+    neptune_j2_j4: False

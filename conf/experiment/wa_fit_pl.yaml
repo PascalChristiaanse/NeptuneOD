@@ -34,6 +34,8 @@ defaults:
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses
   - /figures/RSW_distance
+  - /figures/prefit_rsw
+  - /figures/postfit_rsw
 
 seed: 42
 

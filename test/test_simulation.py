@@ -68,6 +68,7 @@ def basic_config():
             },
             "start_epoch": 1234567890.0,
             "end_epoch": 1234567900.0,
+            "use_default_body_settings": True,
         }
     )
 
@@ -109,6 +110,7 @@ def jacobson_config():
             },
             "start_epoch": 1234567890.0,
             "end_epoch": 1234567900.0,
+            "use_default_body_settings": True,
         }
     )
 
@@ -207,16 +209,20 @@ class TestGetDynamicalModel:
 class TestGetEnvironment:
     """Tests for get_environment function."""
 
+    @patch("orbitdet.simulation.environment.spice")
     @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
     @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
     def test_environment_creation_with_central_gravity(
         self,
         mock_get_defaults,
         mock_create_bodies,
+        mock_spice,
         basic_config,
         mock_runtime_context,
     ):
         """Test successful environment creation with central gravity."""
+        mock_spice.get_body_gravitational_parameter.return_value = 6.836529e15
+
         mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
         mock_body_settings.get = MagicMock(return_value=MagicMock())
         mock_body_settings.add_empty_settings = MagicMock()
@@ -260,16 +266,20 @@ class TestGetEnvironment:
 
         assert result == mock_bodies
 
+    @patch("orbitdet.simulation.environment.spice")
     @patch("orbitdet.simulation.environment.env_setup.create_system_of_bodies")
     @patch("orbitdet.simulation.environment.env_setup.get_default_body_settings")
     def test_environment_returns_created_system_of_bodies(
         self,
         mock_get_defaults,
         mock_create_bodies,
+        mock_spice,
         basic_config,
         mock_runtime_context,
     ):
         """Test that get_environment returns the created system of bodies."""
+        mock_spice.get_body_gravitational_parameter.return_value = 6.836529e15
+
         mock_body_settings = MagicMock(spec=env_setup.BodyListSettings)
         mock_body_settings.get = MagicMock(return_value=MagicMock())
         mock_body_settings.add_empty_settings = MagicMock()

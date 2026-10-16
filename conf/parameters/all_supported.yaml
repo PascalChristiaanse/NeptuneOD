@@ -11,4 +11,4 @@ estimation:
     iau_rotation_model_pole: True
     iau_rotation_model_pole_rate: True
     iau_rotation_model_pole_librations: True
-    neptune_j2_j4: True
+    neptune_j2_j4: False

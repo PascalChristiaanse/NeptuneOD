@@ -8,7 +8,7 @@ from tudatpy.dynamics import propagation as prop
 from tudatpy.dynamics import propagation_setup as prop_setup
 
 from orbitdet.utility import create_dependent_variable_dictionary
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.base import Plot, _snake_case
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -65,11 +65,16 @@ class RSWDistance(Plot):
             prop_setup.dependent_variable.SingleDependentVariableSaveSettings
         ),
         central_body: str = "Neptune",
+        use_figure_name: str | None = None,
     ):
-        super().__init__(cfg)
+        super().__init__(cfg, name=use_figure_name or _snake_case(self.__class__.__name__))
         self.result = result
         self.position_dependent_variable = position_dependent_variable
         self.central_body = central_body
+        # Config block to read styling from. Defaults to the legacy
+        # ``RSW_distance`` block; callers can point it at a per-plot block
+        # (e.g. ``prefit_rsw`` / ``postfit_rsw``) which also names the output.
+        self.use_figure_name = use_figure_name or "RSW_distance"
 
     def _make_figure(self):
         cfg = self.cfg
@@ -136,7 +141,14 @@ class RSWDistance(Plot):
 
         rsw_norm = np.linalg.norm(rsw_components, axis=1)
 
-        plot_cfg = _cfg_get(cfg, "RSW_distance", default=None)
+        plot_cfg = None
+        if self.use_figure_name:
+            # Prefer the per-figure block under ``cfg.figures.<use_figure_name>``
+            # (matching the Residuals convention), falling back to a top-level
+            # ``cfg.<use_figure_name>`` block.
+            plot_cfg = _cfg_get(cfg, "figures", self.use_figure_name, default=None)
+            if plot_cfg is None:
+                plot_cfg = _cfg_get(cfg, self.use_figure_name, default=None)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=12)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8)
 
@@ -194,9 +206,5 @@ class RSWDistance(Plot):
         )
         fig.align_ylabels(axes)
         fig.set_tight_layout(True)
-
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
 
         return fig, axes

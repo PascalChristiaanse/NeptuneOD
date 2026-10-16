@@ -14,6 +14,7 @@ from .residual_scatter import ResidualScatter
 from .residuals import Residuals, ResidualsScan
 from .RSW_distance import RSWDistance
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
+from .state_history_3d import StateHistory3D
 from .weight_groups import WeightGroups
 from .weight_summary_table import WeightSummaryTable
 
@@ -36,6 +37,7 @@ __all__ = [
     "ResidualScatter",
     "RSWDistance",
     "RSWDistanceWithUncertainty",
+    "StateHistory3D",
     "WeightGroups",
     "WeightSummaryTable",
 ]

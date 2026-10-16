@@ -4,6 +4,11 @@ defaults:
   - /experiment: fit_to_ephemeris
   - _self_
   - override /hydra/launcher: submitit_local
+  
+estimation: 
+  parameters_to_estimate:
+    initial_state: true
+    neptune_j2_j4: false
 
 hydra:
   mode: MULTIRUN
@@ -27,5 +32,3 @@ hydra:
       estimation.parameters_to_estimate.iau_rotation_model_pole_rate: true,false
       estimation.parameters_to_estimate.iau_rotation_model_pole_librations: true,false
 
-estimation.parameters_to_estimate.initial_state: true
-estimation.parameters_to_estimate.neptune_j2_j4: false

@@ -75,10 +75,11 @@ def _setup_body_settings_from_config(cfg: DictConfig) -> env_setup.BodyListSetti
         )
     else:
         logger.info("Using empty body settings for default bodies.")
-        body_settings = env_setup.BodyListSettings(cfg.global_frame_origin, cfg.global_frame_orientation)
+        body_settings = env_setup.BodyListSettings(
+            cfg.global_frame_origin, cfg.global_frame_orientation
+        )
         for body_name in bodies_to_use:
             body_settings.add_empty_settings(body_name)
-
 
     # Add bodies not in default bodies but specified in config
     custom_bodies = set(cfg.bodies_to_create.keys()) - DEFAULT_BODIES
@@ -256,22 +257,26 @@ def _configure_gravity_model(
         case "central":
             logger.debug(f"Using default central gravity for {body_name}.")
             mu = spice.get_body_gravitational_parameter(body_name)
-            body_settings.get(body_name).gravity_field_settings = env_setup.gravity_field.central(mu)
+            body_settings.get(body_name).gravity_field_settings = env_setup.gravity_field.central(
+                mu
+            )
         case "augmented_solar":
             logger.info(f"Augmenting Solar mass with {body_name} mass for central gravity.")
             if body_settings.get("Sun") is None:
                 raise ValueError(
-                    f"Sun must be defined in bodies_to_create before augmenting with {body_name} mass."
+                    f"""Sun must be defined in bodies_to_create before augmenting """
+                    f"""with {body_name} mass."""
                 )
             if body_settings.get("Sun").gravity_field_settings.gravitational_parameter is None:
                 raise ValueError(
-                    f"Sun's gravitational parameter must be defined before augmenting with {body_name} mass."
+                    f"""Sun's gravitational parameter must be defined before augmenting """
+                    f"""with {body_name} mass."""
                 )
             mu_body = spice.get_body_gravitational_parameter(body_name)
-            mu_sun = body_settings.get("Sun").gravity_field_settings.gravitational_parameter 
+            mu_sun = body_settings.get("Sun").gravity_field_settings.gravitational_parameter
             augmented_mu = mu_sun + mu_body
             body_settings.get("Sun").gravity_field_settings.gravitational_parameter = augmented_mu
-            
+
         case _:
             raise ValueError(f"Unsupported gravity model for {body_name}: {gravity_type}")
 

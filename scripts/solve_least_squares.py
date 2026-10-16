@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 from pathlib import Path
 
 import hydra
@@ -32,6 +31,7 @@ from orbitdet.simulation import (
     get_integrator_settings,
     get_propagator_settings,
 )
+from orbitdet.utility import save_tudat_object
 from orbitdet.visualization import (
     CovarianceEllipses,
     ParameterCorrelationHeatmap,
@@ -46,7 +46,6 @@ from orbitdet.visualization import (
     RSWDistance,
     RSWDistanceWithUncertainty,
 )
-from orbitdet.utility import save_tudat_object
 
 logger = logging.getLogger(__name__)
 
@@ -295,11 +294,11 @@ def main(cfg: DictConfig):
     # Log final residual summary metrics to Aim
     final_residuals = estimation_output.final_residuals
     logger.info("Logging summary metrics to Aim...")
-    try: 
+    try:
         covariance_condition = float(np.linalg.cond(estimation_output.covariance))
     except np.linalg.LinAlgError as e:
         logger.warning("Failed to compute covariance condition number: %s", e)
-        covariance_condition = float(0.0)
+        covariance_condition = 0.0
 
     aim_log_metrics(
         {
@@ -324,9 +323,11 @@ def main(cfg: DictConfig):
     logger.info(f"Best iteration {estimation_output.best_iteration} found parameters: {parameters}")
     prop.initial_states = parameters
     final_result = sim.create_dynamics_simulator(bodies, prop)
-    try: 
+    try:
         save_tudat_object(final_result.propagation_results, output_dir / "final_propagation_result")
-        logger.info("Final propagation result saved to %s", output_dir / "final_propagation_result.tudat")
+        logger.info(
+            "Final propagation result saved to %s", output_dir / "final_propagation_result.tudat"
+        )
     except TypeError as e:
         logger.warning("Failed to save final propagation result: %s", e)
 

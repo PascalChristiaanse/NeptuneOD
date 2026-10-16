@@ -1,0 +1,20 @@
+state_history_3d:
+  output_file: "state_history_3d.pdf"
+  equal_aspect: true
+  figure:
+    width: 10
+    height: 8
+  titles:
+    suptitle: "Propagated Trajectory (Inertial Frame)"
+  axes:
+    x_label: "x [m]"
+    y_label: "y [m]"
+    z_label: "z [m]"
+  line:
+    color: "tab:blue"
+    width: 1.5
+  markers:
+    enabled: true
+    start: "o"
+    end: "s"
+    size: 40

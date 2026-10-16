@@ -299,7 +299,7 @@ def main(cfg: DictConfig):
         covariance_condition = float(np.linalg.cond(estimation_output.covariance))
     except np.linalg.LinAlgError as e:
         logger.warning("Failed to compute covariance condition number: %s", e)
-        covariance_condition = float("nan")
+        covariance_condition = float(0.0)
 
     aim_log_metrics(
         {

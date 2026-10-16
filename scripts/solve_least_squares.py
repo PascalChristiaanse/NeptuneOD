@@ -45,9 +45,15 @@ from orbitdet.visualization import (
     ResidualScatter,
     RSWDistance,
     RSWDistanceWithUncertainty,
+    StateHistory3D,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _format_metrics(metrics: dict) -> str:
+    """Format a metrics mapping as an indented, multi-line string for logging."""
+    return "\n".join(f"    {name}: {value:.6g}" for name, value in metrics.items())
 
 
 @hydra.main(
@@ -115,13 +121,25 @@ def main(cfg: DictConfig):
     logger.info("Pre-fit residuals computed and plotted successfully.")
 
     logger.info("Computing pre-fit residuals wrt propagation...")
-    sim.create_dynamics_simulator(bodies, prop)
+    prefit_prop = sim.create_dynamics_simulator(bodies, prop)
     obs.compute_residuals_and_dependent_variables(
         observations, ephemeris_observation_simulators, bodies
     )
     Residuals(cfg, "prefit_residuals_prop", observations).plot()
-    logger.info("Pre-fit residuals computed and plotted successfully.")
+    # Plot orbit on 3d plot
+    StateHistory3D(cfg, prefit_prop.propagation_results).plot()
+    # RSW distance for the pre-fit propagation
+    RSWDistance(
+        cfg,
+        prefit_prop.propagation_results,
+        dep_vars[0],
+        central_body="Neptune",
+        use_figure_name="prefit_rsw",
+    ).plot()
 
+    logger.info("Pre-fit residuals computed and plotted successfully.")
+    # from matplotlib import pyplot as plt
+    # plt.show()
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -286,6 +304,7 @@ def main(cfg: DictConfig):
     logger.info("Logging per-iteration metrics to Aim...")
     for i in range(num_iterations):
         rms_i = np.sqrt(np.mean(np.square(estimation_output.residual_history[:, i])))
+        logger.info("Iteration %d residual RMS: %.6e", i, rms_i)
         aim_log_metrics(
             {"residual_rms": float(rms_i)},
             step=i,
@@ -300,19 +319,27 @@ def main(cfg: DictConfig):
         logger.warning("Failed to compute covariance condition number: %s", e)
         covariance_condition = 0.0
 
-    aim_log_metrics(
-        {
-            "residuals_rms": float(np.sqrt(np.mean(np.square(final_residuals)))),
-            "residuals_mean": float(np.mean(final_residuals)),
-            "residuals_max": float(np.abs(final_residuals).max()),
-            "residuals_std": float(np.std(final_residuals)),
-            "num_observations": final_residuals.size,
-            "num_iterations": num_iterations,
-            "parameter_norm": float(np.linalg.norm(estimation_output.final_parameters)),
-            "covariance_condition": covariance_condition,
-        },
-        context={"metric_type": "summary"},
-    )
+    # Condition number of the normal (inverse covariance) matrix, i.e. the matrix
+    # tudatpy inverts during least-squares and reports in the estimation log.
+    try:
+        inverse_covariance_condition = float(np.linalg.cond(estimation_output.inverse_covariance))
+    except np.linalg.LinAlgError as e:
+        logger.warning("Failed to compute inverse covariance condition number: %s", e)
+        inverse_covariance_condition = 0.0
+
+    summary_metrics = {
+        "residuals_rms": float(np.sqrt(np.mean(np.square(final_residuals)))),
+        "residuals_mean": float(np.mean(final_residuals)),
+        "residuals_max": float(np.abs(final_residuals).max()),
+        "residuals_std": float(np.std(final_residuals)),
+        "num_observations": final_residuals.size,
+        "num_iterations": num_iterations,
+        "parameter_norm": float(np.linalg.norm(estimation_output.final_parameters)),
+        "covariance_condition": covariance_condition,
+        "inverse_covariance_condition": inverse_covariance_condition,
+    }
+    logger.info("Summary metrics:\n%s", _format_metrics(summary_metrics))
+    aim_log_metrics(summary_metrics, context={"metric_type": "summary"})
     logger.info("Logged summary metrics to Aim.")
 
     #################################################################
@@ -333,6 +360,24 @@ def main(cfg: DictConfig):
 
     Residuals(cfg, "postfit_residuals", observations).plot()
 
+    # RMS of the post-fit residuals at the best iteration
+    best_iteration_residuals = estimation_output.residual_history[
+        :, estimation_output.best_iteration
+    ]
+    postfit_rms_best_iteration = float(np.sqrt(np.mean(np.square(best_iteration_residuals))))
+    logger.info(
+        "Post-fit RMS at best iteration %d: %.6e",
+        estimation_output.best_iteration,
+        postfit_rms_best_iteration,
+    )
+    best_iteration_metrics = {
+        "postfit_rms_best_iteration": postfit_rms_best_iteration,
+        "best_iteration": int(estimation_output.best_iteration),
+    }
+    logger.info("Best-iteration metrics:\n%s", _format_metrics(best_iteration_metrics))
+    aim_log_metrics(best_iteration_metrics, context={"metric_type": "summary"})
+    logger.info("Logged best-iteration post-fit RMS to Aim.")
+
     #############################################################################
     ################################## Figures ##################################
     #############################################################################
@@ -344,12 +389,16 @@ def main(cfg: DictConfig):
     ResidualRMSPerIteration(cfg, estimation_output).plot()
     ParameterCorrelationHeatmap(cfg, estimation_output).plot()
     ParameterHistoryPerIteration(cfg, estimation_output).plot()
-    CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
+    try:
+        CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
+    except Exception as e:
+        logger.warning("Failed to plot covariance ellipses: %s", e)
     RSWDistance(
         cfg,
         final_result.propagation_results,
         dep_vars[0],
         central_body="Neptune",
+        use_figure_name="postfit_rsw",
     ).plot()
 
     # ====================================================================

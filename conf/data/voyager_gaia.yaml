@@ -6,6 +6,7 @@
 defaults:
   - /collection/voyager_collection
   - /collection/gaia_collection
-  - /dynamics: classical_voyager_gaia
+  - /dynamics: jacobson2009_voyager_gaia
+  - /kernels/jacobson2009
   - /kernels/voyager
   - /kernels/gaia

@@ -5,5 +5,6 @@
 
 defaults:
   - /collection: gaia_collection
-  - /dynamics: classical_gaia
+  - /dynamics: jacobson2009_gaia
+  - /kernels/jacobson2009
   - /kernels/gaia

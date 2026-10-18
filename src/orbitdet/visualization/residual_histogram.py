@@ -6,7 +6,7 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.data.gaia_data import get_scan_angles_for_epochs
+from orbitdet.data.gaia import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot
 

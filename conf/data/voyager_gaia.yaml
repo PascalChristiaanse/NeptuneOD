@@ -1,0 +1,12 @@
+# @package _global_
+
+# Data variant: classical NSDB data + Voyager 2 data.
+# Bundles the collection, dynamics, and kernels for this data selection.
+
+defaults:
+  - /collection/voyager_collection
+  - /collection/gaia_collection
+  - /dynamics: jacobson2009_voyager_gaia
+  - /kernels/jacobson2009
+  - /kernels/voyager
+  - /kernels/gaia

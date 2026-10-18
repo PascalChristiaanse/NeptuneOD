@@ -1,4 +1,4 @@
-from .gaia_data import GaiaQuery, get_gaia_ephemeris
+from .gaia import GaiaQuery, get_gaia_ephemeris
 from .kernel import KernelManager
 from .light_deflection import relativistic_light_deflection
 from .nsdb import NSDBManager

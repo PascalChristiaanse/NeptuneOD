@@ -1,0 +1,51 @@
+# @package _global_
+
+# Weighting: Voyager 2 fixed pre/post encounter + Gaia archive (others -> ID v2).
+#
+# Router-shaped: Voyager 2 -> `layered` (fixed section sigma x timeframe),
+# Gaia -> archive full transit matrix, everything else -> ID v2.
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+  strategy:
+    type: router
+    default:
+      type: hybrid_geometric_v2
+    routes:
+      # Gaia: keep the archive off-diagonal transit matrix.
+      - match:
+          set_id_contains: ["Gaia"]
+        source:
+          type: gaia_archive
+          covariance_mode: full_matrix
+          scale: 1.0
+
+      # Voyager 2: fixed 1" pre / 4" post encounter, clustered by timeframe.
+      - match:
+          set_id_contains: ["Voyager 2"]
+        source:
+          type: layered
+          combine: geometric
+          layers:
+            - level: section
+              mode: fixed
+              sigmas:
+                pre_encounter:  {ra: 1.0, dec: 1.0} # 0.5 sigma
+                post_encounter: {ra: 4.0, dec: 4.0} # 2 sigma
+            # - level: timeframe
+            #   mode: rmse_descaled
+        grouping:
+          levels:
+            - type: section
+              sections:
+                - {name: "pre_encounter",  start: -1e30,       end: -326688543.8172541}
+                - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
+            - type: timeframe
+              gap_threshold_hours: 8.0
+              min_obs_per_frame: 1
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1

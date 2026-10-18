@@ -6,8 +6,11 @@ kernel_folder: "data/kernels"
 kernels:
   pck00010.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00010.tpc"
   gm_de440.tpc: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/gm_de440.tpc"
+  DE440.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440.bsp"
   nep097.bsp: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/nep097.bsp"
   naif0012.tls: "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls"
+
+use_default_kernels: true
 
 # Data files settings
 data_folder: "data/other"

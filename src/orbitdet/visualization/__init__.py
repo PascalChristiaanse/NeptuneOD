@@ -15,6 +15,14 @@ from .residuals import Residuals, ResidualsScan
 from .RSW_distance import RSWDistance
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
 from .state_history_3d import StateHistory3D
+from .validation import (
+    IntegratorConvergence,
+    IntegratorErrorVsTime,
+    IntegratorErrorVsTimeFamily,
+    IntegratorFamilyComparison,
+    InterpolatorConvergence,
+    InterpolatorFamilyComparison,
+)
 from .weight_groups import WeightGroups
 from .weight_summary_table import WeightSummaryTable
 
@@ -23,6 +31,12 @@ __all__ = [
     "CovarianceEllipses",
     "DependentVariable",
     "DifferencedDependentVariables",
+    "IntegratorConvergence",
+    "IntegratorErrorVsTime",
+    "IntegratorErrorVsTimeFamily",
+    "IntegratorFamilyComparison",
+    "InterpolatorConvergence",
+    "InterpolatorFamilyComparison",
     "ParameterCorrelationHeatmap",
     "ParameterHistoryPerIteration",
     "PropagatedFormalErrorsCartesian",

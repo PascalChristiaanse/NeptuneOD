@@ -1,0 +1,42 @@
+# @package _global_
+
+# Simplified dynamical model for integrator/interpolator validation.
+# Only Neptune (central gravity) + Triton (propagated) for speed.
+
+global_frame_origin: "SSB"
+global_frame_orientation: "J2000"
+
+bodies_to_propagate:
+  Triton:
+    initial_state: null
+    central_body: "Neptune"
+
+propagation:
+  set_integrated_result: true
+
+bodies_to_create:
+  Neptune:
+    gravity: "central"
+    rotation_model:
+      type: "IAU2015"
+  Triton:
+    placeholder: True
+    ephemeris:
+      type: "interpolated_spice"
+      interpolator_cadance: 480
+      coverage_buffer: 8640000
+  Triton Spice:
+    ephemeris:
+      type: "direct_spice"
+      use_body_name: "Triton"
+      relative_to: "Neptune"
+  Neptune Barycenter:
+    ephemeris:
+      type: "direct_spice"
+
+# Integrator settings — overridden by sweep
+integrator:
+  type: "RKF78"
+  fixed_step_size: 360000
+  # Only used by BulirschStoer
+  maximum_number_of_steps: 6

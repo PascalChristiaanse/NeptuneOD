@@ -1,0 +1,29 @@
+# @package _global_
+
+interpolator_convergence:
+  output_file: "interpolator_convergence.pdf"
+  figure:
+    width: 14
+    height: 10
+  titles:
+    suptitle: "Interpolator Convergence — {interpolator_type}"
+    difference_over_time: "Interpolation Error Over Time — {interpolator_type}"
+    rms_per_timestep: "RMS Interpolation Error vs Timestep — {interpolator_type}"
+  axes:
+    x_label: "Epoch"
+    y_label_diff: "||Δr|| [m]"
+    y_label_rms: "RMS ||Δr|| [m]"
+    x_label_rms: "Timestep Δt [s]"
+    hover_x_label: "Epoch"
+    hover_y_label_diff: "||Δr|| [m]"
+    hover_x_label_rms: "Timestep [s]"
+    hover_y_label_rms: "RMS ||Δr|| [m]"
+  # Horizontal reference line on the error (y) axis. Default 14 km = one
+  # tenth of Gaia's estimated resolution of Triton (~140 km).
+  reference_line:
+    enabled: true
+    value: 14000.0  # [m]
+    label: "Gaia resolution / 10 (14 km)"
+    color: "red"
+    linestyle: "--"
+    linewidth: 1.5

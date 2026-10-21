@@ -102,6 +102,15 @@ def aim_start_run(
     # Name the run after the script + git info for easy identification
     run.name = f"{experiment_name} ({git_commit})"
 
+    # For sweep jobs, describe the parameter combination in the run description
+    # so runs are identifiable in the Aim UI without opening the hparams tab.
+    description = _sweep_description()
+    if description:
+        try:
+            run.description = description
+        except Exception:
+            logger.warning("Failed to set Aim run description", exc_info=True)
+
     # Tag the run
     tags = []
     if "dirty" in git_commit:
@@ -167,8 +176,110 @@ def _job_identity() -> dict:
     return {key: value for key, value in candidates.items() if value is not None}
 
 
+def format_sweep_description(
+    config_name: str | None,
+    overrides: Sequence[tuple[str, str]],
+) -> str | None:
+    """Format a sweep run description from a config name and its overrides.
+
+    This is the single source of truth for the description format, shared by
+    :func:`aim_start_run` (live runs) and ``scripts/backfill_sweep_descriptions.py``
+    (retro-fitting descriptions onto existing runs).
+
+    Args:
+        config_name: The Hydra config name, e.g. ``"sweep/params_x_data"``.
+        overrides: The sweep's task overrides as ``(key, value)`` pairs.
+
+    Returns:
+        A one-line description such as
+        ``"sweep/params_x_data | parameters=initial_state, data=classical"``,
+        or ``None`` when there is nothing to describe.
+    """
+    if not overrides:
+        return None
+
+    override_text = ", ".join(f"{key}={value}" for key, value in overrides)
+    if config_name:
+        return f"{config_name} | {override_text}"
+    return override_text
+
+
+def _sweep_description() -> str | None:
+    """Build an Aim run description from the current Hydra sweep overrides.
+
+    A sweep job is identified by ``hydra.mode == MULTIRUN`` (or, as a fallback,
+    by the presence of ``hydra.job.num``, which only launchers populate). The
+    description names the sweep config and lists every task override, so a run
+    can be identified in the Aim UI without opening its hparams.
+
+    Returns:
+        A one-line description such as
+        ``"sweep/params_x_data | parameters=initial_state, data=classical"``,
+        or ``None`` when the job is not part of a sweep (single runs keep
+        whatever description they already have).
+    """
+    from hydra.core.hydra_config import HydraConfig
+
+    try:
+        hydra_cfg = HydraConfig.get()
+    except Exception:
+        return None
+
+    if not _is_sweep(hydra_cfg):
+        return None
+
+    return format_sweep_description(
+        _select_field(hydra_cfg, "job.config_name"),
+        _sweep_overrides(hydra_cfg),
+    )
+
+
+def _is_sweep(hydra_cfg: object) -> bool:
+    """Return whether the current Hydra job belongs to a sweep."""
+    mode = _select_field(hydra_cfg, "mode")
+    if mode is not None and "MULTIRUN" in str(mode).upper():
+        return True
+    # Launchers set `hydra.job.num` for sweep jobs only.
+    return _select_field(hydra_cfg, "job.num") is not None
+
+
+def _sweep_overrides(hydra_cfg: object) -> list[tuple[str, str]]:
+    """Return the sweep's task overrides as ``(key, value)`` pairs.
+
+    Prefers ``hydra.overrides.task`` (the raw override strings) and falls back
+    to splitting ``hydra.job.override_dirname`` with Hydra's configured
+    separators.
+    """
+    task_overrides = _select_field(hydra_cfg, "overrides.task")
+    if task_overrides:
+        parsed = [_split_override(str(override)) for override in task_overrides]
+        parsed = [pair for pair in parsed if pair is not None]
+        if parsed:
+            return parsed
+
+    dirname = _select_field(hydra_cfg, "job.override_dirname")
+    if not dirname:
+        return []
+
+    item_sep = _select_field(hydra_cfg, "job.config.override_dirname.item_sep") or ","
+    kv_sep = _select_field(hydra_cfg, "job.config.override_dirname.kv_sep") or "="
+    parsed = [_split_override(part, kv_sep=kv_sep) for part in str(dirname).split(item_sep)]
+    return [pair for pair in parsed if pair is not None]
+
+
+def _split_override(override: str, kv_sep: str = "=") -> tuple[str, str] | None:
+    """Split a Hydra override string into ``(key, value)``.
+
+    Returns ``None`` for overrides without a value separator (e.g. ``+foo``).
+    """
+    key, sep, value = override.partition(kv_sep)
+    if not sep:
+        return None
+    return key.strip(), value.strip()
+
+
 def _select_field(node: object, key: str) -> object | None:
-    """Read *key* from a Hydra config node, tolerating any node type.
+    """Read a possibly dotted *key* from a Hydra config node.
 
     ``hydra.job`` is normally an OmegaConf ``DictConfig``, but it can be a plain
     object in tests or older Hydra versions. Missing keys and unexpected types
@@ -176,20 +287,28 @@ def _select_field(node: object, key: str) -> object | None:
 
     Args:
         node: The config node to read from.
-        key: The field name.
+        key: The field name, optionally dotted (e.g. ``"job.override_dirname"``).
 
     Returns:
         The field value, or ``None`` when absent or unreadable.
     """
     try:
-        return OmegaConf.select(node, key, default=None)
+        value = OmegaConf.select(node, key, default=None)
     except Exception:
-        pass
+        value = None
+    if value is not None:
+        return value
 
-    try:
-        return getattr(node, key, None)
-    except Exception:
-        return None
+    # Fall back to attribute traversal for plain objects (tests, older Hydra).
+    current: object | None = node
+    for part in key.split("."):
+        if current is None:
+            return None
+        try:
+            current = getattr(current, part, None)
+        except Exception:
+            return None
+    return current
 
 
 def aim_add_tag(run: Run | None, tag: str) -> None:

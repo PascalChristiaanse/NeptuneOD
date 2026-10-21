@@ -21,7 +21,7 @@ seed: 42
 # Hydra settings — will be overridden by the sweep config.
 hydra:
   run:
-    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
   job:
     chdir: false
 

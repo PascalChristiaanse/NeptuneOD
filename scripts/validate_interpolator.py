@@ -31,7 +31,7 @@ from pathlib import Path
 import hydra
 import numpy as np
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from tudatpy.astro.time_representation import DateTime, iso_string_to_epoch_time_object
 from tudatpy.dynamics import propagation_setup as prop_setup
 from tudatpy.dynamics import simulator as sim
@@ -146,13 +146,12 @@ def main(cfg: DictConfig):
 
     # --- Downsample to test timestep ---
     start_epoch_float = float(ctx.start_epoch.to_float())
-    test_epochs = ref_epochs[
-        np.abs((ref_epochs - start_epoch_float) % timestep) < 1e-6
-    ]
-    test_data = {float(e): ref_states[i] for i, e in enumerate(ref_epochs)
-                 if e in test_epochs}
+    test_epochs = ref_epochs[np.abs((ref_epochs - start_epoch_float) % timestep) < 1e-6]
+    test_data = {float(e): ref_states[i] for i, e in enumerate(ref_epochs) if e in test_epochs}
     logger.info(
-        "Downsampled to Δt = %.1f s: %d epochs.", timestep, len(test_data),
+        "Downsampled to Δt = %.1f s: %d epochs.",
+        timestep,
+        len(test_data),
     )
 
     # --- Create test Lagrange interpolator ---
@@ -173,7 +172,8 @@ def main(cfg: DictConfig):
     n_query = len(query_epochs)
     logger.info(
         "Querying at %d epochs (skipping %d at each boundary).",
-        n_query, n_skip,
+        n_query,
+        n_skip,
     )
 
     # --- Interpolate both at query epochs ---

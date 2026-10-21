@@ -71,7 +71,9 @@ def _load_figure_cfg(name: str, reference_line: dict | None = None):
         if overrides:
             section = cfg.get(name, OmegaConf.create({}))
             ref = section.get("reference_line", OmegaConf.create({}))
-            cfg[name] = OmegaConf.merge(section, {"reference_line": OmegaConf.merge(ref, overrides)})
+            cfg[name] = OmegaConf.merge(
+                section, {"reference_line": OmegaConf.merge(ref, overrides)}
+            )
 
     return cfg
 
@@ -90,12 +92,14 @@ def _discover_results(input_dir: Path) -> list[dict]:
         if metadata_path.exists():
             with open(metadata_path) as f:
                 metadata = json.load(f)
-        results.append({
-            "npz_path": npz_path,
-            "metadata_path": metadata_path,
-            "metadata": metadata,
-            "output_dir": npz_path.parent,
-        })
+        results.append(
+            {
+                "npz_path": npz_path,
+                "metadata_path": metadata_path,
+                "metadata": metadata,
+                "output_dir": npz_path.parent,
+            }
+        )
     return results
 
 
@@ -149,10 +153,12 @@ def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict
         existing = grouped.get(strategy, {}).get(type_key, {}).get(timestep)
         if existing is not None:
             logger.warning(
-                "Overwriting duplicate key strategy=%s type=%s timestep=%s "
-                "(old: %s, new: %s)",
-                strategy, type_key, timestep,
-                existing["output_dir"], r["output_dir"],
+                "Overwriting duplicate key strategy=%s type=%s timestep=%s (old: %s, new: %s)",
+                strategy,
+                type_key,
+                timestep,
+                existing["output_dir"],
+                r["output_dir"],
             )
 
         result_data = {
@@ -199,15 +205,14 @@ def analyze_integrator(input_dir: Path, reference_line: dict | None = None):
                 len(type_results),
             )
             cfg = _load_figure_cfg("integrator_convergence", reference_line)
-            plotter = IntegratorConvergence(
-                cfg, type_results, integrator_type, strategy=strategy
-            )
+            plotter = IntegratorConvergence(cfg, type_results, integrator_type, strategy=strategy)
             # Use _make_figure() directly — publish() requires HydraConfig
             fig, axes = plotter._make_figure()
             output_path = input_dir / f"integrator_convergence_{integrator_type}_{strategy}.pdf"
             fig.savefig(output_path)
             logger.info(
-                "Convergence plot saved to %s", output_path,
+                "Convergence plot saved to %s",
+                output_path,
             )
             plt.close(fig)
 
@@ -216,9 +221,7 @@ def analyze_integrator(input_dir: Path, reference_line: dict | None = None):
 
         plt.close("all")
         cfg = _load_figure_cfg("integrator_family_comparison", reference_line)
-        family_plotter = IntegratorFamilyComparison(
-            cfg, type_groups, strategy=strategy
-        )
+        family_plotter = IntegratorFamilyComparison(cfg, type_groups, strategy=strategy)
         fig, ax = family_plotter._make_figure()
         output_path = input_dir / f"integrator_family_comparison_{strategy}.pdf"
         fig.savefig(output_path)
@@ -239,9 +242,7 @@ def analyze_integrator(input_dir: Path, reference_line: dict | None = None):
 
         # Family error vs time
         cfg = _load_figure_cfg("integrator_error_vs_time_family", reference_line)
-        evt_family = IntegratorErrorVsTimeFamily(
-            cfg, type_groups, strategy=strategy
-        )
+        evt_family = IntegratorErrorVsTimeFamily(cfg, type_groups, strategy=strategy)
         fig_evtf, ax_evtf = evt_family._make_figure()
         evtf_path = input_dir / f"integrator_error_vs_time_family_{strategy}.pdf"
         fig_evtf.savefig(evtf_path)
@@ -280,14 +281,13 @@ def analyze_interpolator(input_dir: Path, reference_line: dict | None = None):
                 len(type_results),
             )
             cfg = _load_figure_cfg("interpolator_convergence", reference_line)
-            plotter = InterpolatorConvergence(
-                cfg, type_results, interpolator_type
-            )
+            plotter = InterpolatorConvergence(cfg, type_results, interpolator_type)
             fig, axes = plotter._make_figure()
             output_path = input_dir / f"interpolator_convergence_{interpolator_type}_{strategy}.pdf"
             fig.savefig(output_path)
             logger.info(
-                "Convergence plot saved to %s", output_path,
+                "Convergence plot saved to %s",
+                output_path,
             )
             plt.close(fig)
 
@@ -295,11 +295,9 @@ def analyze_interpolator(input_dir: Path, reference_line: dict | None = None):
         from orbitdet.visualization import InterpolatorFamilyComparison
 
         cfg = _load_figure_cfg("interpolator_family_comparison", reference_line)
-        family_plotter = InterpolatorFamilyComparison(
-            cfg, type_groups
-        )
+        family_plotter = InterpolatorFamilyComparison(cfg, type_groups)
         fig, ax = family_plotter._make_figure()
-        output_path = input_dir / f"interpolator_family_comparison.pdf"
+        output_path = input_dir / "interpolator_family_comparison.pdf"
         fig.savefig(output_path)
         logger.info("Interpolator family comparison plot saved to %s", output_path)
         plt.close(fig)
@@ -314,8 +312,8 @@ def main():
         type=str,
         default=None,
         help="Path to the sweep output directory containing validation_results.npz files. "
-             "If omitted, uses the latest subfolder under results/validate_integrator/ "
-             "or results/validate_interpolator/.",
+        "If omitted, uses the latest subfolder under results/validate_integrator/ "
+        "or results/validate_interpolator/.",
     )
     parser.add_argument(
         "--mode",
@@ -329,15 +327,15 @@ def main():
         type=float,
         default=None,
         help="Y-value [m] of the horizontal reference line drawn on the error "
-             "(y) axis of every figure. Defaults to the value in the figure "
-             "config (14000 m = one tenth of Gaia's Triton resolution).",
+        "(y) axis of every figure. Defaults to the value in the figure "
+        "config (14000 m = one tenth of Gaia's Triton resolution).",
     )
     parser.add_argument(
         "--reference-line-label",
         type=str,
         default=None,
         help="Legend label for the horizontal reference line. Defaults to the "
-             "label in the figure config.",
+        "label in the figure config.",
     )
     parser.add_argument(
         "--no-reference-line",
@@ -387,14 +385,13 @@ def main():
         if not results:
             logger.error("No validation_results.npz found under %s", input_dir)
             sys.exit(1)
-        has_interpolator = any(
-            r["metadata"].get("interpolator_type") for r in results
-        )
+        has_interpolator = any(r["metadata"].get("interpolator_type") for r in results)
         if has_interpolator:
             analyze_interpolator(input_dir, reference_line)
         else:
             analyze_integrator(input_dir, reference_line)
     from matplotlib import pyplot as plt
+
     plt.show()
 
 

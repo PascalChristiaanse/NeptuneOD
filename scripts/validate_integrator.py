@@ -28,14 +28,13 @@ Sweep over timesteps and integrator types::
 
 import logging
 import os
-import sys
 import time
 from pathlib import Path
 
 import hydra
 import numpy as np
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from tudatpy.astro.time_representation import DateTime, iso_string_to_epoch_time_object
 from tudatpy.dynamics import propagation_setup as prop_setup
 from tudatpy.dynamics import simulator as sim
@@ -204,7 +203,11 @@ def main(cfg: DictConfig):
         result_coarse = sim.create_dynamics_simulator(bodies, prop_coarse)
         t_coarse = time.perf_counter() - t0_coarse
         state_history_coarse = result_coarse.propagation_results.state_history
-        logger.info("Coarse propagation done: %d output epochs in %.2f s.", len(state_history_coarse), t_coarse)
+        logger.info(
+            "Coarse propagation done: %d output epochs in %.2f s.",
+            len(state_history_coarse),
+            t_coarse,
+        )
 
         # --- Propagate with Δt/2 (fine) ---
         logger.info("Propagating with Δt/2 = %.1f s ...", half_timestep)
@@ -214,7 +217,9 @@ def main(cfg: DictConfig):
         result_fine = sim.create_dynamics_simulator(bodies, prop_fine)
         t_fine = time.perf_counter() - t0_fine
         state_history_fine = result_fine.propagation_results.state_history
-        logger.info("Fine propagation done: %d output epochs in %.2f s.", len(state_history_fine), t_fine)
+        logger.info(
+            "Fine propagation done: %d output epochs in %.2f s.", len(state_history_fine), t_fine
+        )
 
         # --- Build common epoch grid ---
         coarse_epochs = np.array(sorted(state_history_coarse.keys()))
@@ -222,10 +227,9 @@ def main(cfg: DictConfig):
         fine_states_arr = np.array([state_history_fine[e] for e in fine_epochs])
 
         # Interpolate fine states to coarse epochs
-        states_fine_at_coarse = np.column_stack([
-            np.interp(coarse_epochs, fine_epochs, fine_states_arr[:, i])
-            for i in range(6)
-        ])
+        states_fine_at_coarse = np.column_stack(
+            [np.interp(coarse_epochs, fine_epochs, fine_states_arr[:, i]) for i in range(6)]
+        )
         states_coarse_arr = np.array([state_history_coarse[e] for e in coarse_epochs])
 
         # --- Compute differences (Richardson error estimate) ---
@@ -285,7 +289,9 @@ def main(cfg: DictConfig):
         result_fwd = sim.create_dynamics_simulator(bodies, prop_fwd)
         t_fwd = time.perf_counter() - t0_fwd
         fwd_state_history = result_fwd.propagation_results.state_history
-        logger.info("Forward propagation done: %d output epochs in %.2f s.", len(fwd_state_history), t_fwd)
+        logger.info(
+            "Forward propagation done: %d output epochs in %.2f s.", len(fwd_state_history), t_fwd
+        )
 
         # --- Get the final forward state ---
         fwd_epochs = np.array(sorted(fwd_state_history.keys()))
@@ -311,9 +317,7 @@ def main(cfg: DictConfig):
             bwd_termination_end, bwd_termination_start
         )
 
-        central_bodies = [
-            s.central_body for _, s in cfg.bodies_to_propagate.items()
-        ]
+        central_bodies = [s.central_body for _, s in cfg.bodies_to_propagate.items()]
         prop_bwd = prop_setup.propagator.translational(
             central_bodies,
             acc,
@@ -327,17 +331,18 @@ def main(cfg: DictConfig):
         result_bwd = sim.create_dynamics_simulator(bodies, prop_bwd)
         t_bwd = time.perf_counter() - t0_bwd
         bwd_state_history = result_bwd.propagation_results.state_history
-        logger.info("Backward propagation done: %d output epochs in %.2f s.", len(bwd_state_history), t_bwd)
+        logger.info(
+            "Backward propagation done: %d output epochs in %.2f s.", len(bwd_state_history), t_bwd
+        )
 
         # --- Build common epoch grid (forward epochs) ---
         bwd_epochs = np.array(sorted(bwd_state_history.keys()))
         bwd_states = np.array([bwd_state_history[e] for e in bwd_epochs])
 
         # Interpolate backward states to forward epochs
-        states_bwd_at_fwd = np.column_stack([
-            np.interp(fwd_epochs, bwd_epochs, bwd_states[:, i])
-            for i in range(6)
-        ])
+        states_bwd_at_fwd = np.column_stack(
+            [np.interp(fwd_epochs, bwd_epochs, bwd_states[:, i]) for i in range(6)]
+        )
 
         # --- Compute differences (forward - backward) ---
         # Skip the first epoch: the initial state can have a spurious mismatch
@@ -352,8 +357,7 @@ def main(cfg: DictConfig):
         closure_vel_error = np.linalg.norm((fwd_states[0] - states_bwd_at_fwd[0])[3:])
 
         logger.info(
-            "Forward-backward differences computed: position RMS = %.6e m, "
-            "velocity RMS = %.6e m/s",
+            "Forward-backward differences computed: position RMS = %.6e m, velocity RMS = %.6e m/s",
             np.sqrt(np.mean(pos_diff_norm**2)),
             np.sqrt(np.mean(vel_diff_norm**2)),
         )

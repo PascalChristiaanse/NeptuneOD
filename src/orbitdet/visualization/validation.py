@@ -157,6 +157,7 @@ def _integrator_order(integrator_type: str) -> int:
         case _:
             # Default: try to extract a number from the type string
             import re
+
             nums = re.findall(r"\d+", integrator_type)
             return int(nums[-1]) if nums else 4
 
@@ -234,9 +235,7 @@ class IntegratorConvergence(Plot):
                 default=f"{diff_label} — {integrator_type}",
             )
         )
-        ax1.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label_diff", default=y_label)
-        )
+        ax1.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_diff", default=y_label))
         _add_reference_line(ax1, plot_cfg)
         ax1.legend(fontsize=8)
         ax1.grid(True, alpha=0.3, which="both")
@@ -249,15 +248,15 @@ class IntegratorConvergence(Plot):
         # ---- Panel 2: RMS and Max per timestep (log-log) ----
         ax2 = axes[1]
         timesteps_arr = np.array(sorted_timesteps)
-        rms_arr = np.array([np.sqrt(np.mean(results[dt]["pos_diff_norm"] ** 2))
-                            for dt in sorted_timesteps])
-        max_arr = np.array([np.max(results[dt]["pos_diff_norm"])
-                            for dt in sorted_timesteps])
+        rms_arr = np.array(
+            [np.sqrt(np.mean(results[dt]["pos_diff_norm"] ** 2)) for dt in sorted_timesteps]
+        )
+        max_arr = np.array([np.max(results[dt]["pos_diff_norm"]) for dt in sorted_timesteps])
 
-        ax2.loglog(timesteps_arr, rms_arr, "o-", markersize=6, linewidth=2,
-                   label="RMS")
-        ax2.loglog(timesteps_arr, max_arr, "s--", markersize=5, linewidth=1.5,
-                   label="Max", alpha=0.7)
+        ax2.loglog(timesteps_arr, rms_arr, "o-", markersize=6, linewidth=2, label="RMS")
+        ax2.loglog(
+            timesteps_arr, max_arr, "s--", markersize=5, linewidth=1.5, label="Max", alpha=0.7
+        )
 
         # Annotate each RMS point with the timestep value
         for dt, rms in zip(timesteps_arr, rms_arr):
@@ -279,12 +278,8 @@ class IntegratorConvergence(Plot):
                 default=f"{rms_label} — {integrator_type}",
             )
         )
-        ax2.set_xlabel(
-            _cfg_get(plot_cfg, "axes", "x_label_rms", default="Timestep Δt [s]")
-        )
-        ax2.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label_rms", default="||Δr|| [m]")
-        )
+        ax2.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label_rms", default="Timestep Δt [s]"))
+        ax2.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_rms", default="||Δr|| [m]"))
         _add_reference_line(ax2, plot_cfg)
         ax2.grid(True, alpha=0.3, which="both")
         ax2.format_coord = _make_hover_formatter(
@@ -361,9 +356,7 @@ class InterpolatorConvergence(Plot):
                 default=f"Interpolation Error Over Time — {interpolator_type}",
             )
         )
-        ax1.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label_diff", default="||Δr|| [m]")
-        )
+        ax1.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_diff", default="||Δr|| [m]"))
         _add_reference_line(ax1, plot_cfg)
         ax1.legend(fontsize=8)
         ax1.grid(True, alpha=0.3, which="both")
@@ -376,15 +369,15 @@ class InterpolatorConvergence(Plot):
         # ---- Panel 2: RMS and Max per timestep (log-log) ----
         ax2 = axes[1]
         timesteps_arr = np.array(sorted_timesteps)
-        rms_arr = np.array([np.sqrt(np.mean(results[dt]["pos_diff_norm"] ** 2))
-                            for dt in sorted_timesteps])
-        max_arr = np.array([np.max(results[dt]["pos_diff_norm"])
-                            for dt in sorted_timesteps])
+        rms_arr = np.array(
+            [np.sqrt(np.mean(results[dt]["pos_diff_norm"] ** 2)) for dt in sorted_timesteps]
+        )
+        max_arr = np.array([np.max(results[dt]["pos_diff_norm"]) for dt in sorted_timesteps])
 
-        ax2.loglog(timesteps_arr, rms_arr, "o-", markersize=6, linewidth=2,
-                   label="RMS")
-        ax2.loglog(timesteps_arr, max_arr, "s--", markersize=5, linewidth=1.5,
-                   label="Max", alpha=0.7)
+        ax2.loglog(timesteps_arr, rms_arr, "o-", markersize=6, linewidth=2, label="RMS")
+        ax2.loglog(
+            timesteps_arr, max_arr, "s--", markersize=5, linewidth=1.5, label="Max", alpha=0.7
+        )
 
         for dt, rms in zip(timesteps_arr, rms_arr):
             ax2.annotate(
@@ -405,12 +398,8 @@ class InterpolatorConvergence(Plot):
                 default=f"RMS Interpolation Error vs Timestep — {interpolator_type}",
             )
         )
-        ax2.set_xlabel(
-            _cfg_get(plot_cfg, "axes", "x_label_rms", default="Timestep Δt [s]")
-        )
-        ax2.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label_rms", default="||Δr|| [m]")
-        )
+        ax2.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label_rms", default="Timestep Δt [s]"))
+        ax2.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_rms", default="||Δr|| [m]"))
         _add_reference_line(ax2, plot_cfg)
         ax2.grid(True, alpha=0.3, which="both")
         ax2.format_coord = _make_hover_formatter(
@@ -482,25 +471,40 @@ class IntegratorFamilyComparison(Plot):
             type_results = results_by_type[integrator_type]
             sorted_timesteps = sorted(type_results.keys())
             timesteps_arr = np.array(sorted_timesteps)
-            rms_arr = np.array([
-                np.sqrt(np.mean(type_results[dt]["pos_diff_norm"] ** 2))
-                for dt in sorted_timesteps
-            ])
-            max_arr = np.array([
-                np.max(type_results[dt]["pos_diff_norm"])
-                for dt in sorted_timesteps
-            ])
+            rms_arr = np.array(
+                [
+                    np.sqrt(np.mean(type_results[dt]["pos_diff_norm"] ** 2))
+                    for dt in sorted_timesteps
+                ]
+            )
+            max_arr = np.array(
+                [np.max(type_results[dt]["pos_diff_norm"]) for dt in sorted_timesteps]
+            )
 
             color = colors[idx % len(colors)]
             marker = markers[idx % len(markers)]
 
-            line_rms, = ax.loglog(timesteps_arr, rms_arr, marker=marker, color=color,
-                                  linestyle="-", linewidth=2, markersize=7,
-                                  label=f"{integrator_type} (RMS)")
-            line_max, = ax.loglog(timesteps_arr, max_arr, marker=marker, color=color,
-                                  linestyle="--", linewidth=1.2, markersize=5,
-                                  alpha=0.7,
-                                  label=f"{integrator_type} (Max)")
+            (line_rms,) = ax.loglog(
+                timesteps_arr,
+                rms_arr,
+                marker=marker,
+                color=color,
+                linestyle="-",
+                linewidth=2,
+                markersize=7,
+                label=f"{integrator_type} (RMS)",
+            )
+            (line_max,) = ax.loglog(
+                timesteps_arr,
+                max_arr,
+                marker=marker,
+                color=color,
+                linestyle="--",
+                linewidth=1.2,
+                markersize=5,
+                alpha=0.7,
+                label=f"{integrator_type} (Max)",
+            )
 
             plotted_lines.append((line_rms, integrator_type, "RMS", timesteps_arr, rms_arr))
             plotted_lines.append((line_max, integrator_type, "Max", timesteps_arr, max_arr))
@@ -514,20 +518,20 @@ class IntegratorFamilyComparison(Plot):
                 default=f"Integrator Family Comparison — {strategy_label}",
             )
         )
-        ax.set_xlabel(
-            _cfg_get(plot_cfg, "axes", "x_label", default="Timestep Δt [s]")
-        )
-        ax.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]")
-        )
+        ax.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label", default="Timestep Δt [s]"))
+        ax.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]"))
         _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.legend(fontsize=7, ncol=2)
 
         # Interactive hover annotation
         hover_annot = ax.annotate(
-            "", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
-            fontsize=8, bbox=dict(boxstyle="round,pad=0.3", fc="wheat", alpha=0.8),
+            "",
+            xy=(0, 0),
+            xytext=(10, 10),
+            textcoords="offset points",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.3", fc="wheat", alpha=0.8),
             arrowprops=dict(arrowstyle="->", color="gray", lw=0.5),
             visible=False,
         )
@@ -540,8 +544,7 @@ class IntegratorFamilyComparison(Plot):
                 if len(xs) == 0:
                     continue
                 # Find nearest point on this line
-                dists = np.hypot(np.log10(xs) - np.log10(xdata),
-                                 np.log10(ys) - np.log10(ydata))
+                dists = np.hypot(np.log10(xs) - np.log10(xdata), np.log10(ys) - np.log10(ydata))
                 idx = np.argmin(dists)
                 d = dists[idx]
                 if d < best_dist:
@@ -636,12 +639,8 @@ class IntegratorErrorVsTime(Plot):
                 default=f"Max Error vs Integration Time — {integrator_type} ({strategy_label})",
             )
         )
-        ax.set_xlabel(
-            _cfg_get(plot_cfg, "axes", "x_label", default="Integration Time [s]")
-        )
-        ax.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label", default="Max ||Δr|| [m]")
-        )
+        ax.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label", default="Integration Time [s]"))
+        ax.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label", default="Max ||Δr|| [m]"))
         _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.format_coord = _make_hover_formatter(
@@ -699,14 +698,23 @@ class IntegratorErrorVsTimeFamily(Plot):
             type_results = results_by_type[integrator_type]
             sorted_timesteps = sorted(type_results.keys())
             times_arr = np.array([type_results[dt]["integration_time"] for dt in sorted_timesteps])
-            max_arr = np.array([np.max(type_results[dt]["pos_diff_norm"]) for dt in sorted_timesteps])
+            max_arr = np.array(
+                [np.max(type_results[dt]["pos_diff_norm"]) for dt in sorted_timesteps]
+            )
 
             color = colors[idx % len(colors)]
             marker = markers[idx % len(markers)]
 
-            ax.loglog(times_arr, max_arr, marker=marker, color=color,
-                      linestyle="-", linewidth=2, markersize=7,
-                      label=integrator_type)
+            ax.loglog(
+                times_arr,
+                max_arr,
+                marker=marker,
+                color=color,
+                linestyle="-",
+                linewidth=2,
+                markersize=7,
+                label=integrator_type,
+            )
 
         strategy_label = "Forward-Backward" if strategy == "forward_backward" else "Richardson"
         ax.set_title(
@@ -717,12 +725,8 @@ class IntegratorErrorVsTimeFamily(Plot):
                 default=f"Max Error vs Integration Time — {strategy_label}",
             )
         )
-        ax.set_xlabel(
-            _cfg_get(plot_cfg, "axes", "x_label", default="Integration Time [s]")
-        )
-        ax.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label", default="Max ||Δr|| [m]")
-        )
+        ax.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label", default="Integration Time [s]"))
+        ax.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label", default="Max ||Δr|| [m]"))
         _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.legend(fontsize=8)
@@ -788,25 +792,40 @@ class InterpolatorFamilyComparison(Plot):
             type_results = results_by_type[interpolator_type]
             sorted_timesteps = sorted(type_results.keys())
             timesteps_arr = np.array(sorted_timesteps)
-            rms_arr = np.array([
-                np.sqrt(np.mean(type_results[dt]["pos_diff_norm"] ** 2))
-                for dt in sorted_timesteps
-            ])
-            max_arr = np.array([
-                np.max(type_results[dt]["pos_diff_norm"])
-                for dt in sorted_timesteps
-            ])
+            rms_arr = np.array(
+                [
+                    np.sqrt(np.mean(type_results[dt]["pos_diff_norm"] ** 2))
+                    for dt in sorted_timesteps
+                ]
+            )
+            max_arr = np.array(
+                [np.max(type_results[dt]["pos_diff_norm"]) for dt in sorted_timesteps]
+            )
 
             color = colors[idx % len(colors)]
             marker = markers[idx % len(markers)]
 
-            line_rms, = ax.loglog(timesteps_arr, rms_arr, marker=marker, color=color,
-                                  linestyle="-", linewidth=2, markersize=7,
-                                  label=f"{interpolator_type} (RMS)")
-            line_max, = ax.loglog(timesteps_arr, max_arr, marker=marker, color=color,
-                                  linestyle="--", linewidth=1.2, markersize=5,
-                                  alpha=0.7,
-                                  label=f"{interpolator_type} (Max)")
+            (line_rms,) = ax.loglog(
+                timesteps_arr,
+                rms_arr,
+                marker=marker,
+                color=color,
+                linestyle="-",
+                linewidth=2,
+                markersize=7,
+                label=f"{interpolator_type} (RMS)",
+            )
+            (line_max,) = ax.loglog(
+                timesteps_arr,
+                max_arr,
+                marker=marker,
+                color=color,
+                linestyle="--",
+                linewidth=1.2,
+                markersize=5,
+                alpha=0.7,
+                label=f"{interpolator_type} (Max)",
+            )
 
             plotted_lines.append((line_rms, interpolator_type, "RMS", timesteps_arr, rms_arr))
             plotted_lines.append((line_max, interpolator_type, "Max", timesteps_arr, max_arr))
@@ -819,20 +838,20 @@ class InterpolatorFamilyComparison(Plot):
                 default="Interpolator Family Comparison",
             )
         )
-        ax.set_xlabel(
-            _cfg_get(plot_cfg, "axes", "x_label", default="Timestep Δt [s]")
-        )
-        ax.set_ylabel(
-            _cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]")
-        )
+        ax.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label", default="Timestep Δt [s]"))
+        ax.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label", default="||Δr|| [m]"))
         _add_reference_line(ax, plot_cfg)
         ax.grid(True, alpha=0.3, which="both")
         ax.legend(fontsize=7, ncol=2)
 
         # Interactive hover annotation
         hover_annot = ax.annotate(
-            "", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
-            fontsize=8, bbox=dict(boxstyle="round,pad=0.3", fc="wheat", alpha=0.8),
+            "",
+            xy=(0, 0),
+            xytext=(10, 10),
+            textcoords="offset points",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.3", fc="wheat", alpha=0.8),
             arrowprops=dict(arrowstyle="->", color="gray", lw=0.5),
             visible=False,
         )
@@ -843,8 +862,7 @@ class InterpolatorFamilyComparison(Plot):
             for line, name, kind, xs, ys in plotted_lines:
                 if len(xs) == 0:
                     continue
-                dists = np.hypot(np.log10(xs) - np.log10(xdata),
-                                 np.log10(ys) - np.log10(ydata))
+                dists = np.hypot(np.log10(xs) - np.log10(xdata), np.log10(ys) - np.log10(ydata))
                 idx = np.argmin(dists)
                 d = dists[idx]
                 if d < best_dist:

@@ -125,6 +125,85 @@ class TestWeightEngineFromConfig:
         with pytest.raises(ValueError, match="No weight strategy registered"):
             WeightEngine.from_config(cfg)
 
+    def test_descriptor_strategy_id_v2(self):
+        """Descriptor form: strategy: {type: id_v2}."""
+        cfg = OmegaConf.create({"strategy": {"type": "id_v2"}})
+        engine = WeightEngine.from_config(cfg)
+        assert engine.strategy.__class__.__name__ == "IDv2Weight"
+
+    def test_descriptor_strategy_layered(self):
+        """Descriptor form with inline strategy kwargs (no engine edit needed)."""
+        cfg = OmegaConf.create(
+            {
+                "strategy": {
+                    "type": "layered",
+                    "combine": "geometric",
+                    "layers": [
+                        {
+                            "level": "section",
+                            "mode": "fixed",
+                            "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
+                        },
+                        {"level": "timeframe", "mode": "rmse_descaled"},
+                    ],
+                },
+                "grouping": {
+                    "levels": [
+                        {
+                            "type": "section",
+                            "sections": [
+                                {
+                                    "name": "pre_encounter",
+                                    "start": -1e30,
+                                    "end": -326688543.8172541,
+                                },
+                                {
+                                    "name": "post_encounter",
+                                    "start": -326688543.8172541,
+                                    "end": 1e30,
+                                },
+                            ],
+                        },
+                        {"type": "timeframe", "gap_threshold_hours": 8.0},
+                    ],
+                },
+            }
+        )
+        engine = WeightEngine.from_config(cfg)
+        assert engine.strategy.__class__.__name__ == "LayeredWeight"
+
+    def test_descriptor_gaia_archive(self):
+        cfg = OmegaConf.create(
+            {"strategy": {"type": "gaia_archive", "covariance_mode": "diagonal", "scale": 2.0}}
+        )
+        engine = WeightEngine.from_config(cfg)
+        assert engine.strategy.covariance_mode == "diagonal"
+        assert engine.strategy.scale == 2.0
+
+    def test_default_grouping_fallback(self):
+        """A top-level default grouping is used when the node has none."""
+        default_grouping = OmegaConf.create(
+            {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
+        )
+        cfg = OmegaConf.create({"strategy": "id_v2"})
+        engine = WeightEngine.from_config(cfg, default_grouping=default_grouping)
+        assert engine._grouping is default_grouping
+
+    def test_own_grouping_overrides_default(self):
+        """A node-level grouping takes precedence over the default."""
+        default_grouping = OmegaConf.create(
+            {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
+        )
+        cfg = OmegaConf.create(
+            {
+                "strategy": "id_v2",
+                "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 12.0}]},
+            }
+        )
+        engine = WeightEngine.from_config(cfg, default_grouping=default_grouping)
+        assert engine._grouping is not default_grouping
+        assert engine._grouping.levels[0].gap_threshold_hours == 12.0
+
 
 # ===========================================================================
 # WeightEngine.apply
@@ -324,24 +403,28 @@ class TestWeightEngineApply:
         assert "WeightEngine" in caplog.text
         assert "IDv2Weight" in caplog.text or "id_v2" in caplog.text
 
-    def test_fixed_strategy_from_config(self):
-        """Fixed strategy with fixed_sigmas injected via from_config."""
+    def test_layered_fixed_strategy_from_config(self):
+        """Fixed sigmas via the layered strategy (descriptor form)."""
         cfg = OmegaConf.create(
             {
-                "strategy": "fixed",
-                "grouping": {
-                    "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
-                    "fixed_sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
+                "strategy": {
+                    "type": "layered",
+                    "layers": [
+                        {
+                            "level": "set",
+                            "mode": "fixed",
+                            "sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
+                        },
+                    ],
                 },
+                "grouping": {"levels": [{"type": "set"}]},
             }
         )
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "FixedWeight"
-        assert engine._strategy._fixed_sigmas["689"]["ra"] == 0.15
-        assert engine._strategy._fixed_sigmas["689"]["dec"] == 0.15
+        assert engine.strategy.__class__.__name__ == "LayeredWeight"
 
-    def test_fixed_strategy_applies_weights(self):
-        """Fixed strategy should set tabulated weights via the engine."""
+    def test_layered_fixed_sigma_applies_weights(self):
+        """A layered fixed-sigma layer should set tabulated weights via the engine."""
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 3600.0]
         obs_set = _make_mock_single_obs_set("689", residuals, times, reference_point="689")
@@ -349,10 +432,17 @@ class TestWeightEngineApply:
 
         cfg = OmegaConf.create(
             {
-                "strategy": "fixed",
-                "grouping": {
-                    "fixed_sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
+                "strategy": {
+                    "type": "layered",
+                    "layers": [
+                        {
+                            "level": "set",
+                            "mode": "fixed",
+                            "sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
+                        },
+                    ],
                 },
+                "grouping": {"levels": [{"type": "set"}]},
             }
         )
         engine = WeightEngine.from_config(cfg)
@@ -372,4 +462,3 @@ class TestWeightEngineApply:
         np.testing.assert_allclose(call_args[0], expected_w_ra)
         np.testing.assert_allclose(call_args[1], expected_w_dec)
         assert len(weights_df) == 2
-        assert weights_df["strategy"].iloc[0] == "fixed"

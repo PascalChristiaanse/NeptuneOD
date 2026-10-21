@@ -12,9 +12,27 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
+from ..grouping import Group, GroupList
 from .base import WeightStrategy
-from .grouping import Group, GroupList
+from .dataframe import (
+    build_weights_df as _build_weights_df,
+)
+from .dataframe import (
+    interleave_weights as _interleave_weights,
+)
+from .dataframe import (
+    observable_type_str as _observable_type_str,
+)
+from .dataframe import (
+    residuals_array as _residuals_array,
+)
+from .dataframe import (
+    rms as _rms,
+)
+from .gaia_cache import get_gaia_weights
+from .layered import LayeredWeight  # noqa: F401  (registers the "layered" strategy)
 from .registry import register_weight_strategy
+from .router import RouterWeight  # noqa: F401  (registers the "router" strategy)
 
 logger = logging.getLogger(__name__)
 
@@ -22,97 +40,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _ARCSEC_TO_RAD = np.pi / (180.0 * 3600.0)
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _rms(values: np.ndarray) -> float:
-    """Root-mean-square of finite values; returns 0 if no finite values."""
-    finite = values[np.isfinite(values)]
-    if finite.size == 0:
-        return 0.0
-    return float(np.sqrt(np.mean(np.square(finite))))
-
-
-def _residuals_array(observation_set: obs.SingleObservationSet) -> np.ndarray:
-    """Extract residuals as (n_obs, 2) array in radians.
-
-    Guards against 1D empty arrays.
-    """
-    residuals = np.array(observation_set.residuals)
-    if residuals.ndim == 1:
-        if residuals.shape[0] == 0:
-            return np.empty((0, 2))
-        # Single observation: shape (2,) -> (1, 2)
-        return residuals.reshape(1, 2)
-    return residuals
-
-
-def _build_weights_df(
-    n_obs: int,
-    times: np.ndarray,
-    residuals_rad: np.ndarray,
-    groups: GroupList,
-    weights_ra: np.ndarray,
-    weights_dec: np.ndarray,
-    strategy_name: str,
-    set_id: str,
-    level: str,
-    observable_type: str = "astrometric",
-) -> pd.DataFrame:
-    """Build a per-observation metadata DataFrame.
-
-    Each row corresponds to one observation and carries the group assignment
-    at the specified level, the RA/DEC residuals, and the assigned weights.
-
-    Parameters
-    ----------
-    observable_type : str
-        Human-readable type (e.g. ``"absolute"``, ``"relative"``).
-    """
-    # Build a group-id array at the finest granularity
-    group_ids = np.full(n_obs, "", dtype=object)
-    group_ra_rms = np.full(n_obs, np.nan)
-    group_dec_rms = np.full(n_obs, np.nan)
-    parent_ids = np.full(n_obs, "", dtype=object)
-    parent_levels = np.full(n_obs, "", dtype=object)
-
-    for g in groups:
-        if g.level == level:
-            ra_rms = _rms(residuals_rad[g.indices, 0])
-            dec_rms = _rms(residuals_rad[g.indices, 1])
-            for idx in g.indices:
-                group_ids[idx] = g.group_id
-                group_ra_rms[idx] = ra_rms
-                group_dec_rms[idx] = dec_rms
-                if g.parent_id:
-                    parent_ids[idx] = g.parent_id
-                if g.parent_level:
-                    parent_levels[idx] = g.parent_level
-
-    return pd.DataFrame(
-        {
-            "set_id": set_id,
-            "strategy": strategy_name,
-            "group_level": level,
-            "observable_type": observable_type,
-            "group_id": group_ids,
-            "parent_id": parent_ids,
-            "parent_level": parent_levels,
-            "time": times,
-            "ra_residual_rad": residuals_rad[:, 0],
-            "dec_residual_rad": residuals_rad[:, 1],
-            "ra_residual_arcsec": np.rad2deg(residuals_rad[:, 0]) * 3600.0,
-            "dec_residual_arcsec": np.rad2deg(residuals_rad[:, 1]) * 3600.0,
-            "group_ra_rms_arcsec": np.rad2deg(group_ra_rms) * 3600.0,
-            "group_dec_rms_arcsec": np.rad2deg(group_dec_rms) * 3600.0,
-            "weight_ra": weights_ra,
-            "weight_dec": weights_dec,
-        }
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -841,51 +768,77 @@ class HybridArithmeticWeight(WeightStrategy):
 
 
 # ---------------------------------------------------------------------------
-# Fixed sigma strategy
+# Gaia archive strategy (off-diagonal weights from Gaia covariance)
 # ---------------------------------------------------------------------------
 
 
-@register_weight_strategy("fixed")
-class FixedWeight(WeightStrategy):
-    """Fixed-sigma weighting from user-specified sigmas in the grouping config.
+@register_weight_strategy("gaia_archive")
+class GaiaArchiveWeight(WeightStrategy):
+    """Gaia archive weighting from the Gaia transit covariance.
 
-    Assigns weights from known sigmas (``fixed_sigmas`` in the grouping config)
-    rather than computing them from residuals.  Useful when the precision is
-    known a priori (e.g. Gaia) or when reproducing published results.
+    The Gaia archive covariance (random + systematic, with RA/DEC correlations)
+    is turned into a weight matrix by the tudatpy ``GaiaAstrometry`` interface
+    (via :class:`~orbitdet.data.gaia.GaiaQuery`) and carried by the observation
+    sets.  Within a transit this couples every RA/DEC sample to every other
+    sample (a ``2N x 2N`` block for ``N`` CCD crossings), so the full
+    off-diagonal weight matrix is the only scheme here that accounts for the
+    Gaia intra-transit systematic correlation.
 
-    Sigmas are specified per group-level identifier (section name or set id).
-    Observers not listed fall back to the set-level RMSE.
+    This strategy is configurable through ``weighting.gaia_archive``:
+
+    ``covariance_mode``
+        * ``"full_matrix"`` (default) - use the archive's full transit weight
+          matrix as-is.  The :class:`WeightEngine` leaves the set untouched.
+        * ``"diagonal"`` - use only the per-observation diagonal of the archive
+          weight matrix, i.e. ignore the intra-transit correlations.  The
+          cached diagonal is applied as base (per-observation) weights.
+    ``scale``
+        Multiplicative factor applied to the archive weights (default ``1.0``).
+        Use ``> 1`` to down-weight Gaia relative to other datasets, or ``< 1``
+        to up-weight it.  In ``full_matrix`` mode the archived transit matrix is
+        rescaled; in ``diagonal`` mode the returned base weights are rescaled.
+
+    If no cached archive weights are found for a set, the strategy falls back to
+    the ID v2 residual-driven weighting.
     """
 
-    def __init__(self, fixed_sigmas: dict[str, dict[str, float]] | None = None):
-        self._fixed_sigmas: dict[str, dict[str, float]] | None = fixed_sigmas or None
+    def __init__(
+        self,
+        covariance_mode: str = "full_matrix",
+        scale: float = 1.0,
+    ):
+        """Configure the Gaia archive weighting.
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _sigma_rad(value_arcsec: float) -> float:
-        """Convert arcseconds to radians."""
-        return value_arcsec * _ARCSEC_TO_RAD
-
-    @staticmethod
-    def _resolve_entry(
-        entry: dict[str, float],
-    ) -> tuple[float, float] | None:
-        """Extract (ra_sigma_arcsec, dec_sigma_arcsec) from a fixed_sigmas entry.
-
-        Supports both per-component (``ra``, ``dec``) and single-value
-        (``sigma``) syntax.
+        Parameters
+        ----------
+        covariance_mode : str
+            ``"full_matrix"`` (default) to use the full off-diagonal transit
+            weight matrix, or ``"diagonal"`` to use only its per-observation
+            diagonal.
+        scale : float
+            Positive multiplicative factor applied to the archive weights.
         """
-        single = entry.get("sigma")
-        if single is not None and single > 0:
-            return single, single
-        ra = entry.get("ra", 0.0)
-        dec = entry.get("dec", 0.0)
-        if ra > 0 and dec > 0:
-            return ra, dec
-        return None
+        if covariance_mode not in ("full_matrix", "diagonal"):
+            raise ValueError(
+                "GaiaArchiveWeight: 'covariance_mode' must be 'full_matrix' or "
+                f"'diagonal', got {covariance_mode!r}."
+            )
+        if not np.isfinite(scale) or scale <= 0.0:
+            raise ValueError(
+                f"GaiaArchiveWeight: 'scale' must be a positive finite number, got {scale!r}."
+            )
+        self.covariance_mode = covariance_mode
+        self.scale = float(scale)
+
+    @property
+    def preserve_full_weight_matrix(self) -> bool:
+        """Whether the engine should leave the set's full weight matrix untouched.
+
+        True in ``full_matrix`` mode (the archive matrix IS the weighting); False
+        in ``diagonal`` mode (the engine clears the full matrix and applies the
+        cached diagonal as base weights).
+        """
+        return self.covariance_mode == "full_matrix"
 
     def compute_weights(
         self,
@@ -902,57 +855,71 @@ class FixedWeight(WeightStrategy):
         if n_obs == 0:
             return np.array([], dtype=float), pd.DataFrame()
 
-        fixed_sigmas = self._fixed_sigmas or {}
+        # Try to retrieve cached Gaia archive weights
+        cached = get_gaia_weights(set_id)
+        if cached is not None and len(cached) == 2 * n_obs:
+            weights_array = np.asarray(cached, dtype=float).copy()
+            if self.scale != 1.0:
+                weights_array = weights_array * self.scale
+                if self.covariance_mode == "full_matrix" and getattr(
+                    observation_set, "has_full_weight_matrix_contribution", False
+                ):
+                    # Rescale the archived transit matrix in place; the engine preserves it.
+                    observation_set.set_full_weight_matrix(
+                        np.asarray(observation_set.full_weight_matrix, dtype=float) * self.scale
+                    )
+            # Extract RA/DEC weights for the metadata DataFrame
+            weights_ra_arr = weights_array[0::2]
+            weights_dec_arr = weights_array[1::2]
+            df = _build_weights_df(
+                n_obs,
+                times,
+                residuals_rad,
+                groups,
+                weights_ra_arr,
+                weights_dec_arr,
+                "gaia_archive",
+                set_id,
+                "set",
+                observable_type=_observable_type_str(observation_set),
+            )
+            logger.debug(
+                "GaiaArchiveWeight [%s]: mode=%s, scale=%.3g, using cached archive weights "
+                "(RA w range=[%.2e, %.2e], DEC w range=[%.2e, %.2e])",
+                set_id,
+                self.covariance_mode,
+                self.scale,
+                weights_ra_arr.min(),
+                weights_ra_arr.max(),
+                weights_dec_arr.min(),
+                weights_dec_arr.max(),
+            )
+            return weights_array, df
 
-        # Pre-compute per-group fixed sigmas if any groups match in fixed_sigmas
-        group_sigmas: dict[str, tuple[float, float]] = {}
-        for g in groups:
-            entry = fixed_sigmas.get(g.group_id)
-            if entry is not None:
-                resolved = self._resolve_entry(entry)
-                if resolved is not None:
-                    group_sigmas[g.group_id] = resolved
-
-        # Per-set fixed sigma
-        set_entry = fixed_sigmas.get(set_id)
-        set_resolved = self._resolve_entry(set_entry) if set_entry else None
-
-        # Build per-observation weights
-        weights_ra_arr = np.zeros(n_obs)
-        weights_dec_arr = np.zeros(n_obs)
-        used_fixed = False
-
-        if group_sigmas or set_resolved is not None:
-            used_fixed = True
-            for i in range(n_obs):
-                # Check if this observation belongs to a group with a fixed sigma
-                ra_sigma_asc = None
-                dec_sigma_asc = None
-                for g in groups:
-                    if i in g.indices and g.group_id in group_sigmas:
-                        ra_sigma_asc, dec_sigma_asc = group_sigmas[g.group_id]
-                        break
-                if ra_sigma_asc is None and set_resolved is not None:
-                    ra_sigma_asc, dec_sigma_asc = set_resolved
-                if ra_sigma_asc is not None:
-                    ra_sigma_rad = max(ra_sigma_asc * _ARCSEC_TO_RAD, min_sigma_rad)
-                    dec_sigma_rad = max(dec_sigma_asc * _ARCSEC_TO_RAD, min_sigma_rad)
-                    weights_ra_arr[i] = 1.0 / ra_sigma_rad**2
-                    weights_dec_arr[i] = 1.0 / dec_sigma_rad**2
-                else:
-                    # Fallback: residual-driven RMSE
-                    pass  # will fill below
-
-        # Fill any zeros (fallback to residual-driven RMSE)
-        zero_mask = weights_ra_arr == 0.0
-        if np.any(zero_mask):
+        # Fallback: no cached weights — use ID v2 residual-driven weighting
+        logger.warning(
+            "GaiaArchiveWeight [%s]: no cached archive weights found "
+            "(set_id='%s', n_obs=%d). Falling back to ID v2 residual-driven weighting.",
+            set_id,
+            set_id,
+            n_obs,
+        )
+        tf_groups = groups.by_level("timeframe")
+        if not tf_groups:
             ra_sigma = max(_rms(residuals_rad[:, 0]), min_sigma_rad)
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
-            weights_ra_arr[zero_mask] = 1.0 / ra_sigma**2
-            weights_dec_arr[zero_mask] = 1.0 / dec_sigma**2
+            w_ra = 1.0 / ra_sigma**2
+            w_dec = 1.0 / dec_sigma**2
+            weights_ra_arr = np.full(n_obs, w_ra)
+            weights_dec_arr = np.full(n_obs, w_dec)
+        else:
+            ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(residuals_rad, tf_groups, min_sigma_rad)
+            w_ra = 1.0 / ra_id_v2_sigma**2
+            w_dec = 1.0 / dec_id_v2_sigma**2
+            weights_ra_arr = np.full(n_obs, w_ra)
+            weights_dec_arr = np.full(n_obs, w_dec)
 
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
-
         df = _build_weights_df(
             n_obs,
             times,
@@ -960,62 +927,15 @@ class FixedWeight(WeightStrategy):
             groups,
             weights_ra_arr,
             weights_dec_arr,
-            "fixed",
+            "gaia_archive",
             set_id,
             "set",
             observable_type=_observable_type_str(observation_set),
         )
         logger.debug(
-            "FixedWeight [%s]: used_fixed=%s",
+            "GaiaArchiveWeight [%s]: fallback ID v2 (RA σ=%.2e, DEC σ=%.2e)",
             set_id,
-            used_fixed,
+            ra_id_v2_sigma if tf_groups else ra_sigma,
+            dec_id_v2_sigma if tf_groups else dec_sigma,
         )
         return weights_array, df
-
-
-# ---------------------------------------------------------------------------
-# Shared utility
-# ---------------------------------------------------------------------------
-
-
-def _interleave_weights(
-    weights_ra: np.ndarray,
-    weights_dec: np.ndarray,
-) -> np.ndarray:
-    """Interleave RA and DEC weights into a flat array.
-
-    Tudat's ``set_tabulated_weights`` expects RA at even indices and DEC at
-    odd indices.
-    """
-    n = len(weights_ra)
-    result = np.empty(2 * n, dtype=float)
-    result[0::2] = weights_ra
-    result[1::2] = weights_dec
-    return result
-
-
-def _observable_type_str(observation_set: obs.SingleObservationSet) -> str:
-    """Return a human-readable string for the observable type.
-
-    Maps Tudat's ``ObservableType`` enum to a short label.
-
-    Currently supported:
-        - ``angular_position`` (type 1) → ``"absolute"``
-        - ``relative_angular_position`` (type 9) → ``"relative"``
-
-    Extend ``_OBSERVABLE_TYPE_LABELS`` to add new types.
-    """
-    from tudatpy.estimation.observable_models_setup import model_settings as obs_model_settings
-
-    _OBSERVABLE_TYPE_LABELS: dict[int, str] = {
-        1: "absolute",  # angular_position_type
-        9: "relative",  # relative_angular_position_type
-    }
-
-    obs_type = observation_set.observable_type
-    for type_id, label in _OBSERVABLE_TYPE_LABELS.items():
-        if obs_type == obs_model_settings.ObservableType(type_id):
-            return label
-    # Fallback for unrecognised types
-    logger.debug("Unrecognised observable type %s, falling back to 'absolute'", obs_type)
-    return "absolute"

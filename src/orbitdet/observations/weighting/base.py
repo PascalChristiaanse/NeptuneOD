@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from .grouping import GroupList
+from ..grouping import GroupList
 
 
 class WeightStrategy(ABC):
@@ -22,7 +22,19 @@ class WeightStrategy(ABC):
 
     Subclasses must implement :meth:`compute_weights` and should be registered
     via the :func:`register_weight_strategy` decorator.
+
+    Attributes:
+        preserve_full_weight_matrix: If True, the :class:`WeightEngine` leaves any
+            set that already carries a full (off-diagonal) weight matrix
+            untouched, so the base weights computed here are not applied.  Set
+            this on strategies whose weights *are* the full archive matrix
+            (e.g. ``gaia_archive``).  Defaults to False, in which case the
+            engine clears any existing full matrix before applying the base
+            weights.
     """
+
+    #: Whether the engine should leave sets with a full weight-matrix contribution untouched.
+    preserve_full_weight_matrix: bool = False
 
     @abstractmethod
     def compute_weights(

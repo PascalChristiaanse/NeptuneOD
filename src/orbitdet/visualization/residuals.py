@@ -9,7 +9,7 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.data.gaia_data import get_scan_angles_for_epochs
+from orbitdet.data.gaia import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot, _snake_case
 
@@ -415,7 +415,7 @@ class ResidualsScan(Plot):
     """Plot along-scan (AL) and across-scan (AC) residuals for Gaia observations.
 
     Rotates the RA/Dec residuals into the Gaia scan frame using the archived
-    ``position_angle_scan``.  This is registered in :mod:`orbitdet.data.gaia_data`
+    ``position_angle_scan``.  This is registered in :mod:`orbitdet.data.gaia`
     (see :func:`get_scan_angles_for_epochs`) when the observations are built via
     :meth:`GaiaQuery.to_tudat`.
     """

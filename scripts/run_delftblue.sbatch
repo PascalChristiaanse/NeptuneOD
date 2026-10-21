@@ -15,4 +15,4 @@ export HYDRA_FULL_ERROR=1
 module load miniconda3
 conda activate NeptuneOD
 cd ~/Documents/NeptuneOD
-srun python scripts/solve_least_squares.py --config-name=sweep/atanas_chapter_6
+srun python scripts/solve_least_squares.py --config-name=sweep/fit_to_ephemeris hydra.sweep.dir='/scratch/pchristiaanse/NeptuneOD/results/fit_to_ephemeris/${now:%Y-%m-%d_%H-%M-%S}'

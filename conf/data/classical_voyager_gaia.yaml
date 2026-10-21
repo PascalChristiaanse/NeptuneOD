@@ -8,3 +8,4 @@ defaults:
   - /dynamics: classical_voyager_gaia
   - /kernels/voyager
   - /kernels/gaia
+  - /kernels/classical

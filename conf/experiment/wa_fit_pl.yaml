@@ -34,13 +34,15 @@ defaults:
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses
   - /figures/RSW_distance
+  - /figures/prefit_rsw
+  - /figures/postfit_rsw
 
 seed: 42
 
 # Hydra settings
 hydra:
   run:
-    dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
   job:
     chdir: false
 

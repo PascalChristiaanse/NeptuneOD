@@ -1,9 +1,9 @@
 """Gaia observation dataset factory.
 
 Creates a Tudat observation collection from Gaia astrometric observations of a
-solar-system body (e.g. Triton).  The raw archive pull is handled by
-:class:`~orbitdet.data.gaia.GaiaQuery`, which holds an LRU cache (size=1) in
-memory during the Python session.
+solar-system body (e.g. Triton).  The raw archive pull, unit conversion and
+weighting are handled by the official tudatpy ``GaiaAstrometry`` interface via
+:class:`~orbitdet.data.gaia.GaiaQuery`.
 """
 
 import logging
@@ -13,7 +13,7 @@ import tudatpy.estimation.observable_models_setup as obs_model_setup
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig
 
-from orbitdet.data.gaia_data import GaiaQuery
+from orbitdet.data.gaia import GaiaQuery
 from orbitdet.observations.registry import register_dataset_factory
 
 logger = logging.getLogger(__name__)

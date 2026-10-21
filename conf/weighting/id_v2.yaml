@@ -1,16 +1,18 @@
 # @package _global_
 
-# Weighting: ID v2 (default).
-# Computes per-file RMSE from descaled per-timeframe RMSEs.
-# See docs/WEIGHTING_AND_OUTLIER_REJECTION_DESIGN.md for formulas.
+# Weighting: ID v2 (scaled per-file) scheme.
 #
-# To apply different strategies to specific sets, use per-set weighting
-# via the grouping config.
+# Router-shaped like every other weighting config: a router with only a
+# `default` is the single-strategy case.  Switch schemes by editing `default`;
+# add `routes` to give specific sets their own strategy (see `router.yaml`).
 
 weighting:
   enabled: true
-  strategy: id_v2
   min_sigma_arcsec: 0.005
+  strategy:
+    type: router
+    default:
+      type: id_v2
   grouping:
     levels:
       - type: timeframe

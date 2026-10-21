@@ -6,7 +6,7 @@
 # Frame settings
 global_frame_origin: "SSB"
 global_frame_orientation: "J2000"
-
+use_default_body_settings: true
 # Environment settings
 bodies_to_propagate:
   Triton:
@@ -25,7 +25,7 @@ bodies_to_create:
     placeholder: True
     ephemeris:
       type: "interpolated_spice"
-      interpolator_cadance: 480
+      interpolator_cadance: 7200
       coverage_buffer: 8640000
   Sun:
     gravity: "central"

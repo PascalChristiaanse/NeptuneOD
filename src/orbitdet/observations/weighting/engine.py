@@ -8,6 +8,7 @@ and assigns the resulting weights via ``set_tabulated_weights``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -16,10 +17,10 @@ import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
+from ..grouping import build_group_list
 from ..utils import get_set_identifier
 from .base import WeightStrategy
-from .grouping import build_group_list
-from .registry import get_strategy_class
+from .builder import build_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -130,12 +131,50 @@ class WeightEngine:
                 logger.warning("WeightEngine: no weights computed for set '%s'", set_id)
                 continue
 
-            # Assign weights via Tudat's set_tabulated_weights
-            try:
-                obs_set.set_tabulated_weights(weights_array)
-            except Exception as exc:
-                logger.error("WeightEngine: failed to set weights for set '%s': %s", set_id, exc)
-                raise
+            # A router may preserve the full matrix only for certain routes
+            # (e.g. Gaia).  Prefer the per-set answer when the strategy offers
+            # one, falling back to the top-level property.
+            preserve = getattr(self._strategy, "preserve_full_weight_matrix", False)
+            route_source = getattr(self._strategy, "route_source", None)
+            if callable(route_source):
+                try:
+                    sub = route_source(set_id)
+                    preserve = getattr(sub, "preserve_full_weight_matrix", preserve)
+                except Exception:  # pragma: no cover - diagnostics only
+                    pass
+
+            if getattr(obs_set, "has_full_weight_matrix_contribution", False) and preserve:
+                # The set carries a full (off-diagonal) archive weight matrix (e.g. the Gaia
+                # transit covariance).  Tudat adds the tabulated base weights on top of the full
+                # matrix, so applying the strategy weights here would double-count them.  Leave
+                # the full matrix untouched and only record the strategy weights for reporting.
+                logger.info(
+                    "WeightEngine [%s]: full archive weight matrix present; leaving weights "
+                    "untouched (strategy '%s' recorded for reporting only).",
+                    set_id,
+                    self._strategy.__class__.__name__,
+                )
+            else:
+                # Clear any pre-existing full weight-matrix contribution so it does not stack
+                # additively on top of the base weights we are about to assign.
+                if getattr(obs_set, "has_full_weight_matrix_contribution", False):
+                    try:
+                        obs_set.set_full_weight_matrix(np.zeros((0, 0)))
+                    except Exception as exc:
+                        logger.warning(
+                            "WeightEngine [%s]: could not clear full weight matrix: %s",
+                            set_id,
+                            exc,
+                        )
+
+                # Assign weights via Tudat's set_tabulated_weights
+                try:
+                    obs_set.set_tabulated_weights(weights_array)
+                except Exception as exc:
+                    logger.error(
+                        "WeightEngine: failed to set weights for set '%s': %s", set_id, exc
+                    )
+                    raise
 
             # Enrich with dataset metadata — pop FIFO per set_id
             meta_queue = meta_queues.get(set_id, [])
@@ -181,19 +220,31 @@ class WeightEngine:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, cfg: DictConfig) -> WeightEngine:
+    def from_config(
+        cls, cfg: DictConfig, default_grouping: DictConfig | None = None
+    ) -> WeightEngine:
         """Build an engine from a Hydra configuration node.
 
-        The config should have the following structure::
+        Two configuration forms are supported.
+
+        **Legacy (named strategy):**::
 
             weighting:
-              enabled: true
               strategy: id_v2
               min_sigma_arcsec: 0.01
               grouping:
-                levels:
-                  - type: timeframe
-                    gap_threshold_hours: 4.0
+                levels: [...]
+
+        **Descriptor (recommended)** — strategy options are given inline,
+        which removes the need to edit the factory for every strategy::
+
+            weighting:
+              strategy:
+                type: layered
+                combine: geometric
+                layers:
+                  - {level: section, mode: fixed, sigmas: {...}}
+                  - {level: timeframe, mode: rmse_descaled}
 
         Parameters
         ----------
@@ -205,22 +256,25 @@ class WeightEngine:
         WeightEngine
             An engine with the configured strategy and grouping.
         """
-        strategy_name = OmegaConf.select(cfg, "strategy", default="id_v2")
+        strategy_node = OmegaConf.select(cfg, "strategy", default="id_v2")
         min_sigma = float(OmegaConf.select(cfg, "min_sigma_arcsec", default=0.01))
-        grouping = OmegaConf.select(cfg, "grouping")
+        grouping = OmegaConf.select(cfg, "grouping") or default_grouping
 
-        strategy_cls = get_strategy_class(strategy_name)
-
-        # Build strategy instance, passing strategy-specific kwargs
-        if strategy_name == "fixed":
-            fixed_sigmas = {}
-            if grouping is not None:
-                fs = OmegaConf.select(grouping, "fixed_sigmas")
-                if fs is not None:
-                    fixed_sigmas = dict(fs)
-            strategy_instance = strategy_cls(fixed_sigmas=fixed_sigmas)
+        # Descriptor form: {type: <name>, ...kwargs}
+        if isinstance(strategy_node, Mapping) and "type" in strategy_node:
+            strategy_instance = build_strategy(strategy_node, grouping=grouping)
         else:
-            strategy_instance = strategy_cls()
+            # Bare strategy name (e.g. `strategy: id_v2`).  Strategy-specific
+            # options, if any, live under a sibling node named after the
+            # strategy (e.g. ``weighting.gaia_archive``).
+            strategy_name = str(strategy_node)
+            node = OmegaConf.select(cfg, strategy_name)
+            params = (
+                {k: v for k, v in node.items()}
+                if node is not None and hasattr(node, "items")
+                else {}
+            )
+            strategy_instance = build_strategy({"type": strategy_name, **params}, grouping=grouping)
 
         return cls(strategy_instance, grouping=grouping, min_sigma_arcsec=min_sigma)
 

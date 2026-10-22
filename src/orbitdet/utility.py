@@ -6,6 +6,7 @@ received a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
 
+import re
 from pathlib import Path
 
 from tudatpy.dynamics.environment_setup import create_system_of_bodies, get_default_body_settings
@@ -130,3 +131,107 @@ def save_tudat_object(obj: object, file_path: str | Path) -> Path:
 
     obj.save_to_binary(str(path))
     return path
+
+
+#: Seconds per unit for :func:`parse_duration_to_seconds`. Month and year use
+#: their mean Gregorian lengths (365.2425 days per year, 12 months per year),
+#: so a duration such as ``"6 months"`` maps to a deterministic number of
+#: seconds independent of the calendar date.
+_DURATION_UNITS: dict[str, float] = {
+    "s": 1.0,
+    "sec": 1.0,
+    "secs": 1.0,
+    "second": 1.0,
+    "seconds": 1.0,
+    "min": 60.0,
+    "mins": 60.0,
+    "minute": 60.0,
+    "minutes": 60.0,
+    "h": 3600.0,
+    "hr": 3600.0,
+    "hrs": 3600.0,
+    "hour": 3600.0,
+    "hours": 3600.0,
+    "d": 86400.0,
+    "day": 86400.0,
+    "days": 86400.0,
+    "w": 604800.0,
+    "week": 604800.0,
+    "weeks": 604800.0,
+    "mo": 2629746.0,
+    "month": 2629746.0,
+    "months": 2629746.0,
+    "y": 31556952.0,
+    "yr": 31556952.0,
+    "yrs": 31556952.0,
+    "year": 31556952.0,
+    "years": 31556952.0,
+}
+
+#: Matches one ``<number><unit>`` term, e.g. ``"6 months"`` or ``"1.5h"``.
+_DURATION_TERM = re.compile(r"([0-9]*\.?[0-9]+)\s*([a-zA-Z]+)")
+
+
+def parse_duration_to_seconds(value: float | int | str) -> float:
+    """Parse a duration into seconds.
+
+    Accepts either a plain number (already in seconds) or a human-readable
+    string such as ``"6 months"``, ``"180 days"``, ``"1 year"``, ``"12 h"``
+    or ``"3600 s"``. Compound strings (``"1 year 6 months"``) are summed.
+
+    Month and year are interpreted with their mean Gregorian lengths
+    (365.2425 days per year, 12 months per year), so the result is
+    deterministic and independent of the calendar date.
+
+    Parameters
+    ----------
+    value : float | int | str
+        Duration to parse. Numbers are interpreted as seconds.
+
+    Returns
+    -------
+    float
+        Duration in seconds.
+
+    Raises
+    ------
+    TypeError
+        If *value* is a boolean or an unsupported type.
+    ValueError
+        If a string cannot be parsed or contains an unknown unit.
+    """
+    if isinstance(value, bool):
+        raise TypeError("A boolean is not a valid duration.")
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        raise TypeError(f"Cannot parse duration from {type(value).__name__!r}.")
+
+    text = value.strip().lower()
+    if not text:
+        raise ValueError("Cannot parse an empty duration string.")
+
+    # A bare number is interpreted as seconds.
+    try:
+        return float(text)
+    except ValueError:
+        pass
+
+    terms = _DURATION_TERM.findall(text)
+    if not terms:
+        raise ValueError(f"Could not parse duration {value!r}.")
+
+    # Reject leftover characters (e.g. a typo'd unit) so mistakes are loud.
+    consumed = "".join(f"{number}{unit}" for number, unit in terms)
+    if re.sub(r"[\s,]", "", text) != consumed:
+        raise ValueError(f"Could not parse duration {value!r}.")
+
+    total = 0.0
+    for number, unit in terms:
+        if unit not in _DURATION_UNITS:
+            raise ValueError(
+                f"Unknown duration unit {unit!r} in {value!r}. "
+                f"Known units: {sorted(set(_DURATION_UNITS))}."
+            )
+        total += float(number) * _DURATION_UNITS[unit]
+    return total

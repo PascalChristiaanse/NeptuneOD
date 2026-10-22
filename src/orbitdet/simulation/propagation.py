@@ -271,14 +271,14 @@ def get_propagator_settings(
             "propagation.interpolator_order to override.",
             interpolator_order,
         )
-        settings.processing_settings.interpolator_settings = (
-            build_integrator_result_interpolator_settings(interpolator_order)
-        )
     else:
         logger.info(
             "Integrator-result interpolator: Lagrange-%d (overriding the TudatPy default of %d).",
             interpolator_order,
             TUDATPY_DEFAULT_INTERPOLATOR_ORDER,
         )
+    settings.processing_settings.interpolator_settings = (
+        build_integrator_result_interpolator_settings(interpolator_order)
+    )
 
     return settings

@@ -12,7 +12,7 @@ defaults:
   - _self_
 
 seed: 42
-
+use_default_body_settings: true
 hydra:
   run:
     dir: results/${hydra.job.name}/${git_commit:}/${now:%Y-%m-%d_%H-%M-%S}
@@ -20,9 +20,9 @@ hydra:
     chdir: false
 
 # Time settings — configurable via override
-start_date: 2000-1-1T12:00:00
-end_date: 2001-1-1T12:00:00
-initial_epoch: 2000-1-1T12:00:00
+start_date: 1989-08-25T12:00:00
+end_date: 2025-1-31T12:00:00
+initial_epoch: 1989-08-25T12:00:00
 
 # Validation settings
 validation:
@@ -34,9 +34,12 @@ validation:
   reference_lagrange_order: 8
   # Test Lagrange interpolator order (overridden by sweep)
   lagrange_order: 4
-  # Buffer: number of samples to skip at each boundary to avoid Runge's
-  # phenomenon. Should be >= max(reference_lagrange_order, lagrange_order).
-  # The first and last `buffer` epochs are excluded from comparison.
-  buffer: 120
+  # Buffer: duration to skip at each boundary to avoid Runge's phenomenon.
+  # Accepts a duration string (e.g. "6 months", "180 days", "1 year") or a
+  # plain number of seconds. The first and last `buffer` worth of epochs are
+  # excluded from comparison. The effective skip is floored at
+  # ceil(max(lagrange_order)/2) test samples, since a Lagrange-N interpolator
+  # needs N/2 samples on each side of a query point.
+  buffer: 6 months
   # Whether to save the full state history
   save_full_history: true

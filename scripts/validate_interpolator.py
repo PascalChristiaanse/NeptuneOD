@@ -7,8 +7,10 @@ the test timestep, a test Lagrange interpolator is created, and both
 interpolators are evaluated at the same query points. The difference is the
 interpolation error estimate.
 
-To avoid Runge's phenomenon, the first 8 and last 8 epochs are excluded
-from the comparison.
+To avoid Runge's phenomenon, a buffer is excluded from each end of the
+comparison. The buffer is specified as a duration (e.g. "6 months") and is
+floored at ceil(max(order)/2) reference epochs, since a Lagrange-N
+interpolator needs N/2 samples on each side of a query point.
 
 Results are saved as NPZ files for later analysis.
 
@@ -49,6 +51,7 @@ from orbitdet.simulation import (
     get_environment,
     get_propagator_settings,
 )
+from orbitdet.utility import parse_duration_to_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -90,16 +93,16 @@ def main(cfg: DictConfig):
     test_lagrange_order = cfg.validation.lagrange_order
     ref_timestep = cfg.validation.get("reference_timestep", 1800)
     ref_lagrange_order = cfg.validation.get("reference_lagrange_order", 8)
-    buffer = cfg.validation.get("buffer", 12)
+    buffer_cfg = cfg.validation.get("buffer", "0 s")
     integrator_type = cfg.integrator.type
     logger.info(
         "Validating Lagrange-%d interpolator with Δt = %.1f s, "
-        "reference: Lagrange-%d at Δt_ref = %.1f s, buffer=%d (integrator: %s)",
+        "reference: Lagrange-%d at Δt_ref = %.1f s, buffer=%s (integrator: %s)",
         test_lagrange_order,
         timestep,
         ref_lagrange_order,
         ref_timestep,
-        buffer,
+        buffer_cfg,
         integrator_type,
     )
 
@@ -166,14 +169,34 @@ def main(cfg: DictConfig):
     )
 
     # --- Query points: exclude boundary points to avoid Runge's phenomenon ---
-    n_skip = buffer
+    # The buffer is specified as a duration (e.g. "6 months") and converted to
+    # a number of reference epochs. A Lagrange-N interpolator needs N/2 samples
+    # on each side of a query point, so the buffer is additionally floored at
+    # ceil(max(order)/2) *test* samples (converted to reference epochs) to
+    # guarantee the test interpolator never reaches past the ends of its own
+    # sample set.
+    buffer_seconds = parse_duration_to_seconds(buffer_cfg)
+    n_skip_time = int(np.ceil(buffer_seconds / ref_timestep))
+    n_skip_order_samples = int(np.ceil(max(ref_lagrange_order, test_lagrange_order) / 2))
+    n_skip_order = int(np.ceil(n_skip_order_samples * timestep / ref_timestep))
+    n_skip = max(n_skip_time, n_skip_order)
+    if len(ref_epochs) <= 2 * n_skip:
+        raise ValueError(
+            f"Buffer of {buffer_cfg} ({n_skip} reference epochs) leaves nothing "
+            f"to compare out of {len(ref_epochs)} epochs."
+        )
     query_indices = slice(n_skip, len(ref_epochs) - n_skip)
     query_epochs = ref_epochs[query_indices]
     n_query = len(query_epochs)
     logger.info(
-        "Querying at %d epochs (skipping %d at each boundary).",
+        "Querying at %d epochs (skipping %d reference epochs = %.1f days at each "
+        "boundary; time buffer %d epochs, order/2 floor %d test samples = %d epochs).",
         n_query,
         n_skip,
+        n_skip * ref_timestep / 86400.0,
+        n_skip_time,
+        n_skip_order_samples,
+        n_skip_order,
     )
 
     # --- Interpolate both at query epochs ---
@@ -211,7 +234,9 @@ def main(cfg: DictConfig):
         reference_timestep=ref_timestep,
         reference_lagrange_order=ref_lagrange_order,
         test_lagrange_order=test_lagrange_order,
-        buffer=buffer,
+        buffer=buffer_cfg,
+        buffer_seconds=buffer_seconds,
+        buffer_epochs=n_skip,
     )
     logger.info("Results saved to %s", npz_path)
     aim_log_artifact_reference(npz_path)
@@ -226,6 +251,9 @@ def main(cfg: DictConfig):
         "reference_timestep": ref_timestep,
         "reference_lagrange_order": ref_lagrange_order,
         "test_lagrange_order": test_lagrange_order,
+        "buffer": buffer_cfg,
+        "buffer_seconds": buffer_seconds,
+        "buffer_epochs": n_skip,
         "start_date": cfg.start_date,
         "end_date": cfg.end_date,
         "initial_epoch": cfg.initial_epoch,

@@ -80,11 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     matplotlib.rcParams["webagg.port_retries"] = 10
     webagg.WebAggApplication.initialize()
 
-    url = "http://{host}:{port}/{num}".format(
-        host=webagg.WebAggApplication.address,
-        port=webagg.WebAggApplication.port,
-        num=manager.num,
-    )
+    url = f"http://{webagg.WebAggApplication.address}:{webagg.WebAggApplication.port}/{manager.num}"
     print(f"FIG_VIEWER_READY {url}", flush=True)
 
     # Blocks until the process is terminated (SIGINT/SIGTERM).

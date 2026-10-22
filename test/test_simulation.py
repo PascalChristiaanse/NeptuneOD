@@ -663,6 +663,85 @@ class TestGetPropagatorSettings:
 
         assert mock_translational.called
 
+    @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
+    def test_propagator_formulation_is_passed_through(
+        self,
+        mock_translational,
+        basic_config,
+        mock_runtime_context,
+    ):
+        """The propagator formulation must reach the tudatpy call."""
+        get_propagator_settings(
+            basic_config,
+            mock_runtime_context,
+            MagicMock(),
+            MagicMock(),
+            [],
+            propagator_type="encke",
+        )
+
+        kwargs = mock_translational.call_args[1]
+        assert kwargs["propagator"] is prop_setup.propagator.TranslationalPropagatorType.encke
+
+    @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
+    def test_default_propagator_formulation_is_cowell(
+        self,
+        mock_translational,
+        basic_config,
+        mock_runtime_context,
+    ):
+        get_propagator_settings(
+            basic_config,
+            mock_runtime_context,
+            MagicMock(),
+            MagicMock(),
+            [],
+        )
+
+        kwargs = mock_translational.call_args[1]
+        assert kwargs["propagator"] is prop_setup.propagator.TranslationalPropagatorType.cowell
+
+    def test_unknown_propagator_formulation_raises(
+        self,
+        basic_config,
+        mock_runtime_context,
+    ):
+        with pytest.raises(ValueError, match="Unknown translational propagator"):
+            get_propagator_settings(
+                basic_config,
+                mock_runtime_context,
+                MagicMock(),
+                MagicMock(),
+                [],
+                propagator_type="not_a_propagator",
+            )
+
+    @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
+    def test_explicit_initial_state_is_passed_verbatim(
+        self,
+        mock_translational,
+        basic_config,
+        mock_runtime_context,
+    ):
+        """An explicit initial state must be forwarded unchanged.
+
+        This is what lets the combination validator start both runs from the
+        identical state, so the difference is pure integration error.
+        """
+        state = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+        get_propagator_settings(
+            basic_config,
+            mock_runtime_context,
+            MagicMock(),
+            MagicMock(),
+            [],
+            initial_state=state,
+        )
+
+        args = mock_translational.call_args[0]
+        assert list(args[3]) == state
+
 
 class TestModuleExports:
     """Tests for module-level exports."""

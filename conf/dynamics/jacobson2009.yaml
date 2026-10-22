@@ -7,16 +7,15 @@
 global_frame_origin: "SSB"        # Jacobson formulates in ICRF from Neptune barycenter, but we use SSB for consistency with tudatpy.
 global_frame_orientation: "J2000" # J2000 or EME2000 is ICRF
 
+propagation:
+  set_integrated_result: true
 # Environment settings
+use_default_body_settings: false
+
 bodies_to_propagate:
   Triton:
     initial_state: null
     central_body: "Neptune"
-
-propagation:
-  set_integrated_result: true
-
-use_default_body_settings: false
 
 bodies_to_create:
   Neptune:

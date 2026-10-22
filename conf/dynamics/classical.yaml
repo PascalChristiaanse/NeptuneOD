@@ -6,15 +6,22 @@
 # Frame settings
 global_frame_origin: "SSB"
 global_frame_orientation: "J2000"
-use_default_body_settings: true
+
+propagation:
+  set_integrated_result: true
+  interpolator_order: 12
+
+integrator:
+  type: "BulirschStoer"
+  fixed_step_size: 72000
+  maximum_number_of_steps: 8
+
 # Environment settings
+use_default_body_settings: true
 bodies_to_propagate:
   Triton:
     initial_state: null
     central_body: "Neptune"
-
-propagation:
-  set_integrated_result: true
 
 bodies_to_create:
   Neptune:
@@ -58,8 +65,3 @@ bodies_to_create:
   Neptune Barycenter:
     ephemeris:
       type: "direct_spice"
-
-# Integrator settings
-integrator:
-  type: "RKF78"
-  fixed_step_size: 3600

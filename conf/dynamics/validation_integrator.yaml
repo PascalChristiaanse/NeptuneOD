@@ -13,6 +13,7 @@ bodies_to_propagate:
 
 propagation:
   set_integrated_result: true
+  interpolator_order: 6
 
 bodies_to_create:
   Neptune:

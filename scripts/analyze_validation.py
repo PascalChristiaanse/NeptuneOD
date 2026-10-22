@@ -107,9 +107,11 @@ def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict
     """Group results by (strategy, integrator/interpolator type), then by timestep.
 
     Applies a buffer slice to each result to exclude boundary regions where
-    Runge's phenomenon may inflate error statistics. For interpolator data the
-    buffer comes from metadata (or falls back to the interpolator order). For
-    integrator data it uses the integrator order.
+    Runge's phenomenon may inflate error statistics. Interpolator runs produced
+    by ``validate_interpolator.py`` are already buffered before saving (they
+    record ``buffer_epochs`` in their metadata), so they are left untouched.
+    Older interpolator runs fall back to the interpolator order, and integrator
+    runs use the integrator order.
 
     Warns if multiple results share the same key (only the last one is kept).
 
@@ -128,14 +130,23 @@ def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict
         data = np.load(r["npz_path"])
         pos_diff = data["pos_diff_norm"]
 
-        # Determine buffer: how many samples to skip at each boundary
+        # Determine buffer: how many samples to skip at each boundary.
+        # validate_interpolator.py already slices the saved series by its
+        # buffer and records the applied count as ``buffer_epochs``; in that
+        # case the data is pre-buffered and must not be sliced again. Older
+        # runs (and integrator runs) store the full series and are buffered
+        # here instead.
         if meta.get("interpolator_type"):
-            # Interpolator data: use buffer from metadata, or fall back to order
-            buffer = meta.get("buffer", 0)
-            if buffer == 0:
-                test_order = meta.get("test_lagrange_order", 0)
-                ref_order = meta.get("reference_lagrange_order", 8)
-                buffer = max(ref_order, test_order) // 2
+            if "buffer_epochs" in meta:
+                buffer = 0
+            else:
+                buffer = meta.get("buffer", 0)
+                if not isinstance(buffer, int):
+                    buffer = 0
+                if buffer == 0:
+                    test_order = meta.get("test_lagrange_order", 0)
+                    ref_order = meta.get("reference_lagrange_order", 8)
+                    buffer = max(ref_order, test_order) // 2
         else:
             # Integrator data: use the integrator order
             buffer = _integrator_order(type_key)

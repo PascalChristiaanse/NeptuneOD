@@ -4,7 +4,6 @@ defaults:
   - /dynamics/classical
   - _self_
 
-# Extend with Gaia body
 bodies_to_create:
   Gaia:
     ephemeris:

@@ -4,7 +4,6 @@ defaults:
   - /dynamics/jacobson2009
   - _self_
 
-# Extend with Gaia body
 bodies_to_create:
   Gaia:
     ephemeris:

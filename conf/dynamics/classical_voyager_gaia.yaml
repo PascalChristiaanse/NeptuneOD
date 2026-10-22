@@ -4,18 +4,6 @@ defaults:
   - /dynamics/classical
   - _self_
 
-# Triton initial state (position [m], velocity [m/s]) in the global frame.
-bodies_to_propagate:
-  Triton:
-    initial_state:
-      - -2.80887154e+08
-      - -1.02100302e+08
-      - 1.90958734e+08
-      - 1.38908933e+03
-      - 2.46061687e+03
-      - 3.36114292e+03
-
-# Extend with Gaia body
 bodies_to_create:
   Gaia:
     ephemeris:

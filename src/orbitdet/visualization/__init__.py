@@ -16,6 +16,7 @@ from .RSW_distance import RSWDistance
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
 from .state_history_3d import StateHistory3D
 from .validation import (
+    CombinationComparison,
     IntegratorConvergence,
     IntegratorErrorVsTime,
     IntegratorErrorVsTimeFamily,
@@ -28,6 +29,7 @@ from .weight_summary_table import WeightSummaryTable
 
 __all__ = [
     "Plot",
+    "CombinationComparison",
     "CovarianceEllipses",
     "DependentVariable",
     "DifferencedDependentVariables",

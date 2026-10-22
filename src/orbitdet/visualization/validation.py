@@ -900,3 +900,217 @@ class InterpolatorFamilyComparison(Plot):
         fig.set_tight_layout(True)
 
         return fig, ax
+
+
+class CombinationComparison(Plot):
+    """Compare one integrator+propagator combination against a reference.
+
+    Unlike the sweep plotters above, which trace a convergence curve over many
+    timesteps, this figure describes a **single** test/reference pair on a full
+    validation arc:
+
+    * panel 1 — position difference norm over time (log y), with the reference
+      accuracy line;
+    * panel 2 — the difference decomposed into RSW components over time
+      (radial, along-track, cross-track);
+    * panel 3 — velocity difference norm over time (log y).
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    comparison : orbitdet.validation.CombinationResult
+        The comparison to plot. Provides ``epochs``, ``pos_diff``,
+        ``pos_diff_norm``, ``vel_diff_norm``, ``rsw_diff`` and ``metrics``.
+    reference : orbitdet.validation.PropagationOutcome
+        The trusted reference propagation; used for the legend/title labels.
+    test : orbitdet.validation.PropagationOutcome
+        The combination under investigation.
+    """
+
+    def __init__(self, cfg: DictConfig, comparison, reference, test):
+        super().__init__(cfg, name="combination_comparison")
+        self.comparison = comparison
+        self.reference = reference
+        self.test = test
+
+    def _make_figure(self):
+        cfg = self.cfg
+        comparison = self.comparison
+        reference = self.reference
+        test = self.test
+
+        plot_cfg = _cfg_get(cfg, "figures", "combination_comparison", default=None)
+        if plot_cfg is None:
+            plot_cfg = _cfg_get(cfg, "combination_comparison", default=None)
+
+        fig_w = _cfg_get(plot_cfg, "figure", "width", default=16.54)
+        fig_h = _cfg_get(plot_cfg, "figure", "height", default=12.0)
+
+        fig, axes = plt.subplots(3, 1, figsize=(fig_w, fig_h), sharex=True)
+        ax_pos, ax_rsw, ax_vel = axes
+
+        times = _seconds_since_j2000_to_datetimes(comparison.epochs)
+
+        formats = {
+            "reference": reference.label,
+            "test": test.label,
+        }
+
+        # ---- Panel 1: position difference norm over time ----
+        ax_pos.plot(times, comparison.pos_diff_norm, color="tab:blue", alpha=0.85)
+        _set_error_yscale(ax_pos, comparison.pos_diff_norm)
+        ax_pos.set_title(
+            _cfg_get(
+                plot_cfg,
+                "titles",
+                "position",
+                default="Position difference over time",
+            )
+        )
+        ax_pos.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_pos", default="||Δr|| [m]"))
+        _add_reference_line(ax_pos, plot_cfg)
+        ax_pos.grid(True, alpha=0.3, which="both")
+        ax_pos.format_coord = _make_hover_formatter(
+            _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch"),
+            _cfg_get(plot_cfg, "axes", "hover_y_label_pos", default="||Δr|| [m]"),
+        )
+        _annotate_summary(ax_pos, comparison.pos_diff_norm, comparison.metrics)
+
+        # ---- Panel 2: RSW decomposition of the position difference ----
+        rsw_labels = (
+            _cfg_get(plot_cfg, "titles", "radial", default="Radial (R)"),
+            _cfg_get(plot_cfg, "titles", "along_track", default="Along-track (S)"),
+            _cfg_get(plot_cfg, "titles", "cross_track", default="Cross-track (W)"),
+        )
+        rsw_colors = ("tab:red", "tab:green", "tab:purple")
+        for idx, (label, color) in enumerate(zip(rsw_labels, rsw_colors)):
+            ax_rsw.plot(times, comparison.rsw_diff[:, idx], label=label, color=color, alpha=0.85)
+        # The components are signed and may cross zero, so a log axis is not an
+        # option. symlog keeps the decade structure of the drift while still
+        # resolving sign changes; the linear threshold tracks the data so it
+        # does not flatten sub-metre structure.
+        ax_rsw.set_yscale(
+            "symlog",
+            linthresh=_symlog_linthresh(
+                comparison.rsw_diff,
+                _cfg_get(plot_cfg, "axes", "symlog_linthresh", default=None),
+            ),
+        )
+        ax_rsw.set_title(
+            _cfg_get(
+                plot_cfg,
+                "titles",
+                "rsw",
+                default="Position difference in the RSW frame",
+            )
+        )
+        ax_rsw.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_rsw", default="Δ component [m]"))
+        ax_rsw.legend(fontsize=8)
+        ax_rsw.grid(True, alpha=0.3, which="both")
+        ax_rsw.format_coord = _make_hover_formatter(
+            _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch"),
+            _cfg_get(plot_cfg, "axes", "hover_y_label_rsw", default="Δ [m]"),
+        )
+
+        # ---- Panel 3: velocity difference norm over time ----
+        ax_vel.plot(times, comparison.vel_diff_norm, color="tab:orange", alpha=0.85)
+        _set_error_yscale(ax_vel, comparison.vel_diff_norm)
+        ax_vel.set_title(
+            _cfg_get(
+                plot_cfg,
+                "titles",
+                "velocity",
+                default="Velocity difference over time",
+            )
+        )
+        ax_vel.set_ylabel(_cfg_get(plot_cfg, "axes", "y_label_vel", default="||Δv|| [m/s]"))
+        ax_vel.grid(True, alpha=0.3, which="both")
+        ax_vel.format_coord = _make_hover_formatter(
+            _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch"),
+            _cfg_get(plot_cfg, "axes", "hover_y_label_vel", default="||Δv|| [m/s]"),
+        )
+        _annotate_summary(ax_vel, comparison.vel_diff_norm, comparison.metrics, unit="m/s")
+
+        ax_vel.set_xlabel(_cfg_get(plot_cfg, "axes", "x_label", default="Epoch"))
+        _configure_datetime_axis(ax_vel)
+
+        mode_note = (
+            "all compared epochs exact"
+            if comparison.mode == "exact"
+            else f"{comparison.metrics['n_epochs_exact']:.0f} / "
+            f"{comparison.metrics['n_epochs_compared']:.0f} compared epochs exact"
+        )
+        suptitle = _cfg_get(
+            plot_cfg,
+            "titles",
+            "suptitle",
+            default="Combination validation: {test} vs reference {reference}",
+        )
+        try:
+            if isinstance(suptitle, str):
+                suptitle = suptitle.format(
+                    test=formats["test"],
+                    reference=formats["reference"],
+                    mode=comparison.mode,
+                )
+        except Exception:
+            pass
+
+        fig.suptitle(f"{suptitle}\n({mode_note})", fontsize=13)
+        fig.align_ylabels(axes)
+        fig.set_tight_layout(True)
+
+        return fig, axes
+
+
+def _annotate_summary(ax: plt.Axes, values: np.ndarray, metrics: dict, unit: str = "m") -> None:
+    """Write the RMS and maximum of a series into the top-right corner.
+
+    Kept out of the figure legend so the plotted curve itself stays uncluttered.
+    """
+    finite = values[np.isfinite(values)]
+    if not finite.size:
+        return
+    rms = float(np.sqrt(np.mean(finite**2)))
+    peak = float(np.max(finite))
+    ax.text(
+        0.985,
+        0.95,
+        f"RMS = {rms:.3e} {unit}\nmax = {peak:.3e} {unit}",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8, ec="0.7"),
+    )
+
+
+def _set_error_yscale(ax: plt.Axes, values: np.ndarray) -> None:
+    """Use a log y axis for strictly positive errors, symlog otherwise.
+
+    A log axis cannot represent zeros, so when two combinations agree exactly
+    (a common outcome for the initial epoch, or for very fine reference runs)
+    a symlog axis is used instead: it stays logarithmic for the decade-scale
+    structure of the error while still showing exact zeros.
+    """
+    finite = values[np.isfinite(values)]
+    positive = finite[finite > 0.0]
+    if positive.size and finite.size and positive.min() > 0.0 and finite.min() > 0.0:
+        ax.set_yscale("log")
+    else:
+        ax.set_yscale("symlog", linthresh=1.0)
+
+
+def _symlog_linthresh(values: np.ndarray, override: float | None = None) -> float:
+    """Pick a symlog linear threshold adapted to the magnitude of ``values``.
+
+    The threshold sets the width of the linear band around zero. Two decades
+    below the largest magnitude is a good default: small sign changes stay
+    legible while the bulk of the curve keeps its logarithmic spacing.
+    """
+    if override is not None:
+        return float(override)
+    finite = np.abs(values[np.isfinite(values)])
+    peak = float(finite.max()) if finite.size else 0.0
+    return max(peak / 100.0, np.finfo(float).tiny)

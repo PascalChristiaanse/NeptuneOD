@@ -47,6 +47,7 @@ from orbitdet.reproducibility import (
     initialize,
 )
 from orbitdet.simulation import (
+    build_integrator_settings,
     get_dynamical_model,
     get_environment,
     get_propagator_settings,
@@ -58,94 +59,10 @@ logger = logging.getLogger(__name__)
 def _make_integrator_settings(timestep: float, integrator_type: str, cfg: DictConfig):
     """Create integrator settings for a given timestep and type.
 
-    This mirrors the logic in ``orbitdet.simulation.get_integrator_settings``
-    but allows overriding the timestep at runtime.
+    Thin wrapper around :func:`orbitdet.simulation.build_integrator_settings`,
+    kept so the call sites below read naturally.
     """
-    match integrator_type:
-        case "RKF78":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rkf_78,
-            )
-        case "RK4":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rk_4,
-            )
-        case "Euler":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.euler_forward,
-            )
-        case "RK3":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rk_3,
-            )
-        case "Ralston4":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.ralston_4,
-            )
-        case "RKF89":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rkf_89,
-            )
-        case "RKV89":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rkv_89,
-            )
-        case "RKF108":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rkf_108,
-            )
-        case "RKF1210":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rkf_1210,
-            )
-        case "RKF1412":
-            return prop_setup.integrator.runge_kutta_fixed_step(
-                timestep,
-                coefficient_set=prop_setup.integrator.CoefficientSets.rkf_1412,
-            )
-        case "BulirschStoer":
-            return prop_setup.integrator.bulirsch_stoer_fixed_step(
-                timestep,
-                extrapolation_sequence=(
-                    prop_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence
-                ),
-                maximum_number_of_steps=cfg.integrator.get("maximum_number_of_steps", 6),
-            )
-        case "BulirschStoer6":
-            return prop_setup.integrator.bulirsch_stoer_fixed_step(
-                timestep,
-                extrapolation_sequence=(
-                    prop_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence
-                ),
-                maximum_number_of_steps=6,
-            )
-        case "BulirschStoer8":
-            return prop_setup.integrator.bulirsch_stoer_fixed_step(
-                timestep,
-                extrapolation_sequence=(
-                    prop_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence
-                ),
-                maximum_number_of_steps=8,
-            )
-        case "BulirschStoer10":
-            return prop_setup.integrator.bulirsch_stoer_fixed_step(
-                timestep,
-                extrapolation_sequence=(
-                    prop_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence
-                ),
-                maximum_number_of_steps=10,
-            )
-        case _:
-            raise ValueError(f"Unknown integrator type: {integrator_type}")
+    return build_integrator_settings(timestep, integrator_type, cfg)
 
 
 @hydra.main(

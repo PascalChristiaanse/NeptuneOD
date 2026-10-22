@@ -6,7 +6,7 @@ type: simulated
 file: null
 target: Triton
 observer: Neptune
-start_date_observation_period: "1900-01-01T12:00:00" # account for start of DE421 coverage
+start_date_observation_period: "1901-01-01T12:00:00" # account for start of DE421 coverage
 end_date_observation_period: "2026-12-31T12:00:00" # End of actual observations
 cadence: 86400.0 # Observation cadence in seconds
 observable_type: relative_cartesian_position

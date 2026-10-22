@@ -1,3 +1,5 @@
+import functools
+
 import matplotlib.pyplot as plt
 import numpy as np
 from omegaconf import DictConfig
@@ -8,7 +10,7 @@ from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.data.gaia import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.base import Plot, _plain_hover_formatter
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -40,10 +42,9 @@ def _shapiro_label(statistic: float, p_value: float) -> str:
 
 
 def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
-    def _format(x, y):
-        return f"{hover_x_label}: {x:.3e}, {hover_y_label}: {y:.3e}"
-
-    return _format
+    return functools.partial(
+        _plain_hover_formatter, hover_x_label=hover_x_label, hover_y_label=hover_y_label
+    )
 
 
 class ResidualHistogram(Plot):

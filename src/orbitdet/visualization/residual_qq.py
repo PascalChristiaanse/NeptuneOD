@@ -1,3 +1,5 @@
+import functools
+
 import matplotlib.pyplot as plt
 import numpy as np
 from omegaconf import DictConfig
@@ -7,7 +9,7 @@ from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.base import Plot, _plain_hover_formatter
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -48,10 +50,9 @@ def _compute_qq_data(values_arcsec: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
 
 def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
-    def _format(x, y):
-        return f"{hover_x_label}: {x:.3e}, {hover_y_label}: {y:.3e}"
-
-    return _format
+    return functools.partial(
+        _plain_hover_formatter, hover_x_label=hover_x_label, hover_y_label=hover_y_label
+    )
 
 
 class ResidualQQ(Plot):

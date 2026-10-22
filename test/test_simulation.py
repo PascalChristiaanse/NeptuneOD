@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 from omegaconf import OmegaConf
 from tudatpy.dynamics import environment as env
@@ -213,30 +212,24 @@ class TestBuildTranslationalPropagatorType:
 
 
 @pytest.fixture
-def real_processing_settings_translational():
-    """Patch ``translational`` to return a *real* propagator settings object.
+def mock_propagator_settings():
+    """Patch ``translational`` to return a mock propagator settings object.
 
-    The interpolator order is applied to ``processing_settings``, so the tests
-    need a genuine settings instance rather than a MagicMock (attribute
-    assignment on a mock would accept anything and prove nothing).
+    ``processing_settings`` is read-only on the real TudatPy object, and older
+    TudatPy builds (e.g. the ``1.0.0.dev57`` pinned in CI) do not expose
+    ``interpolator_settings`` on it at all. Mocking the settings object keeps
+    these tests independent of the installed TudatPy version while still
+    letting us assert that the *real* interpolator settings produced by the
+    factory are assigned to ``processing_settings.interpolator_settings``.
     """
-    real_settings = prop_setup.propagator.translational(
-        central_bodies=["Neptune"],
-        acceleration_models={},
-        bodies_to_integrate=["Triton"],
-        initial_states=np.zeros(6),
-        initial_time=0.0,
-        integrator_settings=prop_setup.integrator.runge_kutta_fixed_step(
-            10.0, coefficient_set=prop_setup.integrator.CoefficientSets.rkf_78
-        ),
-        termination_settings=prop_setup.propagator.time_termination(100.0),
-    )
+    settings = MagicMock()
+    settings.processing_settings = MagicMock()
 
     with patch(
         "orbitdet.simulation.propagation.prop_setup.propagator.translational",
-        return_value=real_settings,
+        return_value=settings,
     ):
-        yield real_settings
+        yield settings
 
 
 class TestIntegratorResultInterpolator:
@@ -282,7 +275,7 @@ class TestIntegratorResultInterpolator:
 
     def test_get_propagator_settings_applies_the_configured_order(
         self,
-        real_processing_settings_translational,
+        mock_propagator_settings,
         basic_config,
         mock_runtime_context,
     ):
@@ -301,12 +294,12 @@ class TestIntegratorResultInterpolator:
             )
 
         assert spy.call_args[0][0] == 10
-        applied = real_processing_settings_translational.processing_settings
+        applied = mock_propagator_settings.processing_settings
         assert isinstance(applied.interpolator_settings, interpolators.LagrangeInterpolatorSettings)
 
     def test_default_order_is_applied_when_unset(
         self,
-        real_processing_settings_translational,
+        mock_propagator_settings,
         basic_config,
         mock_runtime_context,
     ):
@@ -322,7 +315,7 @@ class TestIntegratorResultInterpolator:
 
     def test_get_propagator_settings_forwards_different_orders(
         self,
-        real_processing_settings_translational,
+        mock_propagator_settings,
         basic_config,
         mock_runtime_context,
     ):
@@ -345,7 +338,7 @@ class TestIntegratorResultInterpolator:
 
     def test_default_order_logged_when_unset(
         self,
-        real_processing_settings_translational,
+        mock_propagator_settings,
         basic_config,
         mock_runtime_context,
         caplog,
@@ -361,7 +354,7 @@ class TestIntegratorResultInterpolator:
 
     def test_override_is_logged_as_such(
         self,
-        real_processing_settings_translational,
+        mock_propagator_settings,
         basic_config,
         mock_runtime_context,
         caplog,

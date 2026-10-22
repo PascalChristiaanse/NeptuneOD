@@ -2,18 +2,25 @@
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from omegaconf import OmegaConf
 from tudatpy.dynamics import environment as env
 from tudatpy.dynamics import environment_setup as env_setup
 from tudatpy.dynamics import propagation_setup as prop_setup
+from tudatpy.math import interpolators
 
 from orbitdet.reproducibility.runtime import RuntimeContext
 from orbitdet.simulation import (
+    TUDATPY_DEFAULT_INTERPOLATOR_ORDER,
+    build_integrator_result_interpolator_settings,
+    build_integrator_settings,
+    build_translational_propagator_type,
     get_dynamical_model,
     get_environment,
     get_integrator_settings,
     get_propagator_settings,
+    resolve_interpolator_order,
 )
 
 
@@ -137,6 +144,237 @@ class TestGetIntegratorSettings:
 
         with pytest.raises(ValueError, match="Unknown integrator type"):
             get_integrator_settings(config, mock_runtime_context)
+
+
+class TestBuildIntegratorSettings:
+    """Tests for the timestep-explicit build_integrator_settings factory."""
+
+    @pytest.mark.parametrize(
+        "integrator_type",
+        [
+            "RKF78",
+            "RK4",
+            "Euler",
+            "RK3",
+            "Ralston4",
+            "RKF89",
+            "RKV89",
+            "RKF108",
+            "RKF1210",
+            "RKF1412",
+            "BulirschStoer6",
+            "BulirschStoer8",
+            "BulirschStoer10",
+        ],
+    )
+    def test_creates_settings_for_every_supported_type(self, integrator_type):
+        settings = build_integrator_settings(3600.0, integrator_type)
+
+        assert isinstance(settings, prop_setup.integrator.IntegratorSettings)
+
+    def test_uses_the_explicit_timestep_not_the_config(self):
+        """The whole point of the factory: the timestep argument wins."""
+        config = OmegaConf.create({"integrator": {"fixed_step_size": 999.0}})
+
+        with patch(
+            "orbitdet.simulation.integration.prop_setup.integrator.runge_kutta_fixed_step"
+        ) as mock_rk:
+            build_integrator_settings(7200.0, "RKF78", config)
+
+        assert mock_rk.call_args[0][0] == pytest.approx(7200.0)
+
+    def test_unknown_type_raises(self):
+        with pytest.raises(ValueError, match="Unknown integrator type"):
+            build_integrator_settings(3600.0, "NotAnIntegrator")
+
+    def test_generic_bulirsch_stoer_requires_max_steps(self):
+        with pytest.raises(ValueError, match="maximum_number_of_steps"):
+            build_integrator_settings(3600.0, "BulirschStoer")
+
+    def test_generic_bulirsch_stoer_reads_max_steps_from_config(self):
+        config = OmegaConf.create({"integrator": {"maximum_number_of_steps": 6}})
+
+        settings = build_integrator_settings(3600.0, "BulirschStoer", config)
+
+        assert isinstance(settings, prop_setup.integrator.IntegratorSettings)
+
+
+class TestBuildTranslationalPropagatorType:
+    """Tests for the propagator-formulation lookup."""
+
+    def test_resolves_known_formulations(self):
+        assert build_translational_propagator_type("cowell") is not None
+        assert build_translational_propagator_type("encke") is not None
+        assert build_translational_propagator_type("gauss_keplerian") is not None
+
+    def test_unknown_formulation_raises_and_lists_known_ones(self):
+        with pytest.raises(ValueError, match="Unknown translational propagator"):
+            build_translational_propagator_type("warp_drive")
+
+
+@pytest.fixture
+def real_processing_settings_translational():
+    """Patch ``translational`` to return a *real* propagator settings object.
+
+    The interpolator order is applied to ``processing_settings``, so the tests
+    need a genuine settings instance rather than a MagicMock (attribute
+    assignment on a mock would accept anything and prove nothing).
+    """
+    real_settings = prop_setup.propagator.translational(
+        central_bodies=["Neptune"],
+        acceleration_models={},
+        bodies_to_integrate=["Triton"],
+        initial_states=np.zeros(6),
+        initial_time=0.0,
+        integrator_settings=prop_setup.integrator.runge_kutta_fixed_step(
+            10.0, coefficient_set=prop_setup.integrator.CoefficientSets.rkf_78
+        ),
+        termination_settings=prop_setup.propagator.time_termination(100.0),
+    )
+
+    with patch(
+        "orbitdet.simulation.propagation.prop_setup.propagator.translational",
+        return_value=real_settings,
+    ):
+        yield real_settings
+
+
+class TestIntegratorResultInterpolator:
+    """Tests for the integrator-result interpolator wiring.
+
+    This interpolator builds the propagated body's ephemeris whenever
+    ``set_integrated_result`` is on — which is always the case in estimation,
+    because the orbit determination manager forces it. It therefore fixes the
+    accuracy of synthetic observations.
+    """
+
+    def test_builds_settings_for_requested_order(self):
+        settings = build_integrator_result_interpolator_settings(10)
+
+        assert isinstance(settings, interpolators.LagrangeInterpolatorSettings)
+
+    def test_rejects_non_positive_order(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            build_integrator_result_interpolator_settings(0)
+
+    def test_resolve_uses_configured_order(self):
+        config = OmegaConf.create({"propagation": {"interpolator_order": 10}})
+
+        assert resolve_interpolator_order(config) == 10
+
+    def test_resolve_falls_back_to_tudatpy_default_when_absent(self):
+        """A config without the key must behave like one written before it existed."""
+        config = OmegaConf.create({"propagation": {"set_integrated_result": True}})
+
+        assert resolve_interpolator_order(config) == TUDATPY_DEFAULT_INTERPOLATOR_ORDER
+
+    def test_resolve_treats_explicit_none_as_absent(self):
+        """``interpolator_order: null`` in YAML should not raise."""
+        config = OmegaConf.create({"propagation": {"interpolator_order": None}})
+
+        assert resolve_interpolator_order(config) == TUDATPY_DEFAULT_INTERPOLATOR_ORDER
+
+    def test_resolve_handles_missing_propagation_section(self):
+        """Some dynamics configs carry no propagation section at all."""
+        config = OmegaConf.create({"start_date": "2020-01-01"})
+
+        assert resolve_interpolator_order(config) == TUDATPY_DEFAULT_INTERPOLATOR_ORDER
+
+    def test_get_propagator_settings_applies_the_configured_order(
+        self,
+        real_processing_settings_translational,
+        basic_config,
+        mock_runtime_context,
+    ):
+        """The order must actually land on processing_settings."""
+        basic_config.propagation.interpolator_order = 10
+
+        # Spy on the factory: ``LagrangeInterpolatorSettings`` exposes no
+        # readable order and defines no Python __eq__, so the argument it is
+        # called with is the only faithful way to read the value back.
+        with patch(
+            "orbitdet.simulation.propagation.build_integrator_result_interpolator_settings",
+            wraps=build_integrator_result_interpolator_settings,
+        ) as spy:
+            get_propagator_settings(
+                basic_config, mock_runtime_context, MagicMock(), MagicMock(), []
+            )
+
+        assert spy.call_args[0][0] == 10
+        applied = real_processing_settings_translational.processing_settings
+        assert isinstance(applied.interpolator_settings, interpolators.LagrangeInterpolatorSettings)
+
+    def test_default_order_is_applied_when_unset(
+        self,
+        real_processing_settings_translational,
+        basic_config,
+        mock_runtime_context,
+    ):
+        with patch(
+            "orbitdet.simulation.propagation.build_integrator_result_interpolator_settings",
+            wraps=build_integrator_result_interpolator_settings,
+        ) as spy:
+            get_propagator_settings(
+                basic_config, mock_runtime_context, MagicMock(), MagicMock(), []
+            )
+
+        assert spy.call_args[0][0] == TUDATPY_DEFAULT_INTERPOLATOR_ORDER
+
+    def test_get_propagator_settings_forwards_different_orders(
+        self,
+        real_processing_settings_translational,
+        basic_config,
+        mock_runtime_context,
+    ):
+        """Changing the config must change the order passed to the factory."""
+        with patch(
+            "orbitdet.simulation.propagation.build_integrator_result_interpolator_settings",
+            wraps=build_integrator_result_interpolator_settings,
+        ) as spy:
+            basic_config.propagation.interpolator_order = 10
+            get_propagator_settings(
+                basic_config, mock_runtime_context, MagicMock(), MagicMock(), []
+            )
+            assert spy.call_args[0][0] == 10
+
+            basic_config.propagation.interpolator_order = 12
+            get_propagator_settings(
+                basic_config, mock_runtime_context, MagicMock(), MagicMock(), []
+            )
+            assert spy.call_args[0][0] == 12
+
+    def test_default_order_logged_when_unset(
+        self,
+        real_processing_settings_translational,
+        basic_config,
+        mock_runtime_context,
+        caplog,
+    ):
+        """The default must be announced, not silent."""
+        with caplog.at_level("INFO"):
+            get_propagator_settings(
+                basic_config, mock_runtime_context, MagicMock(), MagicMock(), []
+            )
+
+        assert "TudatPy default" in caplog.text
+        assert f"Lagrange-{TUDATPY_DEFAULT_INTERPOLATOR_ORDER}" in caplog.text
+
+    def test_override_is_logged_as_such(
+        self,
+        real_processing_settings_translational,
+        basic_config,
+        mock_runtime_context,
+        caplog,
+    ):
+        basic_config.propagation.interpolator_order = 12
+
+        with caplog.at_level("INFO"):
+            get_propagator_settings(
+                basic_config, mock_runtime_context, MagicMock(), MagicMock(), []
+            )
+
+        assert "overriding" in caplog.text
+        assert "Lagrange-12" in caplog.text
 
 
 class TestGetDynamicalModel:
@@ -432,6 +670,8 @@ class TestModuleExports:
     def test_all_functions_exported(self):
         """Test that all expected functions are exported."""
         from orbitdet.simulation import (
+            build_integrator_settings,
+            build_translational_propagator_type,
             get_dynamical_model,
             get_environment,
             get_integrator_settings,
@@ -443,6 +683,8 @@ class TestModuleExports:
         assert callable(get_propagator_settings)
         assert callable(get_dynamical_model)
         assert callable(get_integrator_settings)
+        assert callable(build_integrator_settings)
+        assert callable(build_translational_propagator_type)
 
     def test_all_in_all_list(self):
         """Test that __all__ exports contain expected items."""
@@ -453,5 +695,11 @@ class TestModuleExports:
             "get_propagator_settings",
             "get_dynamical_model",
             "get_integrator_settings",
+            "build_integrator_settings",
+            "build_translational_propagator_type",
+            "build_integrator_result_interpolator_settings",
+            "resolve_interpolator_order",
+            "TRANSLATIONAL_PROPAGATORS",
+            "TUDATPY_DEFAULT_INTERPOLATOR_ORDER",
         }
         assert set(sim_module.__all__) == expected

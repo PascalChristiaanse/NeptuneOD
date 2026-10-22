@@ -25,9 +25,9 @@ hydra:
     dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
   sweeper:
-    max_batch_size: 6
+    max_batch_size: 4
     params:
-      # Timesteps: 0.5h, 1h, 2h, 4h, 8h, 16h, 32h (in seconds)
-      validation.timestep: 1800,3600,7200,14400,28800,57600,115200
+      # Timesteps: 16h, 18h, 20h, 22h, 24h (in seconds)
+      validation.timestep: 57600,64800,72000,79200,86400
       # Lagrange orders to test
-      validation.lagrange_order: 4,6,8,10,12
+      validation.lagrange_order: 10,12,14

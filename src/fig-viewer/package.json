@@ -1,0 +1,66 @@
+{
+  "name": "fig-viewer",
+  "displayName": "Matplotlib FIG Viewer",
+  "description": "Open pickled Matplotlib .fig files in VS Code with an interactive WebAgg viewer.",
+  "version": "0.0.1",
+  "publisher": "neptuneod",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onCustomEditor:figViewer.figEditor"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "figViewer.figEditor",
+        "displayName": "Matplotlib Figure",
+        "selector": [
+          {
+            "filenamePattern": "*.fig"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "figViewer.openPreview",
+        "title": "Open with Interactive Viewer",
+        "category": "FIG Viewer"
+      }
+    ],
+    "configuration": {
+      "title": "FIG Viewer",
+      "properties": {
+        "figViewer.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the Python interpreter used to load `.fig` files. Leave empty to fall back to `figViewer.condaEnv` and then to a workspace virtualenv / `python3`."
+        },
+        "figViewer.condaEnv": {
+          "type": "string",
+          "default": "NeptuneOD",
+          "markdownDescription": "Conda environment name to resolve an interpreter from (via `conda run -n <env> python`). Used only when `figViewer.pythonPath` is empty. The environment must have `matplotlib` (with `tornado`) installed."
+        },
+        "figViewer.extraPythonArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Extra arguments inserted before the server script when launching Python (for example `-u` for unbuffered output)."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
+}

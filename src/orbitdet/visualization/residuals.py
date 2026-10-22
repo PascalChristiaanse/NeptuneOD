@@ -11,7 +11,7 @@ from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.data.gaia import get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot, _snake_case
+from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
 
 logger = logging.getLogger(__name__)
 
@@ -84,18 +84,6 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     locator = mdates.AutoDateLocator(minticks=3, maxticks=8)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
-
-
-def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
-    def _format(x, y):
-        try:
-            dt = mdates.num2date(x)
-            xs = dt.isoformat(sep=" ")
-        except Exception:
-            xs = f"{x:.6g}"
-        return f"{hover_x_label}: {xs}, {hover_y_label}: {y:.3e}"
-
-    return _format
 
 
 class Residuals(Plot):

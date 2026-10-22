@@ -1,3 +1,4 @@
+import functools
 import logging
 import os
 
@@ -111,6 +112,26 @@ def _format_hover_coord(x_value: float, y_value: float, axes_cfg) -> str:
 
     period_days = 1.0 / x_value
     return f"{hover_x_label}={period_days:.6g}, {hover_y_label}={y_value:.6g}"
+
+
+def _frequency_to_period(frequency: np.ndarray) -> np.ndarray:
+    """Convert frequency [cycles/day] to period [days]; module-level for picklability."""
+    return np.divide(
+        1.0,
+        frequency,
+        where=frequency != 0,
+        out=np.full_like(frequency, np.inf, dtype=float),
+    )
+
+
+def _period_to_frequency(period: np.ndarray) -> np.ndarray:
+    """Convert period [days] to frequency [cycles/day]; module-level for picklability."""
+    return np.divide(
+        1.0,
+        period,
+        where=period != 0,
+        out=np.full_like(period, np.inf, dtype=float),
+    )
 
 
 def _resample_uniform(
@@ -300,20 +321,7 @@ def _configure_psd_axis(
 
     period_axis = ax.secondary_xaxis(
         "top",
-        functions=(
-            lambda frequency: np.divide(
-                1.0,
-                frequency,
-                where=frequency != 0,
-                out=np.full_like(frequency, np.inf, dtype=float),
-            ),
-            lambda period: np.divide(
-                1.0,
-                period,
-                where=period != 0,
-                out=np.full_like(period, np.inf, dtype=float),
-            ),
-        ),
+        functions=(_frequency_to_period, _period_to_frequency),
     )
     period_axis.set_xlabel(axes_cfg.get("period_label", "Period [days/cycle]"))
     period_ticks = axes_cfg.get("period_ticks_days", DEFAULT_PERIOD_TICKS_DAYS)
@@ -325,7 +333,7 @@ def _configure_psd_axis(
         period_axis.set_xticks(period_ticks)
     period_axis.xaxis.set_major_formatter(FuncFormatter(_format_period_days))
 
-    ax.format_coord = lambda x_value, y_value: _format_hover_coord(x_value, y_value, axes_cfg)
+    ax.format_coord = functools.partial(_format_hover_coord, axes_cfg=axes_cfg)
 
 
 class ResidualsPSD(Plot):

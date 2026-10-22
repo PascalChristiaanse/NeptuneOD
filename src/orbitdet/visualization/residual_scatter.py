@@ -1,3 +1,5 @@
+import functools
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,7 +10,7 @@ from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
 from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.base import Plot, _plain_hover_formatter
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -44,10 +46,21 @@ def _seconds_since_j2000_to_datetimes(seconds_since_j2000: np.ndarray) -> pd.Dat
 
 
 def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
-    def _format(x, y):
-        return f"{hover_x_label}: {x:.3e}, {hover_y_label}: {y:.3e}"
+    return functools.partial(
+        _plain_hover_formatter, hover_x_label=hover_x_label, hover_y_label=hover_y_label
+    )
 
-    return _format
+
+def _format_colorbar_tick(value, _position: int | None = None) -> str:
+    """Format colorbar ticks as ``YYYY-MM`` dates.
+
+    Module-level (not a nested closure) so the figure remains picklable.
+    """
+    try:
+        dt = mdates.num2date(mdates.epoch2num(float(value)))
+        return dt.strftime("%Y-%m")
+    except Exception:
+        return f"{value:.0f}"
 
 
 class ResidualScatter(Plot):
@@ -202,13 +215,6 @@ class ResidualScatter(Plot):
         cbar.set_label(_cfg_get(plot_cfg, "axes", "colorbar_label", default="Epoch"))
 
         # Format colorbar ticks as dates
-        def _format_colorbar_tick(value, _position):
-            try:
-                dt = mdates.num2date(mdates.epoch2num(float(value)))
-                return dt.strftime("%Y-%m")
-            except Exception:
-                return f"{value:.0f}"
-
         cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(_format_colorbar_tick))
 
         # Hover formatter

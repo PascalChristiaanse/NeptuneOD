@@ -7,7 +7,7 @@ from tudatpy.dynamics import propagation as prop
 from tudatpy.dynamics import propagation_setup as prop_setup
 
 from orbitdet.utility import create_dependent_variable_dictionary
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.base import Plot, _make_hover_formatter
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -37,18 +37,6 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     locator = mdates.AutoDateLocator(minticks=3, maxticks=8)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
-
-
-def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
-    def _format(x, y):
-        try:
-            dt = mdates.num2date(x)
-            xs = dt.isoformat(sep=" ")
-        except Exception:
-            xs = f"{x:.6g}"
-        return f"{hover_x_label}: {xs}, {hover_y_label}: {y:.3e}"
-
-    return _format
 
 
 class DifferencedDependentVariables(Plot):

@@ -1,5 +1,6 @@
 import logging
 import os
+import resource
 from pathlib import Path
 
 import hydra
@@ -56,6 +57,24 @@ def _format_metrics(metrics: dict) -> str:
     return "\n".join(f"    {name}: {value:.6g}" for name, value in metrics.items())
 
 
+def _peak_rss_mb() -> float:
+    """Return the peak resident set size (RSS) of this process in MiB.
+
+    Uses the stdlib ``resource`` module, so no extra dependency is required.
+    ``ru_maxrss`` is reported in kilobytes on Linux and bytes on macOS.
+    """
+    maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    divisor = 1024.0 if os.uname().sysname == "Linux" else 1024.0 * 1024.0
+    return maxrss / divisor
+
+
+def _log_peak_rss(label: str) -> float:
+    """Log the current peak RSS (MiB) under a human-readable checkpoint label."""
+    peak_mb = _peak_rss_mb()
+    logger.info("Peak RAM usage [%s]: %.1f MiB", label, peak_mb)
+    return peak_mb
+
+
 @hydra.main(
     version_base=None,
     config_path="../conf",
@@ -64,6 +83,7 @@ def _format_metrics(metrics: dict) -> str:
 @enforce_initialization
 def main(cfg: DictConfig):
     logger.info(f"Starting main() with on process PID {os.getpid()}")
+    _log_peak_rss("start")
 
     # Inject start and end epochs into the runtime context
     ctx: RuntimeContext = initialize(cfg)
@@ -118,28 +138,7 @@ def main(cfg: DictConfig):
     )
     # Wrt spice
     Residuals(cfg, "prefit_residuals_spice", observations).plot()
-    logger.info("Pre-fit residuals computed and plotted successfully.")
 
-    logger.info("Computing pre-fit residuals wrt propagation...")
-    prefit_prop = sim.create_dynamics_simulator(bodies, prop)
-    obs.compute_residuals_and_dependent_variables(
-        observations, ephemeris_observation_simulators, bodies
-    )
-    Residuals(cfg, "prefit_residuals_prop", observations).plot()
-    # Plot orbit on 3d plot
-    StateHistory3D(cfg, prefit_prop.propagation_results).plot()
-    # RSW distance for the pre-fit propagation
-    RSWDistance(
-        cfg,
-        prefit_prop.propagation_results,
-        dep_vars[0],
-        central_body="Neptune",
-        use_figure_name="prefit_rsw",
-    ).plot()
-
-    logger.info("Pre-fit residuals computed and plotted successfully.")
-    # from matplotlib import pyplot as plt
-    # plt.show()
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -226,6 +225,39 @@ def main(cfg: DictConfig):
             grp_table.to_excel(writer, sheet_name="Per group", index=False)
         logger.info("Excel weight summary tables saved to %s", output_dir)
 
+    logger.info("Computing pre-fit residuals wrt propagation...")
+    import time
+
+    start_time = time.time()
+    prefit_prop = sim.create_dynamics_simulator(bodies, prop)
+    propagation_time = time.time() - start_time
+    obs.compute_residuals_and_dependent_variables(
+        observations, ephemeris_observation_simulators, bodies
+    )
+    residuals_time = time.time() - start_time - propagation_time
+    logger.info(
+        "Pre-fit propagation completed in %.2f seconds, residuals computed in %.2f seconds.",
+        propagation_time,
+        residuals_time,
+    )
+    _log_peak_rss("after pre-fit propagation")
+    Residuals(cfg, "prefit_residuals_prop", observations).plot()
+    # Plot orbit on 3d plot
+    StateHistory3D(cfg, prefit_prop.propagation_results).plot()
+    # RSW distance for the pre-fit propagation
+    RSWDistance(
+        cfg,
+        prefit_prop.propagation_results,
+        dep_vars[0],
+        central_body="Neptune",
+        use_figure_name="prefit_rsw",
+    ).plot()
+
+    logger.info("Pre-fit residuals computed and plotted successfully.")
+    # import matplotlib.pyplot as plt
+    # plt.show()
+    # return
+
     ################################################################
     ######################### ESTIMATION ###########################
     ################################################################
@@ -280,6 +312,9 @@ def main(cfg: DictConfig):
     logger.info("Starting estimation...")
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     estimation_log_path = output_dir / "estimation_log.log"
+    import time
+
+    estimation_start = time.perf_counter()
     try:
         with redirect_std(str(estimation_log_path)):
             estimation_output = estimator.perform_estimation(estimation_input)
@@ -292,7 +327,8 @@ def main(cfg: DictConfig):
         # Do not Raise, just log the error and return to avoid crashing the script
         return
     else:
-        logger.info("Estimation completed successfully.")
+        estimation_duration = time.perf_counter() - estimation_start
+        logger.info("Estimation completed successfully in %.2f seconds.", estimation_duration)
 
     logger.info("Estimation progression logged to %s", estimation_log_path)
     # save_tudat_object(estimation_output, output_dir / "estimation_output")
@@ -332,7 +368,10 @@ def main(cfg: DictConfig):
         logger.warning("Failed to compute inverse covariance condition number: %s", e)
         inverse_covariance_condition = 0.0
 
+    peak_rss_mb = _log_peak_rss("after estimation")
     summary_metrics = {
+        "peak_rss_mb": peak_rss_mb,
+        "estimation_duration_s": estimation_duration,
         "residuals_rms": float(np.sqrt(np.mean(np.square(final_residuals)))),
         "residuals_mean": float(np.mean(final_residuals)),
         "residuals_max": float(np.abs(final_residuals).max()),

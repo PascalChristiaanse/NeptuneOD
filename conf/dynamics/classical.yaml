@@ -13,7 +13,7 @@ propagation:
 
 integrator:
   type: "BulirschStoer"
-  fixed_step_size: 72000
+  fixed_step_size: 60000
   maximum_number_of_steps: 8
 
 # Environment settings

@@ -406,6 +406,19 @@ class ResidualsScan(Plot):
     ``position_angle_scan``.  This is registered in :mod:`orbitdet.data.gaia`
     (see :func:`get_scan_angles_for_epochs`) when the observations are built via
     :meth:`GaiaQuery.to_tudat`.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    observation_collection : obs.ObservationCollection
+        The observation collection whose residuals are plotted.
+    observation_parsers : list[obs_proc.ObservationParserType] | None
+        Optional parsers to filter observation sets by type.
+    use_figure_name : str | None
+        Name of the figure configuration block under ``cfg.figures`` (e.g.
+        ``"prefit_residuals_spice_scan"``).  When ``None`` the snake_case class
+        name is used.
     """
 
     def __init__(
@@ -413,10 +426,13 @@ class ResidualsScan(Plot):
         cfg: DictConfig,
         observation_collection: obs.ObservationCollection,
         observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        use_figure_name: str | None = None,
     ):
         super().__init__(cfg)
         self.observation_collection = observation_collection
         self.observation_parsers = observation_parsers
+        self.use_figure_name = use_figure_name
+        self.name = use_figure_name or _snake_case(self.__class__.__name__)
 
     def _make_figure(self):
         cfg = self.cfg
@@ -432,7 +448,8 @@ class ResidualsScan(Plot):
                 observation_collection.get_single_observation_sets(observation_parsers)
             )
 
-        plot_cfg = _cfg_get(cfg, "residuals", default=None)
+        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
+        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
         unit = _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
@@ -570,10 +587,5 @@ class ResidualsScan(Plot):
         axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
-
-        # Optionally save to file
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
 
         return fig, axs

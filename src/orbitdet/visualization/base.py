@@ -71,9 +71,7 @@ def _make_hover_formatter(hover_x_label: str, hover_y_label: str, datetime_x: bo
         rendered as an ISO timestamp. Defaults to ``True``.
     """
     formatter = _datetime_hover_formatter if datetime_x else _plain_hover_formatter
-    return functools.partial(
-        formatter, hover_x_label=hover_x_label, hover_y_label=hover_y_label
-    )
+    return functools.partial(formatter, hover_x_label=hover_x_label, hover_y_label=hover_y_label)
 
 
 class Plot(ABC):

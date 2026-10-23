@@ -125,7 +125,7 @@ def main(cfg: DictConfig):
 
     Residuals(cfg, observations).plot()
     # ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
-    ResidualsScan(cfg.figures, observations).plot()
+    ResidualsScan(cfg, observations).plot()
     # ResidualScanHistogram(cfg.figures, observations).plot()
 
     logger.info("Pre-fit residuals plotted successfully.")

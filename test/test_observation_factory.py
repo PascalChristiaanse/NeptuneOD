@@ -155,11 +155,16 @@ class TestCollectionBuilder:
             created.append((dataset_cfg.type, system))
             return f"dataset:{dataset_cfg.type}", f"settings:{dataset_cfg.type}"
 
-        merge_mock = MagicMock(return_value="observation-collection")
-
         class FakeObservationCollection:
             def __init__(self, observation_sets):
                 self.observation_sets = observation_sets
+
+        class FakeMergedCollection:
+            def get_single_observation_sets(self):
+                return []
+
+        merged_collection = FakeMergedCollection()
+        merge_mock = MagicMock(return_value=merged_collection)
 
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
@@ -171,7 +176,7 @@ class TestCollectionBuilder:
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result[0] == "observation-collection"
+        assert result[0] is merged_collection
         assert result[1] == ["settings:alpha", "settings:beta"]
         assert result[2] == {}  # dataset_metadata
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
@@ -208,11 +213,16 @@ class TestCollectionBuilder:
         def fake_create_observation_dataset(cfg, dataset_cfg, system):
             return created.pop(0)
 
-        merge_mock = MagicMock(return_value="observation-collection")
-
         class FakeObservationCollection:
             def __init__(self, observation_sets):
                 self.observation_sets = observation_sets
+
+        class FakeMergedCollection:
+            def get_single_observation_sets(self):
+                return []
+
+        merged_collection = FakeMergedCollection()
+        merge_mock = MagicMock(return_value=merged_collection)
 
         monkeypatch.setattr(
             collection_module, "create_observation_dataset", fake_create_observation_dataset
@@ -224,7 +234,7 @@ class TestCollectionBuilder:
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
 
-        assert result[0] == "observation-collection"
+        assert result[0] is merged_collection
         assert result[1] == ["settings:alpha", "settings:beta", None]
         assert result[2] == {}  # dataset_metadata
         merge_mock.assert_called_once()

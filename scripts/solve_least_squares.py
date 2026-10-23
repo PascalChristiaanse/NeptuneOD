@@ -16,6 +16,7 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 from tudatpy.util import redirect_std
 
+from orbitdet.analysis import chi_squared_table, update_weights_dataframe
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
 from orbitdet.observations import OutlierEngine, WeightEngine, create_observation_collection
@@ -32,7 +33,7 @@ from orbitdet.simulation import (
     get_integrator_settings,
     get_propagator_settings,
 )
-from orbitdet.utility import save_tudat_object
+from orbitdet.utility import save_tudat_object, select_observation_collection_by_tag
 from orbitdet.visualization import (
     CovarianceEllipses,
     ParameterCorrelationHeatmap,
@@ -44,6 +45,7 @@ from orbitdet.visualization import (
     ResidualRMSPerIteration,
     Residuals,
     ResidualScatter,
+    ResidualsScan,
     RSWDistance,
     RSWDistanceWithUncertainty,
     StateHistory3D,
@@ -138,7 +140,17 @@ def main(cfg: DictConfig):
     )
     # Wrt spice
     Residuals(cfg, "prefit_residuals_spice", observations).plot()
-
+    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
+    # archived position_angle_scan), so restrict the plot to the Gaia set.
+    gaia_observations = select_observation_collection_by_tag(
+        observations, dataset_metadata, "gaia"
+    )
+    if gaia_observations is not None:
+        ResidualsScan(
+            cfg, gaia_observations, use_figure_name="prefit_residuals_spice_scan"
+        ).plot()
+    else:
+        logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -403,6 +415,17 @@ def main(cfg: DictConfig):
         logger.warning("Failed to save final propagation result: %s", e)
 
     Residuals(cfg, "postfit_residuals", observations).plot()
+    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
+    # archived position_angle_scan), so restrict the plot to the Gaia set.
+    gaia_observations = select_observation_collection_by_tag(
+        observations, dataset_metadata, "gaia"
+    )
+    if gaia_observations is not None:
+        ResidualsScan(
+            cfg, gaia_observations, use_figure_name="postfit_residuals_scan"
+        ).plot()
+    else:
+        logger.info("No Gaia observations found; skipping post-fit scan residual plot.")
 
     # RMS of the post-fit residuals at the best iteration
     best_iteration_residuals = estimation_output.residual_history[

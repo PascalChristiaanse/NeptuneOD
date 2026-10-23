@@ -84,8 +84,10 @@ def create_observation_collection(
         Tuple of:
             - ObservationCollection containing all observation sets.
             - List of observation model settings.
-            - Dict mapping set_id (observatory code) to metadata dict with
-              ``name`` (source author) and ``coordinate_type`` (human-readable label).
+            - Dict mapping set_id (observatory code) to a list of metadata dicts, each
+              with ``name`` (source author), ``coordinate_type`` (human-readable label),
+              and ``index`` (position of the set in the final collection, so it can be
+              retrieved via ``collection.get_single_observation_sets()[index]``).
     """
     if not isinstance(cfg, DictConfig):
         raise TypeError(f"Expected DictConfig, got {type(cfg)}")
@@ -99,6 +101,12 @@ def create_observation_collection(
     observation_sets = []
     model_setting = []
     dataset_metadata: dict[str, list[dict]] = {}
+    # Metadata entries per dataset, kept in dataset order.  Each entry is a
+    # ``(set_id, metadata_dict)`` pair.  The ``index`` field (position of the set
+    # in the final merged collection) is filled in below, once the merge order is
+    # known, so that callers can retrieve a set via
+    # ``collection.get_single_observation_sets()[index]``.
+    per_dataset_metadata: list[list[tuple[str, dict]]] = []
 
     for idx, (set_name, dataset_cfg) in enumerate(datasets.items()):
         try:
@@ -112,29 +120,29 @@ def create_observation_collection(
             dataset_id = dataset_cfg.get("identifier", set_name)
             obs_code = _observatory_code(dataset_cfg)
             ra_type, dec_type = _coordinate_type_label(dataset_cfg.get("type", ""))
+            dataset_entries: list[tuple[str, dict]] = []
             if isinstance(dataset, obs.ObservationCollection):
-                for single_set in dataset.get_single_observation_sets():
-                    set_id = get_set_identifier(single_set)
-                    dataset_metadata.setdefault(set_id, []).append(
+                single_sets = dataset.get_single_observation_sets()
+            elif isinstance(dataset, obs.SingleObservationSet):
+                single_sets = [dataset]
+            else:
+                single_sets = []
+            for single_set in single_sets:
+                set_id = get_set_identifier(single_set)
+                dataset_entries.append(
+                    (
+                        set_id,
                         {
                             "name": source_name,
                             "dataset_id": dataset_id,
                             "observatory_code": obs_code or set_id,
                             "ra_type": ra_type,
                             "dec_type": dec_type,
-                        }
+                            "index": None,
+                        },
                     )
-            elif isinstance(dataset, obs.SingleObservationSet):
-                set_id = get_set_identifier(dataset)
-                dataset_metadata.setdefault(set_id, []).append(
-                    {
-                        "name": source_name,
-                        "dataset_id": dataset_id,
-                        "observatory_code": obs_code or set_id,
-                        "ra_type": ra_type,
-                        "dec_type": dec_type,
-                    }
                 )
+            per_dataset_metadata.append(dataset_entries)
 
             logger.debug(f"Successfully created dataset {set_name} ({idx + 1}/{len(datasets)})")
         except Exception as e:
@@ -158,6 +166,32 @@ def create_observation_collection(
     total_collection = obs.merge_observation_collections(
         observation_collections + ([single_set_collection] if single_set_collection else [])
     )
+
+    # Assign the final index of each single observation set.  ``merge_observation_collections``
+    # orders sets internally (by observable type, then link ends), so we cannot rely on
+    # insertion order.  Instead we walk the final collection in the exact order returned by
+    # ``get_single_observation_sets()`` and consume a FIFO queue of metadata entries per
+    # ``set_id``.  This mirrors how ``WeightEngine``/``OutlierEngine`` iterate the collection,
+    # so ``index`` always matches the position a caller would retrieve via
+    # ``total_collection.get_single_observation_sets()[index]``.
+    meta_queues: dict[str, list[dict]] = {}
+    for entries in per_dataset_metadata:
+        for set_id, meta in entries:
+            meta_queues.setdefault(set_id, []).append(meta)
+
+    for set_index, single_set in enumerate(total_collection.get_single_observation_sets()):
+        set_id = get_set_identifier(single_set)
+        queue = meta_queues.get(set_id)
+        if not queue:
+            logger.warning(
+                "No dataset metadata available for observation set '%s' at index %d.",
+                set_id,
+                set_index,
+            )
+            continue
+        meta = queue.pop(0)
+        meta["index"] = set_index
+        dataset_metadata.setdefault(set_id, []).append(meta)
 
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
 

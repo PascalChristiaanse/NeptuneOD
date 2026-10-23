@@ -6,6 +6,7 @@ received a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
 
+import logging
 import re
 from pathlib import Path
 
@@ -15,7 +16,10 @@ from tudatpy.dynamics.propagation.dependent_variable_dictionary import Dependent
 from tudatpy.dynamics.propagation_setup.dependent_variable import (
     get_dependent_variable_shape,
 )
+from tudatpy.estimation import observations as obs
 from tudatpy.util import result2array
+
+logger = logging.getLogger(__name__)
 
 
 def create_dependent_variable_dictionary(
@@ -131,6 +135,59 @@ def save_tudat_object(obj: object, file_path: str | Path) -> Path:
 
     obj.save_to_binary(str(path))
     return path
+
+
+def select_observation_collection_by_tag(
+    observations: obs.ObservationCollection,
+    dataset_metadata: dict[str, list[dict]],
+    tag: str,
+) -> obs.ObservationCollection | None:
+    """Build an ObservationCollection containing only the sets matching *tag*.
+
+    Uses the ``index`` bookkeeping in ``dataset_metadata`` (populated by
+    :func:`orbitdet.observations.create_observation_collection`) to retrieve the
+    matching sets from ``observations``.  The *tag* is matched case-insensitively
+    against the ``dataset_id`` field of each metadata entry, so any dataset can be
+    selected (e.g. ``"gaia"`` for Gaia, ``"voyager"`` for Voyager 2).
+
+    This is useful when a plot only applies to a subset of the collection — for
+    example the scan-frame plots
+    (:class:`~orbitdet.visualization.ResidualsScan`) require the archived Gaia
+    ``position_angle_scan``, which is only available for Gaia observations.
+
+    Parameters
+    ----------
+    observations : obs.ObservationCollection
+        The full observation collection.
+    dataset_metadata : dict[str, list[dict]]
+        Metadata mapping produced by ``create_observation_collection``.  Each
+        entry must contain a ``dataset_id`` and an ``index`` field.
+    tag : str
+        Substring to match (case-insensitively) against ``dataset_id``.
+
+    Returns
+    -------
+    obs.ObservationCollection | None
+        A collection holding only the matching sets, or ``None`` when no set
+        matches *tag*.
+    """
+    all_sets = observations.get_single_observation_sets()
+    tag_lower = tag.lower()
+    selected_sets: list[obs.SingleObservationSet] = []
+    for metas in dataset_metadata.values():
+        for meta in metas:
+            if tag_lower not in str(meta.get("dataset_id", "")).lower():
+                continue
+            index = meta.get("index")
+            if index is None or not (0 <= index < len(all_sets)):
+                logger.warning(
+                    "Metadata entry for tag %r has invalid index %r; skipping.", tag, index
+                )
+                continue
+            selected_sets.append(all_sets[index])
+    if not selected_sets:
+        return None
+    return obs.ObservationCollection(selected_sets)
 
 
 #: Seconds per unit for :func:`parse_duration_to_seconds`. Month and year use

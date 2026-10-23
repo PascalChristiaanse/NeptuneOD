@@ -248,7 +248,13 @@ def main(cfg: DictConfig):
         residuals_time,
     )
     _log_peak_rss("after pre-fit propagation")
+    
     Residuals(cfg, "prefit_residuals_prop", observations).plot()
+    gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
+    if gaia_observations is not None:
+        ResidualsScan(cfg, gaia_observations, use_figure_name="prefit_residuals_spice_scan").plot()
+    else:
+        logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
     # Plot orbit on 3d plot
     StateHistory3D(cfg, prefit_prop.propagation_results).plot()
     # RSW distance for the pre-fit propagation

@@ -109,6 +109,66 @@ def get_scan_angles_for_epochs(epochs: np.ndarray | list[float]) -> np.ndarray |
         return None
 
 
+# Registry of per-observation Gaia astrometric errors keyed by the observation
+# epoch (seconds since J2000 TDB).  Mirrors ``_SCAN_ANGLE_REGISTRY``: the Tudat
+# ``SingleObservationSet`` pybind classes cannot carry arbitrary attributes, so
+# the archived random/systematic errors are carried alongside via this map.
+# Each value is an ``(n, 6)`` array with columns
+# ``[ra_err_random, dec_err_random, corr_random,
+#    ra_err_systematic, dec_err_systematic, corr_systematic]``
+# in radians (RA errors already de-projected by ``cos(dec)``).
+_GAIA_ERROR_REGISTRY: dict[tuple[float, ...], np.ndarray] = {}
+
+#: Column order of the arrays stored in :data:`_GAIA_ERROR_REGISTRY`.
+GAIA_ERROR_COLUMNS = (
+    "ra_error_random",
+    "dec_error_random",
+    "ra_dec_correlation_random",
+    "ra_error_systematic",
+    "dec_error_systematic",
+    "ra_dec_correlation_systematic",
+)
+
+
+def _register_gaia_errors(epochs: np.ndarray | list[float], errors: np.ndarray) -> None:
+    """Store the per-observation Gaia errors keyed by their epochs.
+
+    Args:
+        epochs: Observation epochs in seconds since J2000 TDB.
+        errors: ``(n, 6)`` array in :data:`GAIA_ERROR_COLUMNS` order.
+    """
+    _GAIA_ERROR_REGISTRY[tuple(float(e) for e in epochs)] = np.asarray(errors, dtype=float)
+
+
+def get_gaia_errors_for_epochs(epochs: np.ndarray | list[float]) -> np.ndarray | None:
+    """Return the Gaia errors matching the given epochs, if registered.
+
+    Mirrors :func:`get_scan_angles_for_epochs`: exact match first, then a
+    per-epoch fallback across all registered sets.
+
+    Args:
+        epochs: Observation epochs in seconds since J2000 TDB.
+
+    Returns:
+        ``(n, 6)`` array in :data:`GAIA_ERROR_COLUMNS` order, or ``None`` if no
+        matching errors could be found.
+    """
+    key = tuple(float(e) for e in epochs)
+    direct = _GAIA_ERROR_REGISTRY.get(key)
+    if direct is not None:
+        return direct
+
+    # Fallback: build an epoch->row map across all registered sets.
+    epoch_map: dict[float, np.ndarray] = {}
+    for registered_epochs, errors in _GAIA_ERROR_REGISTRY.items():
+        epoch_map.update(dict(zip(registered_epochs, errors)))
+
+    try:
+        return np.asarray([epoch_map[float(e)] for e in epochs], dtype=float)
+    except KeyError:
+        return None
+
+
 def get_gaia_ephemeris(
     source_ids: list[int],
     geocentric: bool = True,
@@ -626,6 +686,20 @@ class GaiaQuery:
             epoch_to_angle = dict(zip(table["epoch"], table["position_angle_scan"]))
             scan_angles = np.array([epoch_to_angle[float(epoch)] for epoch in epochs], dtype=float)
             _register_scan_angles(epochs, scan_angles)
+
+        # Register the per-observation random/systematic errors (radians) keyed by
+        # epoch so the scan-residual visualisations can draw archive error bars.
+        if len(epochs) > 0 and all(col in table.columns for col in GAIA_ERROR_COLUMNS):
+            epoch_to_errors = {
+                float(epoch): row
+                for epoch, row in zip(table["epoch"], table[list(GAIA_ERROR_COLUMNS)].to_numpy())
+            }
+            try:
+                errors = np.array([epoch_to_errors[float(epoch)] for epoch in epochs], dtype=float)
+            except KeyError:
+                errors = None
+            if errors is not None:
+                _register_gaia_errors(epochs, errors)
 
         # Cache the archive-weight diagonal so the gaia_archive strategy can
         # retrieve it (the full covariance matrix itself lives on the sets).

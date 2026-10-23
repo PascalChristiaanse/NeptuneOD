@@ -15,6 +15,18 @@ axes:
 styling:
   cmap: "tab10"
   marker_size: 30
+error_bars:
+  # Overlay the Gaia archive random/systematic errors on the scan residuals.
+  # Requires the observations to have been built via GaiaQuery.to_tudat(), which
+  # registers the archived errors per epoch.
+  enabled: true
+  # Per-observation total (random (+) systematic) error bars.
+  color: "0.35"
+  alpha: 0.5
+  capsize: 0.0
+  # Per-transit systematic band (constant within a transit).
+  systematic_band_color: "0.5"
+  systematic_band_alpha: 0.12
 legend:
   ncols: 2
   bbox_to_anchor:

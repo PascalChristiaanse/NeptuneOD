@@ -9,11 +9,119 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.data.gaia import get_scan_angles_for_epochs
+from orbitdet.data.gaia import get_gaia_errors_for_epochs, get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
 
 logger = logging.getLogger(__name__)
+
+
+def _scan_frame_sigmas(
+    ra_err: np.ndarray,
+    dec_err: np.ndarray,
+    corr: np.ndarray,
+    psi: np.ndarray,
+    dec_obs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Propagate a per-observation ``(RA, Dec)`` covariance into the scan frame.
+
+    The scan plot works in the tangent plane with ``east = ΔRA·cos(dec)`` and
+    ``north = ΔDec``, then rotates into the along-scan / across-scan frame::
+
+        AL = east·sin(psi) + north·cos(psi)
+        AC = east·cos(psi) - north·sin(psi)
+
+    The archived covariance is expressed in ``(ΔRA, ΔDec)``, so the rotation must
+    be applied to the *whole* covariance (the RA/Dec correlation survives the
+    rotation) rather than to the variances alone::
+
+        C_scan = T C T^T,  T = [[sin(psi)·cos(dec), cos(psi)],
+                                [cos(psi)·cos(dec), -sin(psi)]]
+
+    Args:
+        ra_err: RA error (radians), already de-projected by ``cos(dec)``.
+        dec_err: Dec error (radians).
+        corr: RA/Dec correlation coefficient.
+        psi: Position angle of scan (radians), measured from North towards East.
+        dec_obs: Observed declination (radians), for the ``cos(dec)`` factor.
+
+    Returns:
+        Tuple ``(sigma_al, sigma_ac)`` in radians.
+    """
+    ra_err = np.asarray(ra_err, dtype=float)
+    dec_err = np.asarray(dec_err, dtype=float)
+    corr = np.asarray(corr, dtype=float)
+    psi = np.asarray(psi, dtype=float)
+    dec_obs = np.asarray(dec_obs, dtype=float)
+
+    cos_dec = np.cos(dec_obs)
+    sin_psi = np.sin(psi)
+    cos_psi = np.cos(psi)
+
+    # Covariance entries in (ΔRA, ΔDec).
+    c_ra = ra_err**2
+    c_dec = dec_err**2
+    c_radec = corr * ra_err * dec_err
+
+    # T C T^T diagonal entries (T rows are the AL and AC unit vectors expressed
+    # in (ΔRA, ΔDec) coordinates).
+    t_al_ra = sin_psi * cos_dec
+    t_al_dec = cos_psi
+    t_ac_ra = cos_psi * cos_dec
+    t_ac_dec = -sin_psi
+
+    var_al = t_al_ra**2 * c_ra + 2.0 * t_al_ra * t_al_dec * c_radec + t_al_dec**2 * c_dec
+    var_ac = t_ac_ra**2 * c_ra + 2.0 * t_ac_ra * t_ac_dec * c_radec + t_ac_dec**2 * c_dec
+
+    return np.sqrt(np.clip(var_al, 0.0, None)), np.sqrt(np.clip(var_ac, 0.0, None))
+
+
+def _draw_systematic_bands(
+    ax: plt.Axes,
+    times: pd.DatetimeIndex,
+    sigma: np.ndarray,
+    color,
+    alpha: float,
+) -> None:
+    """Draw per-transit systematic-error bands on a scan-residual axis.
+
+    The Gaia systematic error is constant within a transit, so observations that
+    share the same systematic sigma are grouped into contiguous runs and drawn as
+    a shaded band spanning the run's time range at ``+/- sigma`` about zero.
+
+    Args:
+        ax: Axis to draw on.
+        times: Observation epochs (as datetimes), sorted ascending.
+        sigma: Per-observation systematic sigma in display units.
+        color: Band colour.
+        alpha: Band transparency.
+    """
+    sigma = np.asarray(sigma, dtype=float)
+    if sigma.size == 0:
+        return
+
+    # Group contiguous observations that share (approximately) the same sigma.
+    # ``np.isclose`` tolerates floating-point noise in the archived values.
+    run_start = 0
+    for i in range(1, len(sigma) + 1):
+        same = i < len(sigma) and np.isclose(sigma[i], sigma[run_start], rtol=1e-6, atol=0.0)
+        if same:
+            continue
+        run_sigma = float(sigma[run_start])
+        if np.isfinite(run_sigma) and run_sigma > 0.0:
+            t0 = times[run_start]
+            t1 = times[i - 1]
+            # Time-spanning band at +/- the (transit-constant) systematic sigma.
+            ax.fill_between(
+                [t0, t1],
+                [-run_sigma, -run_sigma],
+                [run_sigma, run_sigma],
+                color=color,
+                alpha=alpha,
+                linewidth=0.0,
+                zorder=0,
+            )
+        run_start = i
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -460,6 +568,17 @@ class ResidualsScan(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
+        # Archive error-bar configuration (Gaia random/systematic errors).
+        error_bars_cfg = _cfg_get(plot_cfg, "error_bars", default=None)
+        show_error_bars = bool(_cfg_get(error_bars_cfg, "enabled", default=False))
+        error_bar_color = _cfg_get(error_bars_cfg, "color", default="0.35")
+        error_bar_alpha = float(_cfg_get(error_bars_cfg, "alpha", default=0.5))
+        error_bar_capsize = float(_cfg_get(error_bars_cfg, "capsize", default=0.0))
+        systematic_band_alpha = float(
+            _cfg_get(error_bars_cfg, "systematic_band_alpha", default=0.12)
+        )
+        systematic_band_color = _cfg_get(error_bars_cfg, "systematic_band_color", default="0.5")
+
         al_labels = []
         ac_labels = []
         for set_index, obs_set in enumerate(observation_sets):
@@ -537,6 +656,79 @@ class ResidualsScan(Plot):
                 color=color,
                 alpha=0.5,
             )
+
+            # --- Archive error bars (Gaia random + systematic) ---
+            if show_error_bars:
+                errors = get_gaia_errors_for_epochs(obs_times_sec_j2000)
+                if errors is not None and len(errors) == len(obs_times_sec_j2000):
+                    (
+                        ra_err_random,
+                        dec_err_random,
+                        corr_random,
+                        ra_err_sys,
+                        dec_err_sys,
+                        corr_sys,
+                    ) = errors.T
+
+                    # Random component (varies per observation).
+                    sigma_al_rand, sigma_ac_rand = _scan_frame_sigmas(
+                        ra_err_random, dec_err_random, corr_random, psi, dec_obs
+                    )
+                    # Systematic component (constant within a transit).
+                    sigma_al_sys, sigma_ac_sys = _scan_frame_sigmas(
+                        ra_err_sys, dec_err_sys, corr_sys, psi, dec_obs
+                    )
+
+                    # Total = random (+) systematic, in quadrature.
+                    sigma_al_total = np.sqrt(sigma_al_rand**2 + sigma_al_sys**2)
+                    sigma_ac_total = np.sqrt(sigma_ac_rand**2 + sigma_ac_sys**2)
+
+                    al_err_unit = _rad_to_unit(sigma_al_total, unit)
+                    ac_err_unit = _rad_to_unit(sigma_ac_total, unit)
+
+                    axs[0].errorbar(
+                        obs_times,
+                        al_in_unit,
+                        yerr=al_err_unit,
+                        fmt="none",
+                        ecolor=error_bar_color,
+                        alpha=error_bar_alpha,
+                        capsize=error_bar_capsize,
+                        zorder=1,
+                    )
+                    axs[1].errorbar(
+                        obs_times,
+                        ac_in_unit,
+                        yerr=ac_err_unit,
+                        fmt="none",
+                        ecolor=error_bar_color,
+                        alpha=error_bar_alpha,
+                        capsize=error_bar_capsize,
+                        zorder=1,
+                    )
+
+                    # Per-transit systematic band: the systematic error is constant
+                    # within a transit, so draw a shaded band spanning the transit's
+                    # time range at +/- the (transit-constant) systematic sigma.
+                    _draw_systematic_bands(
+                        axs[0],
+                        obs_times,
+                        _rad_to_unit(sigma_al_sys, unit),
+                        systematic_band_color,
+                        systematic_band_alpha,
+                    )
+                    _draw_systematic_bands(
+                        axs[1],
+                        obs_times,
+                        _rad_to_unit(sigma_ac_sys, unit),
+                        systematic_band_color,
+                        systematic_band_alpha,
+                    )
+                else:
+                    logger.debug(
+                        "No Gaia archive errors registered for set '%s'; skipping error bars.",
+                        info.get("name", set_index),
+                    )
 
         # Titles and labels (configurable)
         title_al = _cfg_get(plot_cfg, "titles", "al", default="Along-scan")

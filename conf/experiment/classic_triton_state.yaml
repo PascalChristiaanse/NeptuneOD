@@ -20,6 +20,7 @@ defaults:
   - /figures/residual_histogram
   - /figures/residual_qq
   - /figures/residual_scatter
+  - /figures/residual_scatter_ellipses
   - /figures/parameter_correlation_heatmap
   - /figures/parameter_history_per_iteration
   - /figures/covariance_ellipses

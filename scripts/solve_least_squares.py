@@ -44,6 +44,7 @@ from orbitdet.visualization import (
     ResidualRMSPerIteration,
     Residuals,
     ResidualScatter,
+    ResidualScatterWithEllipses,
     ResidualsScan,
     RSWDistance,
     RSWDistanceWithUncertainty,
@@ -449,6 +450,7 @@ def main(cfg: DictConfig):
 
     ResidualQQ(cfg, observations).plot()
     ResidualScatter(cfg, observations).plot()
+    ResidualScatterWithEllipses(cfg, observations).plot()
     ResidualHistogram(cfg, observations).plot()
     ResidualRMSPerIteration(cfg, estimation_output).plot()
     ParameterCorrelationHeatmap(cfg, estimation_output).plot()

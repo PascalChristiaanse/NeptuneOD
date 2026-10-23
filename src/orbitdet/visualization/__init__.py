@@ -10,7 +10,7 @@ from .residual_histogram import ResidualHistogram, ResidualScanHistogram
 from .residual_psd import ResidualsPSD
 from .residual_qq import ResidualQQ
 from .residual_rms_per_iteration import ResidualRMSPerIteration
-from .residual_scatter import ResidualScatter
+from .residual_scatter import ResidualScatter, ResidualScatterWithEllipses
 from .residuals import Residuals, ResidualsScan
 from .RSW_distance import RSWDistance
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
@@ -51,6 +51,7 @@ __all__ = [
     "ResidualQQ",
     "ResidualRMSPerIteration",
     "ResidualScatter",
+    "ResidualScatterWithEllipses",
     "RSWDistance",
     "RSWDistanceWithUncertainty",
     "StateHistory3D",

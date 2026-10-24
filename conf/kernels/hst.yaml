@@ -1,0 +1,11 @@
+# @package _global_
+
+# Kernel and data file settings for HST-era experiments.
+# Extends the classical kernel set with the standard HST spacecraft ephemeris.
+
+defaults:
+  - /kernels/classical
+  - _self_ 
+
+kernels:
+  hst.bsp: "https://naif.jpl.nasa.gov/pub/naif/HST/kernels/spk/hst.bsp" # HST spacecraft trajectory (NAIF ID -48)

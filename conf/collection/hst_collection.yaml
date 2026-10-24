@@ -1,0 +1,11 @@
+# @package _global_
+
+# HST collection: both public HST astrometry sources combined.
+#   - hst_mast     : pointing RA/Dec from the MAST archive
+#   - hst_springer : Showalter et al. (2019) Springer supplement
+
+defaults:
+  - /datasets/hst_mast@datasets.hst_mast
+  - /datasets/hst_springer@datasets.hst_springer
+
+name: "HST Triton Data"

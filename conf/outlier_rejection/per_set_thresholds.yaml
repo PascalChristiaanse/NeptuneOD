@@ -16,3 +16,6 @@ outlier_rejection:
       sets: ["Voyager 2"]
     - type: residual_threshold
       threshold_arcsec: 1.5
+    - type: residual_threshold
+      threshold_arcsec: 10
+      sets: ["HST"]

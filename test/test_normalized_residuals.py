@@ -348,3 +348,141 @@ class TestAppliedScanSigmas:
         recovered_al, recovered_ac = _applied_scan_sigmas(obs_set, np.array([psi]), np.array([dec]))
         assert recovered_al[0] == pytest.approx(sigma_al, rel=1e-9)
         assert recovered_ac[0] == pytest.approx(sigma_ac, rel=1e-9)
+
+
+# ===========================================================================
+# _applied_radec_sigmas / _archive_radec_sigmas
+# ===========================================================================
+
+
+class TestAppliedRaDecSigmas:
+    def test_diagonal_weights_recover_sigmas(self):
+        from orbitdet.visualization.residuals import _applied_radec_sigmas
+
+        sigma_ra = 3.0 * ARCSEC
+        sigma_dec = 7.0 * ARCSEC
+        w = np.diag([1.0 / sigma_ra**2, 1.0 / sigma_dec**2])
+        obs_set = SimpleNamespace(weight_matrix=w)
+        recovered_ra, recovered_dec = _applied_radec_sigmas(obs_set, 1)
+        assert recovered_ra[0] == pytest.approx(sigma_ra, rel=1e-9)
+        assert recovered_dec[0] == pytest.approx(sigma_dec, rel=1e-9)
+
+    def test_wrong_shape_raises(self):
+        from orbitdet.visualization.residuals import _applied_radec_sigmas
+
+        obs_set = SimpleNamespace(weight_matrix=np.zeros((0, 0)))
+        with pytest.raises(ValueError):
+            _applied_radec_sigmas(obs_set, 1)
+
+
+class TestArchiveRaDecSigmas:
+    def test_combines_random_and_systematic_in_quadrature(self):
+        from orbitdet.visualization.residuals import _archive_radec_sigmas
+
+        errors = np.zeros((1, 6))
+        errors[0, 0] = 3.0 * ARCSEC  # ra random
+        errors[0, 1] = 4.0 * ARCSEC  # dec random
+        errors[0, 3] = 4.0 * ARCSEC  # ra systematic
+        errors[0, 4] = 3.0 * ARCSEC  # dec systematic
+        sigma_ra, sigma_dec = _archive_radec_sigmas(errors)
+        assert sigma_ra[0] == pytest.approx(5.0 * ARCSEC, rel=1e-9)
+        assert sigma_dec[0] == pytest.approx(5.0 * ARCSEC, rel=1e-9)
+
+
+# ===========================================================================
+# NormalizedResiduals
+# ===========================================================================
+
+
+def _make_radec_set(n, epochs, residuals, weight_matrix=None):
+    from tudatpy.estimation.observable_models_setup import links
+
+    times = [SimpleNamespace(to_float=lambda t=float(e): t) for e in epochs]
+    link_ends = {
+        links.receiver: SimpleNamespace(reference_point="", body_name="Gaia"),
+        links.transmitter: SimpleNamespace(body_name="Triton"),
+    }
+    obs_set = SimpleNamespace(
+        observation_times=times,
+        residuals=np.asarray(residuals, dtype=float),
+        concatenated_observations=np.zeros(2 * n),
+        link_definition=SimpleNamespace(link_ends=link_ends),
+    )
+    if weight_matrix is not None:
+        obs_set.weight_matrix = np.asarray(weight_matrix, dtype=float)
+    return obs_set
+
+
+class TestNormalizedResiduals:
+    def test_weights_normalization_is_residual_over_sigma(self):
+        from omegaconf import OmegaConf
+
+        from orbitdet.visualization.residuals import NormalizedResiduals
+
+        sigma_ra = 1.0 * ARCSEC
+        sigma_dec = 2.0 * ARCSEC
+        residuals = np.array([[2.0 * sigma_ra, 3.0 * sigma_dec]])
+        w = np.diag([1.0 / sigma_ra**2, 1.0 / sigma_dec**2])
+        obs_set = _make_radec_set(1, [0.0], residuals, weight_matrix=w)
+
+        collection = SimpleNamespace(get_single_observation_sets=lambda *a, **k: [obs_set])
+        cfg = OmegaConf.create({"figures": {"norm_test": {"normalization": "weights"}}})
+        plot = NormalizedResiduals(cfg, collection, use_figure_name="norm_test")
+        fig, axs = plot._make_figure()
+
+        ra_offsets = axs[0, 0].collections[0].get_offsets()
+        dec_offsets = axs[1, 0].collections[0].get_offsets()
+        assert ra_offsets[0, 1] == pytest.approx(2.0, rel=1e-6)
+        assert dec_offsets[0, 1] == pytest.approx(3.0, rel=1e-6)
+        plt.close(fig)
+
+    def test_both_normalization_has_two_columns(self):
+        from omegaconf import OmegaConf
+
+        from orbitdet.data.gaia import _register_gaia_errors
+        from orbitdet.visualization.residuals import NormalizedResiduals
+
+        sigma = 1.0 * ARCSEC
+        residuals = np.array([[2.0 * sigma, 2.0 * sigma]])
+        w = np.diag([1.0 / sigma**2, 1.0 / sigma**2])
+        obs_set = _make_radec_set(1, [0.0], residuals, weight_matrix=w)
+        errors = np.zeros((1, 6))
+        errors[0, 0] = sigma
+        errors[0, 1] = sigma
+        _register_gaia_errors([0.0], errors)
+
+        collection = SimpleNamespace(get_single_observation_sets=lambda *a, **k: [obs_set])
+        cfg = OmegaConf.create({"figures": {"norm_test": {"normalization": "both"}}})
+        plot = NormalizedResiduals(cfg, collection, use_figure_name="norm_test")
+        fig, axs = plot._make_figure()
+
+        assert axs.shape == (2, 2)
+        assert len(axs[0, 0].collections) == 1
+        assert len(axs[0, 1].collections) == 1
+        plt.close(fig)
+
+    def test_invalid_normalization_raises(self):
+        from omegaconf import OmegaConf
+
+        from orbitdet.visualization.residuals import NormalizedResiduals
+
+        obs_set = _make_radec_set(1, [0.0], np.zeros((1, 2)))
+        collection = SimpleNamespace(get_single_observation_sets=lambda *a, **k: [obs_set])
+        cfg = OmegaConf.create({"figures": {"norm_test": {"normalization": "bogus"}}})
+        plot = NormalizedResiduals(cfg, collection, use_figure_name="norm_test")
+        with pytest.raises(ValueError):
+            plot._make_figure()
+
+    def test_skips_sets_without_weights(self):
+        from omegaconf import OmegaConf
+
+        from orbitdet.visualization.residuals import NormalizedResiduals
+
+        # No weight matrix attached -> "weights" normalization cannot be computed.
+        obs_set = _make_radec_set(1, [0.0], np.zeros((1, 2)))
+        collection = SimpleNamespace(get_single_observation_sets=lambda *a, **k: [obs_set])
+        cfg = OmegaConf.create({"figures": {"norm_test": {"normalization": "weights"}}})
+        plot = NormalizedResiduals(cfg, collection, use_figure_name="norm_test")
+        fig, axs = plot._make_figure()
+        assert len(axs[0, 0].collections) == 0
+        plt.close(fig)

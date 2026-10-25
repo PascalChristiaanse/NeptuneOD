@@ -9,11 +9,154 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observable_models_setup import links
 from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.data.gaia import get_scan_angles_for_epochs
+from orbitdet.data.gaia import get_gaia_errors_for_epochs, get_scan_angles_for_epochs
 from orbitdet.observations import get_observatory_info
 from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
 
 logger = logging.getLogger(__name__)
+
+
+def _scan_frame_sigmas(
+    ra_err: np.ndarray,
+    dec_err: np.ndarray,
+    corr: np.ndarray,
+    psi: np.ndarray,
+    dec_obs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Propagate a per-observation ``(RA, Dec)`` covariance into the scan frame.
+
+    The scan plot works in the tangent plane with ``east = ΔRA·cos(dec)`` and
+    ``north = ΔDec``, then rotates into the along-scan / across-scan frame::
+
+        AL = east·sin(psi) + north·cos(psi)
+        AC = east·cos(psi) - north·sin(psi)
+
+    The archived covariance is expressed in ``(ΔRA, ΔDec)``, so the rotation must
+    be applied to the *whole* covariance (the RA/Dec correlation survives the
+    rotation) rather than to the variances alone::
+
+        C_scan = T C T^T,  T = [[sin(psi)·cos(dec), cos(psi)],
+                                [cos(psi)·cos(dec), -sin(psi)]]
+
+    Args:
+        ra_err: RA error (radians), already de-projected by ``cos(dec)``.
+        dec_err: Dec error (radians).
+        corr: RA/Dec correlation coefficient.
+        psi: Position angle of scan (radians), measured from North towards East.
+        dec_obs: Observed declination (radians), for the ``cos(dec)`` factor.
+
+    Returns:
+        Tuple ``(sigma_al, sigma_ac)`` in radians.
+    """
+    ra_err = np.asarray(ra_err, dtype=float)
+    dec_err = np.asarray(dec_err, dtype=float)
+    corr = np.asarray(corr, dtype=float)
+    psi = np.asarray(psi, dtype=float)
+    dec_obs = np.asarray(dec_obs, dtype=float)
+
+    cos_dec = np.cos(dec_obs)
+    sin_psi = np.sin(psi)
+    cos_psi = np.cos(psi)
+
+    # Covariance entries in (ΔRA, ΔDec).
+    c_ra = ra_err**2
+    c_dec = dec_err**2
+    c_radec = corr * ra_err * dec_err
+
+    # T C T^T diagonal entries (T rows are the AL and AC unit vectors expressed
+    # in (ΔRA, ΔDec) coordinates).
+    t_al_ra = sin_psi * cos_dec
+    t_al_dec = cos_psi
+    t_ac_ra = cos_psi * cos_dec
+    t_ac_dec = -sin_psi
+
+    var_al = t_al_ra**2 * c_ra + 2.0 * t_al_ra * t_al_dec * c_radec + t_al_dec**2 * c_dec
+    var_ac = t_ac_ra**2 * c_ra + 2.0 * t_ac_ra * t_ac_dec * c_radec + t_ac_dec**2 * c_dec
+
+    return np.sqrt(np.clip(var_al, 0.0, None)), np.sqrt(np.clip(var_ac, 0.0, None))
+
+
+def _scan_frame_components(
+    residuals: np.ndarray,
+    dec_obs: np.ndarray,
+    psi: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Rotate ``(ΔRA, ΔDec)`` residuals into the along/across-scan frame.
+
+    Uses the same tangent-plane convention as :func:`_scan_frame_sigmas`::
+
+        east  = ΔRA·cos(dec)
+        north = ΔDec
+        AL = east·sin(psi) + north·cos(psi)
+        AC = east·cos(psi) - north·sin(psi)
+
+    Args:
+        residuals: ``(n, 2)`` array of ``[ΔRA, ΔDec]`` residuals in radians.
+        dec_obs: Observed declinations (radians).
+        psi: Position angle of scan (radians), measured from North towards East.
+
+    Returns:
+        Tuple ``(al, ac)`` in radians.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    dec_obs = np.asarray(dec_obs, dtype=float)
+    psi = np.asarray(psi, dtype=float)
+
+    east = residuals[:, 0] * np.cos(dec_obs)
+    north = residuals[:, 1]
+    al = east * np.sin(psi) + north * np.cos(psi)
+    ac = east * np.cos(psi) - north * np.sin(psi)
+    return al, ac
+
+
+def _applied_scan_sigmas(
+    observation_set: obs.SingleObservationSet,
+    psi: np.ndarray,
+    dec_obs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Scan-frame 1σ uncertainties from the *applied* weight matrix.
+
+    Unlike :func:`_scan_frame_sigmas` (which uses the archived Gaia errors), this
+    reads the weight matrix actually assigned by the weighting strategy.  For each
+    observation the 2x2 ``(RA, Dec)`` diagonal block of the applied weight matrix
+    is inverted to a local covariance and rotated into the scan frame::
+
+        C_i = inv(W[2i:2i+2, 2i:2i+2])
+        C_scan = T C_i T^T,  sigma = sqrt(diag(C_scan))
+
+    This is exact for diagonal and block-diagonal weights (e.g. the ``fixed_scan``
+    strategy) and a local approximation for full (off-diagonal) weight matrices,
+    where it ignores cross-observation correlations.
+
+    Args:
+        observation_set: The observation set whose applied weights are read.
+        psi: Position angle of scan (radians), one per observation.
+        dec_obs: Observed declinations (radians), one per observation.
+
+    Returns:
+        Tuple ``(sigma_al, sigma_ac)`` in radians.
+    """
+    weight_matrix = np.asarray(observation_set.weight_matrix, dtype=float)
+    n_obs = len(psi)
+
+    ra_err = np.full(n_obs, np.nan)
+    dec_err = np.full(n_obs, np.nan)
+    corr = np.zeros(n_obs)
+
+    for i in range(n_obs):
+        block = weight_matrix[2 * i : 2 * i + 2, 2 * i : 2 * i + 2]
+        try:
+            covariance = np.linalg.inv(block)
+        except np.linalg.LinAlgError:
+            covariance = np.linalg.pinv(block)
+        c_ra = max(float(covariance[0, 0]), 0.0)
+        c_dec = max(float(covariance[1, 1]), 0.0)
+        ra_err[i] = np.sqrt(c_ra)
+        dec_err[i] = np.sqrt(c_dec)
+        denom = ra_err[i] * dec_err[i]
+        corr[i] = float(covariance[0, 1]) / denom if denom > 0.0 else 0.0
+
+    return _scan_frame_sigmas(ra_err, dec_err, corr, psi, dec_obs)
 
 
 def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
@@ -585,6 +728,269 @@ class ResidualsScan(Plot):
 
         axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        fig.suptitle(suptitle)
+        fig.set_tight_layout(True)
+
+        return fig, axs
+
+
+class NormalizedResidualScan(Plot):
+    """Plot per-observation normalized along/across-scan residuals for Gaia data.
+
+    Each residual is divided by its own 1σ uncertainty, obtained by rotating a
+    per-observation ``(RA, Dec)`` covariance into the scan frame::
+
+        z_AL = AL / sigma_AL
+        z_AC = AC / sigma_AC
+
+    Two normalization sources are supported (``normalization`` config key):
+
+    ``archive`` (default)
+        The archived Gaia random and systematic errors, combined in quadrature
+        (see :func:`_scan_frame_sigmas`).  This is the "what Gaia reports" σ.
+    ``weights``
+        The weight matrix actually applied by the weighting strategy, inverted to
+        a local covariance (see :func:`_applied_scan_sigmas`).  This is the "what
+        the estimator believes" σ.
+    ``both``
+        Draw both, side by side (rows = AL/AC, columns = archive/weights), so the
+        two normalizations can be compared directly.
+
+    A well-calibrated solution has ``RMS(z) ~ 1``.  Sets without the required
+    data (registered archive errors, or a usable weight matrix) are skipped.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    observation_collection : obs.ObservationCollection
+        The observation collection whose residuals are plotted.
+    observation_parsers : list[obs_proc.ObservationParserType] | None
+        Optional parsers to filter observation sets by type.
+    use_figure_name : str | None
+        Name of the figure configuration block under ``cfg.figures`` (e.g.
+        ``"postfit_normalized_residuals_scan"``).  When ``None`` the snake_case
+        class name is used.
+    """
+
+    def __init__(
+        self,
+        cfg: DictConfig,
+        observation_collection: obs.ObservationCollection,
+        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        use_figure_name: str | None = None,
+    ):
+        super().__init__(cfg)
+        self.observation_collection = observation_collection
+        self.observation_parsers = observation_parsers
+        self.use_figure_name = use_figure_name
+        self.name = use_figure_name or _snake_case(self.__class__.__name__)
+
+    def _make_figure(self):
+        cfg = self.cfg
+        observation_collection = self.observation_collection
+        observation_parsers = self.observation_parsers
+
+        if observation_parsers is None:
+            observation_sets: list[obs.SingleObservationSet] = (
+                observation_collection.get_single_observation_sets()
+            )
+        else:
+            observation_sets: list[obs.SingleObservationSet] = (
+                observation_collection.get_single_observation_sets(observation_parsers)
+            )
+
+        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
+        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
+        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
+        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
+
+        normalization = str(_cfg_get(plot_cfg, "normalization", default="archive")).lower()
+        if normalization not in ("archive", "weights", "both"):
+            raise ValueError(
+                f"NormalizedResidualScan: 'normalization' must be one of "
+                f"'archive', 'weights', 'both', got {normalization!r}."
+            )
+        sources = ["archive", "weights"] if normalization == "both" else [normalization]
+
+        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
+        colors = plt.get_cmap(cmap)
+        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
+        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+
+        # Layout: rows = AL/AC, columns = normalization source(s).
+        n_rows = 2
+        n_cols = len(sources)
+        fig, axs = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharex=True, squeeze=False)
+
+        target_name = ""
+        for set_index, obs_set in enumerate(observation_sets):
+            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
+            if observatory_code == "":
+                observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
+                info = {"code": observatory_code, "name": observatory_name, "region": "Spacecraft"}
+            else:
+                info = get_observatory_info(cfg, observatory_code)
+            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
+            color = colors(set_index % colors.N)
+            marker = marker_types[set_index % len(marker_types)]
+
+            obs_times_sec_j2000 = np.array(
+                [epoch.to_float() for epoch in obs_set.observation_times]
+            )
+            obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
+            residuals = np.array(obs_set.residuals)  # (n,2) [ΔRA, ΔDec] in rad
+
+            observed = np.array(obs_set.concatenated_observations).reshape(-1, 2)
+            dec_obs = observed[:, 1]
+
+            scan_angles = get_scan_angles_for_epochs(obs_times_sec_j2000)
+            if scan_angles is None:
+                raise RuntimeError(
+                    "Could not find scan angles for the observation epochs. Ensure the "
+                    "observations were created via GaiaQuery.to_tudat(), which registers "
+                    "the position_angle_scan for each observation."
+                )
+            psi = scan_angles
+
+            # Scan-frame residual components (radians).
+            al_rad, ac_rad = _scan_frame_components(residuals, dec_obs, psi)
+
+            # Per-source scan-frame sigmas (radians).
+            sigmas: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+            if "archive" in sources:
+                errors = get_gaia_errors_for_epochs(obs_times_sec_j2000)
+                if errors is not None and len(errors) == len(obs_times_sec_j2000):
+                    (
+                        ra_err_random,
+                        dec_err_random,
+                        corr_random,
+                        ra_err_sys,
+                        dec_err_sys,
+                        corr_sys,
+                    ) = errors.T
+                    sigma_al_rand, sigma_ac_rand = _scan_frame_sigmas(
+                        ra_err_random, dec_err_random, corr_random, psi, dec_obs
+                    )
+                    sigma_al_sys, sigma_ac_sys = _scan_frame_sigmas(
+                        ra_err_sys, dec_err_sys, corr_sys, psi, dec_obs
+                    )
+                    sigmas["archive"] = (
+                        np.sqrt(sigma_al_rand**2 + sigma_al_sys**2),
+                        np.sqrt(sigma_ac_rand**2 + sigma_ac_sys**2),
+                    )
+                else:
+                    logger.debug(
+                        "No Gaia archive errors registered for set '%s'; skipping archive "
+                        "normalization.",
+                        info.get("name", set_index),
+                    )
+            if "weights" in sources:
+                try:
+                    sigmas["weights"] = _applied_scan_sigmas(obs_set, psi, dec_obs)
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.debug(
+                        "Could not read applied weights for set '%s': %s",
+                        info.get("name", set_index),
+                        exc,
+                    )
+
+            if not sigmas:
+                continue
+
+            for col, source in enumerate(sources):
+                if source not in sigmas:
+                    continue
+                sigma_al, sigma_ac = sigmas[source]
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    z_al = np.divide(
+                        al_rad, sigma_al, out=np.full_like(al_rad, np.nan), where=sigma_al > 0
+                    )
+                    z_ac = np.divide(
+                        ac_rad, sigma_ac, out=np.full_like(ac_rad, np.nan), where=sigma_ac > 0
+                    )
+
+                al_rms = _rms_in_unit(z_al, "unit")
+                ac_rms = _rms_in_unit(z_ac, "unit")
+                al_rms_label = f"{al_rms:.3f}" if al_rms is not None else None
+                ac_rms_label = f"{ac_rms:.3f}" if ac_rms is not None else None
+
+                axs[0, col].scatter(
+                    obs_times,
+                    z_al,
+                    marker=marker,
+                    s=marker_size,
+                    label=f"{info['name']} - {info['region']} - RMS(z): {al_rms_label}",
+                    color=color,
+                    alpha=0.5,
+                )
+                axs[1, col].scatter(
+                    obs_times,
+                    z_ac,
+                    marker=marker,
+                    s=marker_size,
+                    label=f"{info['name']} - {info['region']} - RMS(z): {ac_rms_label}",
+                    color=color,
+                    alpha=0.5,
+                )
+
+        # Reference lines at 0 and +/-1 sigma.
+        for ax in axs.flat:
+            ax.axhline(0.0, color="black", linewidth=0.8)
+            ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
+            ax.axhline(-1.0, color="grey", linestyle="--", linewidth=0.8)
+
+        title_al = _cfg_get(plot_cfg, "titles", "al", default="Along-scan")
+        title_ac = _cfg_get(plot_cfg, "titles", "ac", default="Across-scan")
+        source_titles = {"archive": "archive σ", "weights": "applied weights σ"}
+        suptitle = _cfg_get(
+            plot_cfg,
+            "titles",
+            "suptitle_scan",
+            default=f"Normalized Scan Residuals for {target_name}",
+        )
+        try:
+            if isinstance(suptitle, str):
+                suptitle = suptitle.format(target_name=target_name)
+        except Exception:
+            pass
+
+        for col, source in enumerate(sources):
+            axs[0, col].set_title(f"{title_al} [{source_titles[source]}]")
+            axs[1, col].set_title(f"{title_ac} [{source_titles[source]}]")
+
+        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Normalized residual [σ]")
+        for row in range(n_rows):
+            axs[row, 0].set_ylabel(y_label)
+        x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
+        for col in range(n_cols):
+            axs[1, col].set_xlabel(x_label)
+            _configure_datetime_axis(axs[1, col])
+
+        hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
+        hover_y_label = _cfg_get(
+            plot_cfg, "axes", "hover_y_label", default="Normalized residual [σ]"
+        )
+        fmt = _make_hover_formatter(hover_x_label, hover_y_label)
+        for ax in axs.flat:
+            ax.format_coord = fmt
+
+        try:
+            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
+        except Exception:
+            legend_ncols = 2
+
+        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
+        try:
+            if isinstance(bbox, dict):
+                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
+            else:
+                bbox_tuple = tuple(float(x) for x in bbox)
+        except Exception:
+            bbox_tuple = (0.5, -0.15)
+
+        for ax in axs.flat:
+            ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
 

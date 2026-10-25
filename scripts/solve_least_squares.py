@@ -35,6 +35,7 @@ from orbitdet.simulation import (
 from orbitdet.utility import save_tudat_object, select_observation_collection_by_tag
 from orbitdet.visualization import (
     CovarianceEllipses,
+    NormalizedResidualScan,
     ParameterCorrelationHeatmap,
     ParameterHistoryPerIteration,
     PropagatedFormalErrorsCartesian,
@@ -144,6 +145,9 @@ def main(cfg: DictConfig):
     gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
     if gaia_observations is not None:
         ResidualsScan(cfg, gaia_observations, use_figure_name="prefit_residuals_spice_scan").plot()
+        NormalizedResidualScan(
+            cfg, gaia_observations, use_figure_name="prefit_normalized_residuals_scan"
+        ).plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
     ################################################################
@@ -248,7 +252,7 @@ def main(cfg: DictConfig):
         residuals_time,
     )
     _log_peak_rss("after pre-fit propagation")
-    
+
     Residuals(cfg, "prefit_residuals_prop", observations).plot()
     gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
     if gaia_observations is not None:
@@ -421,6 +425,9 @@ def main(cfg: DictConfig):
     gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
     if gaia_observations is not None:
         ResidualsScan(cfg, gaia_observations, use_figure_name="postfit_residuals_scan").plot()
+        NormalizedResidualScan(
+            cfg, gaia_observations, use_figure_name="postfit_normalized_residuals_scan"
+        ).plot()
     else:
         logger.info("No Gaia observations found; skipping post-fit scan residual plot.")
 

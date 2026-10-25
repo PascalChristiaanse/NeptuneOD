@@ -16,3 +16,7 @@ outlier_rejection:
       sets: ["Voyager 2"]
     - type: residual_threshold
       threshold_arcsec: 1.5
+    - type: epoch_filter
+      epochs_to_remove:
+        - -1162202738.851083
+      sets: ["083"]

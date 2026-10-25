@@ -103,9 +103,8 @@ def test_convert_time_supports_all_historical_timescale_labels():
             cartesian_position_at_reference_epoch=np.array([1.0, -1.0, 0.0])
         )
     )
-    bodies = SimpleNamespace(
-        get_body=lambda name: SimpleNamespace(get_ground_station=lambda code: station)
-    )
+    earth = SimpleNamespace(get_ground_station=lambda code: station)
+    bodies = SimpleNamespace(get=lambda name: earth)
     labels = [
         "Washington mean time",
         "Washington Mean Time",

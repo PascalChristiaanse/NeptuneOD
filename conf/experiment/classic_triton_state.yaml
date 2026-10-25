@@ -5,8 +5,8 @@
 # - Triton initial state
 
 defaults:
-  - /data: classical_voyager_gaia
-  - /parameters: initial_state
+  - /data: jacobson2009_voyager_gaia
+  - /parameters: IS_PM_PL
   - /logging: default
   - /outlier_rejection: per_set_thresholds
   - /weighting: voyager_fixed_gaia_fixed_scan
@@ -43,6 +43,6 @@ hydra:
     chdir: false
 
 # Time settings
-start_date: 1963-1-1T12:00:00
+start_date: 1975-1-1T12:00:00
 end_date: 2025-1-1T12:00:00
 initial_epoch: 1989-08-25 09:10:56.182745873928070 # Voyager 2 closest approach to Triton (TDB epoch)

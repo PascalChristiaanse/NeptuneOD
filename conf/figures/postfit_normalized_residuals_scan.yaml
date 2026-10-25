@@ -11,9 +11,9 @@ titles:
   suptitle_scan: "Normalized Scan Residuals for {target_name}"
 axes:
   x_label: "Epoch [Date TDB]"
-  y_label: "Normalized residual [σ]"
+  y_label: "Normalized residual [$\\sigma$]"
   hover_x_label: "Epoch [Date TDB]"
-  hover_y_label: "Normalized residual [σ]"
+  hover_y_label: "Normalized residual [$\\sigma$]"
 styling:
   cmap: "tab10"
   marker_size: 30

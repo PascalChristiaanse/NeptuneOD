@@ -17,6 +17,10 @@ defaults:
   - /figures/prefit_residuals_prop_scan@figures.prefit_residuals_prop_scan
   - /figures/postfit_residuals@figures.postfit_residuals
   - /figures/postfit_residuals_scan@figures.postfit_residuals_scan
+  - /figures/postfit_normalized_residuals@figures.postfit_normalized_residuals
+  - /figures/postfit_normalized_residuals_scan@figures.postfit_normalized_residuals_scan
+  - /figures/prefit_normalized_residuals@figures.prefit_normalized_residuals
+  - /figures/prefit_normalized_residuals_scan@figures.prefit_normalized_residuals_scan
   - /figures/residual_histogram
   - /figures/residual_qq
   - /figures/residual_scatter

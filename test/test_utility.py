@@ -114,9 +114,7 @@ def test_select_by_tag_exclude_returns_non_matching_sets(_patch_collection):
     from orbitdet.utility import select_observation_collection_by_tag
 
     collection = _FakeCollection(["g0", "g1", "c2", "v3"])
-    selected = select_observation_collection_by_tag(
-        collection, _metadata(), "gaia", exclude=True
-    )
+    selected = select_observation_collection_by_tag(collection, _metadata(), "gaia", exclude=True)
     assert selected is not None
     assert selected.get_single_observation_sets() == ["c2", "v3"]
 

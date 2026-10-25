@@ -9,7 +9,7 @@ defaults:
   - /parameters: initial_state
   - /logging: default
   - /outlier_rejection: per_set_thresholds
-  - /weighting: voyager_fixed_gaia_archive
+  - /weighting: voyager_fixed_gaia_fixed_scan
   - _self_ # Apply experiment config fields after collections
   - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
   - /figures/prefit_residuals_spice_scan@figures.prefit_residuals_spice_scan

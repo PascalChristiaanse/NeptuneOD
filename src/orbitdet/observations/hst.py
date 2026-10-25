@@ -75,7 +75,8 @@ def _build_hst_observation_set(
         target_name
     )
     link_ends[obs_model_setup.links.receiver] = obs_model_setup.links.body_origin_link_end_id(
-        receiver_name
+        "Earth"
+        # receiver_name
     )
     link_definition = obs_model_setup.links.LinkDefinition(link_ends)
     observation_model = obs_model_setup.model_settings.angular_position(link_definition)

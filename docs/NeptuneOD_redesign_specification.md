@@ -49,6 +49,9 @@ It provides methods for:
 - Reduction catalogue correction/precession (for catalogue error AND proper motion of the star): UCAC, HCRF, USNO to Gaia-CRF3 (Best tie to ICRF (J2000 in spice)) (note, J2000 and EME2000 are the same, but not in spice. In spice J2000 is ICRF. J2000 and ICRF differ less than 100mas, but the distinction must be made. see https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_docs/17_frames_and_coordinate_systems.pdf)
 - Apparent to astrometric reference frames (Stellar abberation)
 
+Sources for this process:
+1. Yuan, Y., Li, F., Fu, Y., & Ren, S. 2021, A&A, 645, A48
+
 ### Model generation
 This module provides factory methods for converting the PD dataframes into SingleObservationSet objects for use in tudatpy. It takes the dataframe from data acquisition and dispatches to appropriate factory functions. It is responsible for partitioning into SingleObservationSets. Partitioning is performed on coordinate type and observatory as a composite key.
 

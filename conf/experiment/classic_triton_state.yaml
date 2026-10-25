@@ -5,7 +5,7 @@
 # - Triton initial state
 
 defaults:
-  - /data: classical_voyager_gaia
+  - /data: jacobson2009_voyager_gaia
   - /parameters: initial_state
   - /logging: default
   - /outlier_rejection: per_set_thresholds

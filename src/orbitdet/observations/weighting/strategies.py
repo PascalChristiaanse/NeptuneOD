@@ -939,3 +939,195 @@ class GaiaArchiveWeight(WeightStrategy):
             dec_id_v2_sigma if tf_groups else dec_sigma,
         )
         return weights_array, df
+
+
+# ---------------------------------------------------------------------------
+# Fixed along/across-scan weighting
+# ---------------------------------------------------------------------------
+
+
+@register_weight_strategy("fixed_scan")
+class FixedScanWeight(WeightStrategy):
+    r"""Fixed weights in the Gaia along-scan (AL) / across-scan (AC) frame.
+
+    Assigns every observation the same 1σ uncertainty in the scan frame, with
+    independent values for the along-scan and across-scan directions::
+
+        sigma_AL = along_scan_sigma_mas  [mas]
+        sigma_AC = across_scan_sigma_mas [mas]
+
+    Because the scan frame is rotated relative to ``(RA, Dec)`` by the position
+    angle of scan :math:`\psi`, a diagonal covariance in the scan frame becomes a
+    **non-diagonal** 2x2 block in ``(RA, Dec)``::
+
+        C_scan = diag(sigma_AL^2, sigma_AC^2)
+        C_radec = T^T C_scan T,   T = [[sin(psi)cos(dec), cos(psi)],
+                                       [cos(psi)cos(dec), -sin(psi)]]
+
+    The weight block is ``W = C_radec^{-1}``.  This strategy therefore returns
+    per-observation 2x2 blocks via :meth:`compute_block_weights` (applied with
+    ``set_block_diagonal_weights``) rather than a diagonal weight vector.
+
+    The scan angles are read from the registry populated by
+    :meth:`GaiaQuery.to_tudat` (see
+    :func:`orbitdet.data.gaia.get_scan_angles_for_epochs`); sets without
+    registered scan angles fall back to a diagonal ``(RA, Dec)`` weighting with
+    the same sigmas.
+
+    Parameters
+    ----------
+    along_scan_sigma_mas : float
+        Fixed along-scan 1σ uncertainty in milliarcseconds.
+    across_scan_sigma_mas : float
+        Fixed across-scan 1σ uncertainty in milliarcseconds.
+    """
+
+    def __init__(
+        self,
+        along_scan_sigma_mas: float = 5.0,
+        across_scan_sigma_mas: float = 200.0,
+    ):
+        if not np.isfinite(along_scan_sigma_mas) or along_scan_sigma_mas <= 0.0:
+            raise ValueError(
+                "FixedScanWeight: 'along_scan_sigma_mas' must be a positive finite number, "
+                f"got {along_scan_sigma_mas!r}."
+            )
+        if not np.isfinite(across_scan_sigma_mas) or across_scan_sigma_mas <= 0.0:
+            raise ValueError(
+                "FixedScanWeight: 'across_scan_sigma_mas' must be a positive finite number, "
+                f"got {across_scan_sigma_mas!r}."
+            )
+        self.along_scan_sigma_mas = float(along_scan_sigma_mas)
+        self.across_scan_sigma_mas = float(across_scan_sigma_mas)
+
+    def _sigmas_rad(self) -> tuple[float, float]:
+        """Return the fixed ``(sigma_AL, sigma_AC)`` in radians."""
+        mas_to_rad = _ARCSEC_TO_RAD / 1e3
+        return (
+            self.along_scan_sigma_mas * mas_to_rad,
+            self.across_scan_sigma_mas * mas_to_rad,
+        )
+
+    def _scan_angles(self, observation_set: obs.SingleObservationSet) -> np.ndarray | None:
+        """Return the per-observation scan angles (radians), or None if unavailable."""
+        from orbitdet.data.gaia import get_scan_angles_for_epochs
+
+        epochs = np.array([t.to_float() for t in observation_set.observation_times])
+        return get_scan_angles_for_epochs(epochs)
+
+    def compute_weights(
+        self,
+        observation_set: obs.SingleObservationSet,
+        groups: GroupList,
+        set_id: str,
+        min_sigma_arcsec: float = 0.01,
+    ) -> tuple[np.ndarray, pd.DataFrame]:
+        """Return the diagonal of the scan-frame weight blocks for reporting.
+
+        The actual weighting is applied through :meth:`compute_block_weights`;
+        this method only produces the metadata DataFrame and a diagonal weight
+        vector (used for reporting and as a fallback).
+        """
+        residuals_rad = _residuals_array(observation_set)
+        n_obs = residuals_rad.shape[0]
+        times = np.array([t.to_float() for t in observation_set.observation_times])
+
+        if n_obs == 0:
+            return np.array([], dtype=float), pd.DataFrame()
+
+        sigma_al, sigma_ac = self._sigmas_rad()
+        psi = self._scan_angles(observation_set)
+
+        if psi is not None and len(psi) == n_obs:
+            # Diagonal of the (RA, Dec) weight block, for reporting.
+            observed = np.asarray(observation_set.concatenated_observations).reshape(-1, 2)
+            cos_dec = np.cos(observed[:, 1])
+            sin_psi = np.sin(psi)
+            cos_psi = np.cos(psi)
+            # W_radec = T^T diag(1/sigma_AL^2, 1/sigma_AC^2) T
+            w_al = 1.0 / sigma_al**2
+            w_ac = 1.0 / sigma_ac**2
+            t_al_ra = sin_psi * cos_dec
+            t_al_dec = cos_psi
+            t_ac_ra = cos_psi * cos_dec
+            t_ac_dec = -sin_psi
+            w_ra = w_al * t_al_ra**2 + w_ac * t_ac_ra**2
+            w_dec = w_al * t_al_dec**2 + w_ac * t_ac_dec**2
+        else:
+            # No scan angles: fall back to a diagonal (RA, Dec) weighting.
+            w_ra = np.full(n_obs, 1.0 / sigma_al**2)
+            w_dec = np.full(n_obs, 1.0 / sigma_ac**2)
+
+        weights_array = _interleave_weights(w_ra, w_dec)
+        df = _build_weights_df(
+            n_obs,
+            times,
+            residuals_rad,
+            groups,
+            w_ra,
+            w_dec,
+            "fixed_scan",
+            set_id,
+            "set",
+            observable_type=_observable_type_str(observation_set),
+        )
+        logger.debug(
+            "FixedScanWeight [%s]: sigma_AL=%.3g mas, sigma_AC=%.3g mas, scan angles %s",
+            set_id,
+            self.along_scan_sigma_mas,
+            self.across_scan_sigma_mas,
+            "available" if psi is not None else "MISSING (diagonal fallback)",
+        )
+        return weights_array, df
+
+    def compute_block_weights(
+        self,
+        observation_set: obs.SingleObservationSet,
+        groups: GroupList,
+        set_id: str,
+        min_sigma_arcsec: float = 0.01,
+    ) -> list[np.ndarray] | None:
+        """Return one 2x2 ``(RA, Dec)`` weight block per observation.
+
+        Returns ``None`` when the scan angles are unavailable, so the engine
+        falls back to the diagonal weights from :meth:`compute_weights`.
+        """
+        n_obs = len(observation_set.observation_times)
+        if n_obs == 0:
+            return None
+
+        psi = self._scan_angles(observation_set)
+        if psi is None or len(psi) != n_obs:
+            return None
+
+        sigma_al, sigma_ac = self._sigmas_rad()
+        w_al = 1.0 / sigma_al**2
+        w_ac = 1.0 / sigma_ac**2
+
+        observed = np.asarray(observation_set.concatenated_observations).reshape(-1, 2)
+        cos_dec = np.cos(observed[:, 1])
+        sin_psi = np.sin(psi)
+        cos_psi = np.cos(psi)
+
+        # T maps (RA, Dec) -> (AL, AC); C_radec = T^T C_scan T, W = C_radec^{-1}.
+        # Build W directly as T^T diag(w_AL, w_AC) T (2x2 per observation).
+        t_al_ra = sin_psi * cos_dec
+        t_al_dec = cos_psi
+        t_ac_ra = cos_psi * cos_dec
+        t_ac_dec = -sin_psi
+
+        w_ra_ra = w_al * t_al_ra**2 + w_ac * t_ac_ra**2
+        w_dec_dec = w_al * t_al_dec**2 + w_ac * t_ac_dec**2
+        w_ra_dec = w_al * t_al_ra * t_al_dec + w_ac * t_ac_ra * t_ac_dec
+
+        blocks = []
+        for i in range(n_obs):
+            blocks.append(
+                np.array(
+                    [
+                        [w_ra_ra[i], w_ra_dec[i]],
+                        [w_ra_dec[i], w_dec_dec[i]],
+                    ]
+                )
+            )
+        return blocks

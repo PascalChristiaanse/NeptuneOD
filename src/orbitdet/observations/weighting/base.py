@@ -68,3 +68,40 @@ class WeightStrategy(ABC):
               ``dec_rmse``, ``weight_ra``, ``weight_dec``).
         """
         ...
+
+    def compute_block_weights(
+        self,
+        observation_set: obs.SingleObservationSet,
+        groups: GroupList,
+        set_id: str,
+        min_sigma_arcsec: float = 0.01,
+    ) -> list[np.ndarray] | None:
+        """Optionally compute per-observation 2x2 weight blocks.
+
+        Most strategies produce a purely diagonal weight matrix and only need to
+        implement :meth:`compute_weights`.  Strategies whose weights are not
+        diagonal in the ``(RA, Dec)`` basis — e.g. fixed along/across-scan
+        weights, which are diagonal in the *scan* frame but correlated in
+        ``(RA, Dec)`` — override this method to return one ``2x2`` block per
+        observation.  When a non-``None`` list is returned, the
+        :class:`~orbitdet.observations.weighting.engine.WeightEngine` applies it
+        via ``set_block_diagonal_weights`` instead of ``set_tabulated_weights``.
+
+        Parameters
+        ----------
+        observation_set : SingleObservationSet
+            The observation set to weight.
+        groups : GroupList
+            Groups derived from the observation set.
+        set_id : str
+            Identifier for this observation set.
+        min_sigma_arcsec : float
+            Floor on the sigma in arcseconds.
+
+        Returns
+        -------
+        list[np.ndarray] | None
+            One ``2x2`` weight block per observation, or ``None`` to use the
+            diagonal weights from :meth:`compute_weights`.
+        """
+        return None

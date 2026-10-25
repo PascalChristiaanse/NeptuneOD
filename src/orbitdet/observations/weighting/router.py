@@ -222,3 +222,25 @@ class RouterWeight(WeightStrategy):
         """Return the sub-strategy that would handle *set_id* (for diagnostics)."""
         key, spec, route_grouping = self._route_for(set_id)
         return self._strategy_for(key, spec, route_grouping)
+
+    def compute_block_weights(
+        self,
+        observation_set: obs.SingleObservationSet,
+        groups: GroupList,
+        set_id: str,
+        min_sigma_arcsec: float = 0.01,
+    ) -> list[np.ndarray] | None:
+        """Delegate block-weight computation to the routed sub-strategy."""
+        key, spec, route_grouping = self._route_for(set_id)
+
+        if route_grouping is not None and route_grouping is not self._grouping:
+            from ..grouping import build_group_list
+
+            times = np.array([t.to_float() for t in observation_set.observation_times])
+            groups = build_group_list(times, set_id, route_grouping)
+
+        strategy = self._strategy_for(key, spec, route_grouping)
+        compute_blocks = getattr(strategy, "compute_block_weights", None)
+        if not callable(compute_blocks):
+            return None
+        return compute_blocks(observation_set, groups, set_id, min_sigma_arcsec)

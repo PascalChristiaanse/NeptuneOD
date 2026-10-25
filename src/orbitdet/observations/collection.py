@@ -63,7 +63,7 @@ def _coordinate_type_label(dataset_type: str) -> tuple[str, str]:
     if "absolute" in t or "voyager" in t:
         return (r"$\alpha$", r"$\delta$")
     if "position" in t and "angle" in t:
-        return (r"$\rho$", r"$\theta$")
+        return (r"$\theta$", r"$\rho$")
     return ("", "")
 
 

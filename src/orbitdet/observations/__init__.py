@@ -6,6 +6,7 @@ from . import (
     absolute_ccd_nsdb,
     gaia,
     relative_ccd_nsdb,
+    relative_position_angle_nsdb,
     relative_xy_nsdb,
     simulated,
     voyager,

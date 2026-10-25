@@ -1,11 +1,16 @@
+from types import SimpleNamespace
+
+import numpy as np
 import pandas as pd
 import pytest
 
+from orbitdet.observations.helpers import convert_time_to_seconds_since_j2000_TDB
 from orbitdet.observations.nsdb_helpers import (
     ISO_TIME_COLUMN,
     group_rows_by_observatory,
     resolve_observatory_codes,
     set_iso_time_column,
+    set_position_angle_separation_columns,
     set_ra_dec_columns,
     # set_relative_position_columns,
 )
@@ -62,6 +67,82 @@ def test_set_ra_dec_columns_raises_when_components_are_missing(caplog):
             set_ra_dec_columns(dataframe)
 
     assert any("Could not infer right ascension" in record.message for record in caplog.records)
+
+
+def test_set_position_angle_separation_columns_from_nm0052_format():
+    dataframe = pd.DataFrame(
+        {
+            "Degrees of P (position angle) in degrees (999 if not given)": [20, 999],
+            "Minutes of P (position angle) in minutes (99 if not given)": [26, 99],
+            "S (separation) in arcsec (-99.99 if not given)": [-99.99, 8.86],
+        }
+    )
+
+    angle_column, separation_column = set_position_angle_separation_columns(dataframe)
+
+    assert angle_column == "position_angle"
+    assert separation_column == "separation"
+    assert dataframe[angle_column].iloc[0] == pytest.approx((20 + 26 / 60) * 3.141592653589793 / 180)
+    assert pd.isna(dataframe[angle_column].iloc[1])
+    assert pd.isna(dataframe[separation_column].iloc[0])
+    assert dataframe[separation_column].iloc[1] == pytest.approx(8.86 * 3.141592653589793 / 648000)
+
+
+def test_set_position_angle_separation_columns_allows_missing_component():
+    dataframe = pd.DataFrame({"Position angle, degrees": [35.3, 16.36]})
+
+    angle_column, separation_column = set_position_angle_separation_columns(dataframe)
+
+    assert dataframe[angle_column].notna().all()
+    assert dataframe[separation_column].isna().all()
+
+
+def test_convert_time_supports_all_historical_timescale_labels():
+    station = SimpleNamespace(
+        station_state=SimpleNamespace(
+            cartesian_position_at_reference_epoch=np.array([1.0, -1.0, 0.0])
+        )
+    )
+    bodies = SimpleNamespace(
+        get_body=lambda name: SimpleNamespace(get_ground_station=lambda code: station)
+    )
+    labels = [
+        "Washington mean time",
+        "Washington Mean Time",
+        "Pulkovo Mean Time",
+        "UTC",
+        "GMT",
+        "GMT=UTC",
+        "Leander McCormick mean time",
+        "Pacific Standard Time",
+        "Greenwich Mean Time",
+        "90th Meridian Time = UTC - 6 h",
+        "Mt. Hamilton M. T.",
+        "Central Stand. Time",
+        "Paris M. T.",
+        "Washington M.T.",
+        "G.M.T.",
+        "Paris Mean Time",
+        "Greenwich M. T.",
+        "Cambridge M. T.",
+        "Washington  M. T.",
+        "Central Standard Time",
+        "P.S.T. (Pacific S. T.)",
+        "WMT",
+        "Paris M. T. aberration time corrected",
+        "Greenwich M.T.",
+        "Pulkovo M.T.",
+        "Standard Pacific Time",
+        "Pacific standard time",
+        "T.m.de Nice",
+        "M.Z.Strasb",
+        "90 degree time",
+    ]
+
+    for label in labels:
+        dataframe = pd.DataFrame({"iso_time": ["1900-01-01T00:00:00"]})
+        convert_time_to_seconds_since_j2000_TDB(dataframe, "503", bodies, label)
+        assert np.isfinite(dataframe["epoch_TDB"].iloc[0]), label
 
 
 def test_resolve_observatory_codes_single_observatory():

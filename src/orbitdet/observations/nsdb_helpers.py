@@ -434,6 +434,61 @@ def set_relative_position_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
     return (RELATIVE_POSITION_X_COLUMN, RELATIVE_POSITION_Y_COLUMN)
 
 
+POSITION_ANGLE_COLUMN = "position_angle"
+SEPARATION_COLUMN = "separation"
+
+
+def _find_position_angle_column(dataframe: pd.DataFrame, component: str) -> str | None:
+    for column_name in dataframe.columns:
+        normalized = _normalize_column_name(column_name)
+        if "position angle" not in normalized and not re.search(r"\bp\b", normalized):
+            continue
+        if component == "degree" and any(word in normalized for word in ("degree", "degrees", "deg")):
+            return str(column_name)
+        if component == "minute" and any(word in normalized for word in ("minute", "minutes", "arcmin")):
+            return str(column_name)
+    return None
+
+
+def set_position_angle_separation_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
+    """Normalize available NSDB position-angle and separation columns to radians.
+
+    Some NSDB files declare both components but contain only one physical data
+    column.  Missing components are represented by an all-NaN canonical column
+    so the factory can retain the component that is actually present.
+    """
+    angle_degree_column = _find_position_angle_column(dataframe, "degree")
+    angle_minute_column = _find_position_angle_column(dataframe, "minute")
+    separation_column = _find_column(dataframe, "separation")
+    if separation_column is None:
+        separation_column = _find_column(dataframe, "distance")
+
+    if angle_degree_column is None and separation_column is None:
+        raise RuntimeError(
+            "Could not infer position-angle or separation columns. Expected "
+            "position-angle degrees or separation/distance columns."
+        )
+
+    if angle_degree_column is not None:
+        degrees = _numeric_series(dataframe, angle_degree_column).mask(
+            lambda values: values >= 998.0
+        )
+        minutes = _numeric_series(dataframe, angle_minute_column).fillna(0.0)
+        minutes = minutes.mask(minutes >= 98.0, 0.0)
+        dataframe[POSITION_ANGLE_COLUMN] = np.deg2rad(degrees + minutes / 60.0)
+    else:
+        dataframe[POSITION_ANGLE_COLUMN] = np.nan
+
+    if separation_column is not None:
+        separation = _numeric_series(dataframe, separation_column).mask(
+            lambda values: values <= -98.0
+        )
+        dataframe[SEPARATION_COLUMN] = np.deg2rad(separation / 3600.0)
+    else:
+        dataframe[SEPARATION_COLUMN] = np.nan
+    return POSITION_ANGLE_COLUMN, SEPARATION_COLUMN
+
+
 def resolve_observatory_codes(
     dataframe: pd.DataFrame,
     observatories: list[dict],

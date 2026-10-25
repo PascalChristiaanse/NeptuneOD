@@ -87,6 +87,9 @@ def observable_type_str(observation_set: obs.SingleObservationSet) -> str:
     labels: dict[int, str] = {
         1: "absolute",  # angular_position_type
         9: "relative",  # relative_angular_position_type
+        21: "position_angle",
+        22: "separation_distance",
+        23: "position_angle_and_separation",
     }
     obs_type = observation_set.observable_type
     for type_id, label in labels.items():

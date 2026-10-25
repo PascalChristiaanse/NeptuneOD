@@ -1,0 +1,39 @@
+identifier: nm0051
+format_columns:
+  '1': Year of the moment of observation
+  '2': Month of the moment of observation
+  '3': Day of the moment of observation
+  '4': Hour of the moment of observation
+  '5': Minute of the moment of observation
+  '6': P (position angle) in degrees (999 if not given)
+  '7': S (separation) in arcsec (-99.99 if not given)
+planet:
+  number: 8
+  name: Neptune
+satellites:
+  Triton:
+    designation: N1-Triton
+    number_of_observations: 5
+total_number: 5
+type: relative_position_angle_and_separation_micrometric_nsdb
+dates:
+  start_year: 1847
+  end_year: null
+observatory:
+  code: 503
+  name: Cambridge
+relative_to:
+  designation: planet
+  number_of_observations: null
+reference_frame: apparent
+centre_of_frame: topocentre
+epoch_of_equinox: date
+time_scale: Cambridge M. T.
+reduction: no information
+coordinates: position angle and separation
+diff_refraction: no information
+receptor: micrometric
+telescope: no information
+observers: Bond
+data_included_in_standard_data_file: 'no'
+file: /home/pascal/Documents/NeptuneOD/data/raw/nm0051/nm0051.txt

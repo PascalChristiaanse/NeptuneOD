@@ -46,23 +46,67 @@ def convert_time_to_seconds_since_j2000_TDB(
     ]
     # Get observatory position
     station_name = normalize_observatory_code(observatory_code)
-    observatory = system_of_bodies.get_body("Earth").get_ground_station(station_name)
+    observatory = system_of_bodies.get("Earth").get_ground_station(station_name)
     obs_position = observatory.station_state.cartesian_position_at_reference_epoch
 
     # Reuse TudatPy's default time scale converter instance for each conversion.
     tsc = time_rep.default_time_scale_converter()
     # Convert epochs to seconds since J2000 TDB
-    match timescale:
-        case "UT1":
+    normalized_timescale = " ".join(str(timescale).strip().lower().replace(".", "").split())
+    local_time_offset_seconds = 0.0
+    match normalized_timescale:
+        case "ut1":
             tudat_timescale = time_rep.TimeScales.ut1_scale
-        case "UTC":
+        case "utc":
             tudat_timescale = time_rep.TimeScales.utc_scale
-        case "TT":
+        case "tt":
             tudat_timescale = time_rep.TimeScales.tt_scale
-        case "TDB":
+        case "tdb":
             tudat_timescale = time_rep.TimeScales.tdb_scale
         case _:
-            raise ValueError(f"Unsupported timescale: {timescale}")
+            if normalized_timescale in {
+                "greenwich m t",
+                "greenwich mt",
+                "greenwich mean time",
+                "g m t",
+                "gmt",
+                "gmt=utc",
+            }:
+                tudat_timescale = time_rep.TimeScales.utc_scale
+            elif (
+                normalized_timescale == "central standard time"
+                or normalized_timescale == "central stand time"
+                or "90th meridian" in normalized_timescale
+                or "90 degree time" in normalized_timescale
+            ):
+                tudat_timescale = time_rep.TimeScales.utc_scale
+                local_time_offset_seconds = 6.0 * 3600.0
+            elif (
+                normalized_timescale in {"pacific standard time", "standard pacific time"}
+                or "pacific standard time" in normalized_timescale
+                or normalized_timescale.startswith("p s t")
+                or "pacific s t" in normalized_timescale
+            ):
+                tudat_timescale = time_rep.TimeScales.utc_scale
+                local_time_offset_seconds = 8.0 * 3600.0
+            elif (
+                "mean time" in normalized_timescale
+                or normalized_timescale.endswith(" m t")
+                or normalized_timescale.endswith(" mt")
+                or normalized_timescale == "wmt"
+                or "aberration time corrected" in normalized_timescale
+                or normalized_timescale.startswith("t m de nice")
+                or normalized_timescale.startswith("tmde nice")
+                or normalized_timescale.startswith("m z strasb")
+                or normalized_timescale.startswith("mzstrasb")
+            ):
+                # Local mean time is solar time at the station longitude.  The
+                # station position is body-fixed, so its longitude is stable.
+                tudat_timescale = time_rep.TimeScales.utc_scale
+                station_longitude = np.arctan2(obs_position[1], obs_position[0])
+                local_time_offset_seconds = -station_longitude / (2.0 * np.pi) * 86400.0
+            else:
+                raise ValueError(f"Unsupported timescale: {timescale}")
 
     seconds_since_j2000_TDB = []
     for epoch in epochs:
@@ -73,7 +117,7 @@ def convert_time_to_seconds_since_j2000_TDB(
         epoch_tdb = tsc.convert_time(
             tudat_timescale,
             time_rep.TimeScales.tdb_scale,
-            epoch,
+            epoch + local_time_offset_seconds,
             obs_position.reshape(3, 1),
         )
         seconds_since_j2000_TDB.append(epoch_tdb)
@@ -180,7 +224,7 @@ def add_observatory_to_SOB(
 
     # Test if ground station already exists
     try:
-        system_of_bodies.get_body("Earth").get_ground_station(station_name)
+        system_of_bodies.get("Earth").get_ground_station(station_name)
     except RuntimeError:
         pass
     else:
@@ -195,7 +239,7 @@ def add_observatory_to_SOB(
     )
 
     env_setup.add_ground_station(
-        system_of_bodies.get_body("Earth"),
+        system_of_bodies.get("Earth"),
         station_name,
         [observatory_altitude, observatory_latitude, observatory_longitude],
         element_conversion.geodetic_position_type,

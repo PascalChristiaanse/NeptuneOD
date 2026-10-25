@@ -1,0 +1,39 @@
+# @package _global_
+
+# Experiment: Triton state estimation from Lassell-era position-angle and separation data.
+# Estimating:
+# - Triton initial state
+
+defaults:
+  - /collection/og_lassell_ps
+  - /collection/classical_plus_voyager_plus_gaia
+  - /dynamics: jacobson2009_voyager_gaia
+  - /kernels: nep097
+  - /parameters: initial_state
+  - /logging: default
+  # - /outlier_rejection: peb r_set_thresholds
+  - /weighting: disabled
+  - _self_ # Apply experiment config fields after collections
+  - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
+  - /figures/postfit_residuals@figures.postfit_residuals
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+
+seed: 42
+
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+start_date: 1845-01-01T12:00:00
+end_date: 2026-01-01T12:00:00
+initial_epoch: 1849-10-01T12:00:00
+
+estimation:
+  max_iterations: 5

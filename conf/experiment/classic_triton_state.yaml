@@ -6,7 +6,7 @@
 
 defaults:
   - /data: jacobson2009_voyager_gaia
-  - /parameters: initial_state
+  - /parameters: IS_PM_PL
   - /logging: default
   - /outlier_rejection: per_set_thresholds
   - /weighting: voyager_fixed_gaia_archive

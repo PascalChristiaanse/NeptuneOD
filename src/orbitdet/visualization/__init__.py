@@ -11,7 +11,7 @@ from .residual_psd import ResidualsPSD
 from .residual_qq import ResidualQQ
 from .residual_rms_per_iteration import ResidualRMSPerIteration
 from .residual_scatter import ResidualScatter
-from .residuals import Residuals, ResidualsScan
+from .residuals import NormalizedResiduals, NormalizedResidualScan, Residuals, ResidualsScan
 from .RSW_distance import RSWDistance
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
 from .state_history_3d import StateHistory3D
@@ -45,6 +45,8 @@ __all__ = [
     "PropagatedFormalErrorsRSW",
     "Residuals",
     "ResidualsScan",
+    "NormalizedResiduals",
+    "NormalizedResidualScan",
     "ResidualHistogram",
     "ResidualScanHistogram",
     "ResidualsPSD",

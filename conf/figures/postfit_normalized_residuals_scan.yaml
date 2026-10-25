@@ -1,0 +1,24 @@
+output_file: "postfit_normalized_residuals_scan.pdf"
+figure:
+  width: 16.54
+  height: 8.27
+# Normalization source: "archive" (Gaia errors), "weights" (applied weight matrix),
+# or "both" (side-by-side comparison).
+normalization: "both"
+titles:
+  al: "Along-scan"
+  ac: "Across-scan"
+  suptitle_scan: "Normalized Scan Residuals for {target_name}"
+axes:
+  x_label: "Epoch [Date TDB]"
+  y_label: "Normalized residual [$\\sigma$]"
+  hover_x_label: "Epoch [Date TDB]"
+  hover_y_label: "Normalized residual [$\\sigma$]"
+styling:
+  cmap: "tab10"
+  marker_size: 30
+legend:
+  ncols: 2
+  bbox_to_anchor:
+    x: 0.5
+    y: -0.15

@@ -141,6 +141,7 @@ def select_observation_collection_by_tag(
     observations: obs.ObservationCollection,
     dataset_metadata: dict[str, list[dict]],
     tag: str,
+    exclude: bool = False,
 ) -> obs.ObservationCollection | None:
     """Build an ObservationCollection containing only the sets matching *tag*.
 
@@ -164,19 +165,23 @@ def select_observation_collection_by_tag(
         entry must contain a ``dataset_id`` and an ``index`` field.
     tag : str
         Substring to match (case-insensitively) against ``dataset_id``.
+    exclude : bool, optional
+        When ``True``, return the sets that do *not* match *tag* instead of the
+        ones that do.  Defaults to ``False``.
 
     Returns
     -------
     obs.ObservationCollection | None
-        A collection holding only the matching sets, or ``None`` when no set
-        matches *tag*.
+        A collection holding only the matching (or, with ``exclude=True``, the
+        non-matching) sets, or ``None`` when no set qualifies.
     """
     all_sets = observations.get_single_observation_sets()
     tag_lower = tag.lower()
     selected_sets: list[obs.SingleObservationSet] = []
     for metas in dataset_metadata.values():
         for meta in metas:
-            if tag_lower not in str(meta.get("dataset_id", "")).lower():
+            matches = tag_lower in str(meta.get("dataset_id", "")).lower()
+            if matches == exclude:
                 continue
             index = meta.get("index")
             if index is None or not (0 <= index < len(all_sets)):

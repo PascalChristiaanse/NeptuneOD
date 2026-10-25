@@ -78,6 +78,15 @@ def _log_peak_rss(label: str) -> float:
     return peak_mb
 
 
+def _has_two_component_residuals(observation_collection: obs.ObservationCollection) -> bool:
+    """Return whether every observation set has the RA/Dec residual shape used by these plots."""
+    for observation_set in observation_collection.get_single_observation_sets():
+        residuals = np.asarray(observation_set.residuals)
+        if residuals.size and (residuals.ndim != 2 or residuals.shape[1] < 2):
+            return False
+    return True
+
+
 @hydra.main(
     version_base=None,
     config_path="../conf",
@@ -139,6 +148,7 @@ def main(cfg: DictConfig):
     obs.compute_residuals_and_dependent_variables(
         observations, ephemeris_observation_simulators, bodies
     )
+    two_component_residuals = _has_two_component_residuals(observations)
     # Wrt spice
     Residuals(cfg, "prefit_residuals_spice", observations).plot()
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
@@ -151,6 +161,9 @@ def main(cfg: DictConfig):
         ).plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
+
+    from matplotlib import pyplot as plt
+    plt.show()
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -264,7 +277,7 @@ def main(cfg: DictConfig):
     non_gaia_observations = select_observation_collection_by_tag(
         observations, dataset_metadata, "gaia", exclude=True
     )
-    if non_gaia_observations is not None:
+    if non_gaia_observations is not None and two_component_residuals:
         NormalizedResiduals(
             cfg, non_gaia_observations, use_figure_name="prefit_normalized_residuals"
         ).plot()
@@ -444,7 +457,7 @@ def main(cfg: DictConfig):
     non_gaia_observations = select_observation_collection_by_tag(
         observations, dataset_metadata, "gaia", exclude=True
     )
-    if non_gaia_observations is not None:
+    if non_gaia_observations is not None and two_component_residuals:
         NormalizedResiduals(
             cfg, non_gaia_observations, use_figure_name="postfit_normalized_residuals"
         ).plot()
@@ -481,9 +494,10 @@ def main(cfg: DictConfig):
     #############################################################################
     logger.info("Plotting figures...")
 
-    ResidualQQ(cfg, observations).plot()
-    ResidualScatter(cfg, observations).plot()
-    ResidualHistogram(cfg, observations).plot()
+    if two_component_residuals:
+        ResidualQQ(cfg, observations).plot()
+        ResidualScatter(cfg, observations).plot()
+        ResidualHistogram(cfg, observations).plot()
     ResidualRMSPerIteration(cfg, estimation_output).plot()
     ParameterCorrelationHeatmap(cfg, estimation_output).plot()
     ParameterHistoryPerIteration(cfg, estimation_output).plot()

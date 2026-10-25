@@ -298,6 +298,24 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
+def _residual_component_labels(obs_set: obs.SingleObservationSet, count: int) -> list[str]:
+    """Return display labels for the residual components in an observation set."""
+    try:
+        observable_type = int(obs_set.observable_type)
+    except (TypeError, ValueError):
+        observable_type = -1
+
+    if observable_type == 21:
+        return ["Position angle"]
+    if observable_type == 22:
+        return ["Separation"]
+    if observable_type == 23:
+        return ["Position angle", "Separation"]
+    if count == 1:
+        return ["Residual"]
+    return ["Right Ascension", "Declination"]
+
+
 class Residuals(Plot):
     """Plot pre-fit and post-fit residuals for the orbit determination.
 
@@ -398,42 +416,32 @@ class Residuals(Plot):
         marker_size,
         label_prefix: str,
     ):
-        """Plot RA and DEC residuals for one observation set on the given axes."""
+        """Plot one- or two-component residuals for one observation set."""
         if len(obs_set.observation_times) == 0:
             return
 
         obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
         obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
-        residuals = np.array(obs_set.residuals)
+        residuals = np.asarray(obs_set.residuals, dtype=float)
+        if residuals.ndim == 1:
+            residuals = residuals.reshape(-1, 1)
+        component_labels = _residual_component_labels(obs_set, residuals.shape[1])
 
-        ra_residuals_arcsec = _rad_to_arcsec(residuals[:, 0])
-        dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
-
-        ra_rms_arcsec = _rms_in_unit(ra_residuals_arcsec, unit="arcsec")
-        dec_rms_arcsec = _rms_in_unit(dec_residuals_arcsec, unit="arcsec")
-        ra_rms_label = f"{ra_rms_arcsec:.3e} arcsec" if ra_rms_arcsec is not None else None
-        dec_rms_label = f"{dec_rms_arcsec:.3e} arcsec" if dec_rms_arcsec is not None else None
-
-        # RA
-        axs[0].scatter(
-            obs_times,
-            ra_residuals_arcsec,
-            marker=marker,
-            s=marker_size,
-            label=f"{label_prefix} - RMS: {ra_rms_label}",
-            color=color,
-            alpha=0.5,
-        )
-        # DEC
-        axs[1].scatter(
-            obs_times,
-            dec_residuals_arcsec,
-            marker=marker,
-            s=marker_size,
-            label=f"{label_prefix} - RMS: {dec_rms_label}",
-            color=color,
-            alpha=0.5,
-        )
+        for component_index, axis in enumerate(np.atleast_1d(axs)):
+            if component_index >= residuals.shape[1]:
+                break
+            component_residuals_arcsec = _rad_to_arcsec(residuals[:, component_index])
+            rms_arcsec = _rms_in_unit(component_residuals_arcsec, unit="arcsec")
+            rms_label = f"{rms_arcsec:.3e} arcsec" if rms_arcsec is not None else None
+            axis.scatter(
+                obs_times,
+                component_residuals_arcsec,
+                marker=marker,
+                s=marker_size,
+                label=f"{label_prefix} - {component_labels[component_index]} - RMS: {rms_label}",
+                color=color,
+                alpha=0.5,
+            )
 
     def _make_figure(self):
         cfg = self.cfg
@@ -447,19 +455,28 @@ class Residuals(Plot):
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
 
+        observation_sets = self._collect_observation_sets()
+        component_count = max(
+            (np.asarray(observation_set.residuals).reshape(len(observation_set.observation_times), -1).shape[1]
+             for observation_set in observation_sets
+             if len(observation_set.observation_times) > 0),
+            default=1,
+        )
+        axis_count = 1 if component_count == 1 else 2
+
         if self.fig is None and self.ax is None:
             fig, axs = plt.subplots(
-                2,
+                axis_count,
                 1,
                 figsize=(fig_w, fig_h),
                 sharex=True,
             )
+            axs = np.atleast_1d(axs)
         else:
-            # Check if there are two subplots, one for RA and one for DEC
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for RA and DEC residuals.")
+            if len(np.atleast_1d(self.ax)) != axis_count:
+                raise ValueError(f"Expected {axis_count} residual subplot(s).")
             fig = self.fig
-            axs = self.ax
+            axs = np.atleast_1d(self.ax)
 
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
@@ -507,7 +524,6 @@ class Residuals(Plot):
                     )
         else:
             # --- Single-collection mode: one color/marker/name per observation set ---
-            observation_sets = self._collect_observation_sets()
             target_name = None
             for set_index, obs_set in enumerate(observation_sets):
                 link_ends = obs_set.link_definition.link_ends
@@ -567,23 +583,40 @@ class Residuals(Plot):
             # leave suptitle unchanged if formatting fails
             pass
 
-        axs[0].set_title(title_ra)
-        axs[1].set_title(title_dec)
+        if axis_count == 2:
+            axs[0].set_title(title_ra)
+            axs[1].set_title(title_dec)
+        else:
+            scalar_labels = []
+            for observation_set in observation_sets:
+                count = np.asarray(observation_set.residuals).reshape(
+                    len(observation_set.observation_times), -1
+                ).shape[1]
+                for label in _residual_component_labels(observation_set, count):
+                    if label not in scalar_labels:
+                        scalar_labels.append(label)
+            scalar_title = _cfg_get(plot_cfg, "titles", "scalar", default="Residual")
+            if scalar_labels:
+                scalar_title = " / ".join(scalar_labels) + " Residuals"
+            axs[0].set_title(scalar_title)
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Residual [arcsec]")
         axs[0].set_ylabel(y_label)
-        axs[1].set_ylabel(y_label)
+        if axis_count == 2:
+            axs[1].set_ylabel(y_label)
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
         axs[0].set_xlabel(x_label)
         _configure_datetime_axis(axs[0])
-        axs[1].set_xlabel(x_label)
-        _configure_datetime_axis(axs[1])
+        if axis_count == 2:
+            axs[1].set_xlabel(x_label)
+            _configure_datetime_axis(axs[1])
 
         # Hover formatter
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
         hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="Residual [arcsec]")
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
         axs[0].format_coord = fmt
-        axs[1].format_coord = fmt
+        if axis_count == 2:
+            axs[1].format_coord = fmt
         # axs[0].tick_params(axis="x", which="both", labelbottom=False)
         # add legend with observatory names and RMS values
         # Legend placement (configurable)
@@ -604,7 +637,8 @@ class Residuals(Plot):
             bbox_tuple = (0.5, -0.15)
 
         axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        for axis in axs:
+            axis.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
 

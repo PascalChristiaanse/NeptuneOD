@@ -1,0 +1,29 @@
+# @package _global_
+
+# Weighting: fixed along/across-scan sigmas for Gaia (others -> ID v2).
+#
+# Gaia observations are weighted with a fixed 1σ uncertainty in the Gaia scan
+# frame: 5 mas along-scan and 200 mas across-scan.  Because the scan frame is
+# rotated relative to (RA, Dec), this is applied as a per-observation 2x2 weight
+# block (non-diagonal in RA/Dec).
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+  strategy:
+    type: router
+    default:
+      type: hybrid_geometric_v2
+    routes:
+      # Gaia: fixed along/across-scan sigmas.
+      - match:
+          set_id_contains: ["Gaia"]
+        source:
+          type: fixed_scan
+          along_scan_sigma_mas: 5.0
+          across_scan_sigma_mas: 200.0
+  grouping:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1

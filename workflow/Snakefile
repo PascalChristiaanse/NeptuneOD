@@ -1,0 +1,229 @@
+"""Snakemake workflow: pre-fit residuals wrt SPICE.
+
+Demo scope — four rules, one experiment dimension:
+
+    resolve_config -> kernels -> observations -> prefit_spice
+
+Run from the repository root::
+
+    snakemake -n                      # dry run
+    snakemake --cores 4               # execute
+    snakemake --dag | dot -Tpdf > dag.pdf
+
+Target a single experiment::
+
+    snakemake results/classic_triton_state/prefit_spice/residuals.csv --cores 4
+
+Two classes of input are declared explicitly because Snakemake cannot see them
+on its own:
+
+``src=_src(...)``
+    The ``code`` rerun trigger tracks the rule definition and any file named by
+    ``script:``, but it does NOT follow Python imports. ``workflow/depgraph.py``
+    parses the package's import statements and returns the transitive closure
+    for each stage's entry module, so a rule depends on exactly the files it can
+    import -- the static equivalent of CMake's compiler-generated depfiles.
+    Declaring the whole package instead would make every rule depend on every
+    file, so editing a plotter would invalidate the kernel download.
+
+``conf=HYDRA_CONF``
+    Snakemake only tracks its own ``configfile:``. The Hydra tree in ``conf/``
+    is read inside the stage processes, so without this a change to
+    ``conf/weighting/router.yaml`` would silently leave stale outputs in place.
+    The ``resolve_config`` rule turns that tree into a tracked artifact, and
+    every downstream rule depends on it.
+"""
+
+import glob
+import sys
+
+configfile: "workflow/config.yaml"
+
+EXPERIMENTS = config["experiments"]
+
+# Track the library so edits invalidate downstream jobs. These files are well
+# under the 1 MB checksum threshold, so Snakemake compares checksums rather
+# than timestamps: a real edit triggers a rerun, a `touch` does not.
+#
+# The dependency set is per-stage, not the whole package. Snakemake cannot see
+# Python imports, and declaring every file on every rule would mean editing a
+# plotter invalidates the kernel download and the observation build. Instead
+# ``depgraph`` parses the import statements and returns the transitive closure
+# for each stage's entry module -- the static equivalent of CMake's depfiles.
+sys.path.insert(0, workflow.basedir)
+import depgraph  # noqa: E402
+
+# The graph builder is itself a dependency: changing how dependencies are
+# computed must invalidate everything.
+DEPGRAPH = "workflow/depgraph.py"
+
+
+def _src(*entries):
+    """Files a stage can import, directly or indirectly."""
+    return [DEPGRAPH] + depgraph.stage_sources(entries)
+
+# Track the Hydra config tree. Snakemake only knows about its own configfile:,
+# so without this a change to conf/ would silently leave stale outputs in place.
+#
+# The tree is split by concern so that a change invalidates only the stages it
+# can actually affect. Editing conf/figures/residuals.yaml must not rebuild the
+# observation collection.
+#
+# NOTE: ``recursive=True`` is required. Without it ``conf/kernels/**/*.yaml``
+# matches nothing, because ``**`` only spans directories when recursion is on.
+def _conf(*subdirs):
+    """Collect every YAML under the given ``conf/`` subdirectories."""
+    files = []
+    for subdir in subdirs:
+        files.extend(glob.glob(f"conf/{subdir}/**/*.yaml", recursive=True))
+    return files
+
+
+CONF_SHARED = _conf("experiment", "logging")
+CONF_KERNELS = CONF_SHARED + _conf("kernels")
+CONF_OBSERVATIONS = (
+    CONF_KERNELS + _conf("collection", "datasets", "data", "dynamics", "parameters")
+)
+CONF_FIGURES = CONF_SHARED + _conf("figures")
+
+RESULTS = "results/{experiment}"
+CONFIG = f"{RESULTS}/config"
+
+
+rule all:
+    input:
+        expand(f"{RESULTS}/prefit_spice/residuals.csv", experiment=EXPERIMENTS),
+        expand(f"{RESULTS}/figures/residuals.pdf", experiment=EXPERIMENTS)
+
+
+# One resolve rule per stage. A single rule emitting every slice would make
+# Snakemake treat all of them as "will be updated" and schedule the whole
+# downstream DAG, even when only one slice's content actually changes.
+rule resolve_kernels_config:
+    input:
+        conf=CONF_KERNELS,
+        src=_src("orbitdet.pipeline.run_resolve_config"),
+    output:
+        f"{CONFIG}/kernels.yaml",
+    params:
+        experiment="{experiment}",
+        outdir=CONFIG,
+    shell:
+        "python -m orbitdet.pipeline.run_resolve_config "
+        "--experiment {params.experiment} --output-dir {params.outdir} --only kernels"
+
+
+rule resolve_observations_config:
+    input:
+        conf=CONF_OBSERVATIONS,
+        src=_src("orbitdet.pipeline.run_resolve_config"),
+    output:
+        f"{CONFIG}/observations.yaml",
+    params:
+        experiment="{experiment}",
+        outdir=CONFIG,
+    shell:
+        "python -m orbitdet.pipeline.run_resolve_config "
+        "--experiment {params.experiment} --output-dir {params.outdir} --only observations"
+
+
+rule resolve_prefit_spice_config:
+    input:
+        conf=CONF_OBSERVATIONS,
+        src=_src("orbitdet.pipeline.run_resolve_config"),
+    output:
+        f"{CONFIG}/prefit_spice.yaml",
+    params:
+        experiment="{experiment}",
+        outdir=CONFIG,
+    shell:
+        "python -m orbitdet.pipeline.run_resolve_config "
+        "--experiment {params.experiment} --output-dir {params.outdir} --only prefit_spice"
+
+
+rule resolve_figures_config:
+    input:
+        conf=CONF_FIGURES,
+        src=_src("orbitdet.pipeline.run_resolve_config"),
+    output:
+        f"{CONFIG}/figures.yaml",
+    params:
+        experiment="{experiment}",
+        outdir=CONFIG,
+    shell:
+        "python -m orbitdet.pipeline.run_resolve_config "
+        "--experiment {params.experiment} --output-dir {params.outdir} --only figures"
+
+
+rule kernels:
+    input:
+        cfg=f"{CONFIG}/kernels.yaml",
+        src=_src("orbitdet.pipeline.run_kernels"),
+    output:
+        touch(f"{RESULTS}/kernels.done"),
+    params:
+        outdir=RESULTS,
+    shell:
+        "python -m orbitdet.pipeline.run_kernels "
+        "--config {input.cfg} "
+        "--output-dir {params.outdir}"
+
+
+rule observations:
+    input:
+        cfg=f"{CONFIG}/observations.yaml",
+        stamp=f"{RESULTS}/kernels.done",
+        src=_src("orbitdet.pipeline.run_observations"),
+    output:
+        obs=f"{RESULTS}/observations.tudat",
+        meta=f"{RESULTS}/dataset_metadata.json",
+    params:
+        outdir=RESULTS,
+    shell:
+        "python -m orbitdet.pipeline.run_observations "
+        "--config {input.cfg} "
+        "--output-dir {params.outdir}"
+
+
+rule prefit_spice:
+    input:
+        cfg=f"{CONFIG}/prefit_spice.yaml",
+        obs=f"{RESULTS}/observations.tudat",
+        meta=f"{RESULTS}/dataset_metadata.json",
+        src=_src("orbitdet.pipeline.run_prefit_spice"),
+    output:
+        csv=f"{RESULTS}/prefit_spice/residuals.csv",
+    params:
+        outdir=f"{RESULTS}/prefit_spice",
+    log:
+        f"{RESULTS}/prefit_spice/prefit_spice.log",
+    shell:
+        "python -m orbitdet.pipeline.run_prefit_spice "
+        "--config {input.cfg} "
+        "--observations {input.obs} "
+        "--metadata {input.meta} "
+        "--output-dir {params.outdir} "
+        "2> {log}"
+
+
+rule residuals_figure:
+    input:
+        cfg=f"{CONFIG}/figures.yaml",
+        csv=f"{RESULTS}/prefit_spice/residuals.csv",
+        src=_src("orbitdet.pipeline.run_residuals_figure"),
+    output:
+        pdf=f"{RESULTS}/figures/residuals.pdf",
+    params:
+        outdir=f"{RESULTS}/figures",
+        # Must match the name the experiment script passes to ``Residuals``:
+        # the plotter looks its styling up under ``cfg.figures.<name>``.
+        figure="residuals",
+    log:
+        f"{RESULTS}/figures/residuals_figure.log",
+    shell:
+        "python -m orbitdet.pipeline.run_residuals_figure "
+        "--config {input.cfg} "
+        "--residuals {input.csv} "
+        "--output-dir {params.outdir} "
+        "--figure-name {params.figure} "
+        "2> {log}"

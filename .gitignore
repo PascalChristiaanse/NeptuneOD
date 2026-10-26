@@ -225,3 +225,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Snakemake working directory (contains logs, metadata, and lock files)
+.snakemake/

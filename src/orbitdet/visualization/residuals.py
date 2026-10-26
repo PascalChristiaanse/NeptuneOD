@@ -347,7 +347,7 @@ class Residuals(Plot):
             raise ValueError(
                 "Either 'observation_collection' or 'observation_collections' must be provided."
             )
-
+        # Test
         # Validate collection_names length if provided
         if (
             observation_collections is not None

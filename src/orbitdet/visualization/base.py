@@ -86,9 +86,15 @@ class Plot(ABC):
         Defaults to the snake_case class name.
     """
 
-    def __init__(self, cfg: DictConfig, name: str | None = None):
+    def __init__(self, cfg: DictConfig, name: str | None = None, output_dir: Path | None = None):
         self.cfg = cfg
         self.name = name or _snake_case(self.__class__.__name__)
+        # Explicit output directory. When omitted, ``publish`` falls back to
+        # Hydra's runtime directory, which keeps the interactive
+        # ``@hydra.main`` entry points working unchanged. Pipeline stages pass
+        # this explicitly, because under Snakemake there is no Hydra runtime
+        # directory and the caller owns every path.
+        self.output_dir = Path(output_dir) if output_dir is not None else None
 
     @abstractmethod
     def _make_figure(self):
@@ -114,7 +120,10 @@ class Plot(ABC):
         tuple
             The (fig, ax) tuple that was passed in.
         """
-        output_dir = Path(HydraConfig.get().runtime.output_dir)
+        if self.output_dir is not None:
+            output_dir = self.output_dir
+        else:
+            output_dir = Path(HydraConfig.get().runtime.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save PDF for reports and publication.

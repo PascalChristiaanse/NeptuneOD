@@ -1,0 +1,8 @@
+# Snakemake workflow config.
+#
+# This is NOT the Hydra config tree (that stays in conf/). It only declares
+# which experiments the workflow knows about and which source files should
+# invalidate downstream jobs.
+
+experiments:
+  - generate_prefit_residuals

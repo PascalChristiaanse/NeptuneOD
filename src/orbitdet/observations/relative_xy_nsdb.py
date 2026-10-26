@@ -162,8 +162,8 @@ def _topocentric_planet_direction(
         3-vector unit direction from the observatory toward the planet centre, in
         the global frame orientation.
     """
-    earth = system_of_bodies.get_body("Earth")
-    planet_body = system_of_bodies.get_body(planet_name)
+    earth = system_of_bodies.get("Earth")
+    planet_body = system_of_bodies.get(planet_name)
     ground_station = earth.get_ground_station(station_name)
 
     station_body_fixed = np.ravel(ground_station.station_state.get_cartesian_position(epoch_tdb))

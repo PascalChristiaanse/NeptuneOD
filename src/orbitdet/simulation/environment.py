@@ -258,7 +258,7 @@ def _configure_gravity_model(
             f"Defaulting to 'central' gravity. Please update your configuration.",
             DeprecationWarning,
         )
-    
+
     gravity_type = getattr(settings.gravity, "type", settings.gravity)
     logger.info(f"Setting gravity model for {body_name}: {gravity_type}")
 
@@ -395,9 +395,7 @@ def _configure_iau_rotation_model(
     rm = settings.rotation_model
 
     nominal_pole = np.deg2rad(np.asarray(rm.nominal_pole, dtype=float))
-    pole_periodic_terms = _parse_pole_periodic_terms(
-        getattr(rm, "pole_periodic_terms", None)
-    )
+    pole_periodic_terms = _parse_pole_periodic_terms(getattr(rm, "pole_periodic_terms", None))
 
     _apply_iau_rotation_model(
         body_name, rm, body_settings, original_frame, nominal_pole, pole_periodic_terms
@@ -460,18 +458,18 @@ def _apply_iau_rotation_model(
         f"{len(pole_periodic_terms)} pole periodic term(s))."
     )
 
-    body_settings.get(body_name).rotation_model_settings = (
-        env_setup.rotation_model.iau_rotation_model(
-            original_frame,
-            target_frame,
-            nominal_meridian,
-            nominal_pole,
-            rotation_rate,
-            pole_precession,
-            meridian_periodic_terms,
-            pole_periodic_terms,
-            angle_base_frame=angle_base_frame,
-        )
+    body_settings.get(
+        body_name
+    ).rotation_model_settings = env_setup.rotation_model.iau_rotation_model(
+        original_frame,
+        target_frame,
+        nominal_meridian,
+        nominal_pole,
+        rotation_rate,
+        pole_precession,
+        meridian_periodic_terms,
+        pole_periodic_terms,
+        angle_base_frame=angle_base_frame,
     )
 
 

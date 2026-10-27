@@ -1,5 +1,6 @@
 import logging
 import warnings
+from warnings import deprecated
 
 import numpy as np
 from omegaconf import DictConfig

@@ -34,6 +34,8 @@ dependencies:
   - plotly
   - joblib
   - platformdirs
+  - peewee
+  - SQLAlchemy
 
   - pip:
     # Tudatpy requirements

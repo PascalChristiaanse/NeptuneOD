@@ -11,6 +11,7 @@ from tudatpy.interface import spice
 from orbitdet.data.gaia import get_gaia_ephemeris
 from orbitdet.data.voyager_data import build_voyager_tabulated_state_history
 from orbitdet.reproducibility.runtime import RuntimeContext
+from tudatpy import constants
 
 logger = logging.getLogger(__name__)
 

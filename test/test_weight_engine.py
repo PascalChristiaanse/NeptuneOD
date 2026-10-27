@@ -462,3 +462,40 @@ class TestWeightEngineApply:
         np.testing.assert_allclose(call_args[0], expected_w_ra)
         np.testing.assert_allclose(call_args[1], expected_w_dec)
         assert len(weights_df) == 2
+
+
+class TestWeightEngineBlockWeights:
+    def test_block_weights_applied_via_set_block_diagonal_weights(self):
+        """A strategy returning 2x2 blocks must use set_block_diagonal_weights."""
+        from orbitdet.data.gaia import _register_scan_angles
+
+        residuals = np.zeros((2, 2))
+        times = [0.0, 1.0]
+        obs_set = _make_mock_single_obs_set("Gaia", residuals, times)
+        obs_set.set_block_diagonal_weights = MagicMock()
+        obs_set.concatenated_observations = np.zeros(4)
+        _register_scan_angles(times, np.zeros(2))
+        collection = _make_mock_collection([obs_set])
+
+        cfg = OmegaConf.create(
+            {
+                "strategy": {
+                    "type": "fixed_scan",
+                    "along_scan_sigma_mas": 5.0,
+                    "across_scan_sigma_mas": 200.0,
+                },
+                "grouping": {"levels": [{"type": "set"}]},
+            }
+        )
+        engine = WeightEngine.from_config(cfg)
+        bodies = MagicMock()
+
+        engine.apply(collection, bodies)
+
+        obs_set.set_block_diagonal_weights.assert_called_once()
+        blocks = obs_set.set_block_diagonal_weights.call_args[0][0]
+        assert len(blocks) == 2
+        for block in blocks:
+            assert block.shape == (2, 2)
+        # Diagonal weights must NOT be applied when blocks are used.
+        obs_set.set_tabulated_weights.assert_not_called()

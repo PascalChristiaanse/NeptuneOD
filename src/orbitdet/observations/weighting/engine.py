@@ -127,6 +127,18 @@ class WeightEngine:
                 self._min_sigma_arcsec,
             )
 
+            # Strategies whose weights are not diagonal in (RA, Dec) (e.g. fixed
+            # along/across-scan weights) return per-observation 2x2 blocks.
+            block_weights = None
+            compute_blocks = getattr(self._strategy, "compute_block_weights", None)
+            if callable(compute_blocks):
+                block_weights = compute_blocks(
+                    obs_set,
+                    groups,
+                    set_id,
+                    self._min_sigma_arcsec,
+                )
+
             if len(weights_array) == 0:
                 logger.warning("WeightEngine: no weights computed for set '%s'", set_id)
                 continue
@@ -169,7 +181,11 @@ class WeightEngine:
 
                 # Assign weights via Tudat's set_tabulated_weights
                 try:
-                    obs_set.set_tabulated_weights(weights_array)
+                    if block_weights is not None:
+                        # Non-diagonal (in RA/Dec) weights: one 2x2 block per observation.
+                        obs_set.set_block_diagonal_weights(block_weights)
+                    else:
+                        obs_set.set_tabulated_weights(weights_array)
                 except Exception as exc:
                     logger.error(
                         "WeightEngine: failed to set weights for set '%s': %s", set_id, exc

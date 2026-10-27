@@ -253,7 +253,7 @@ def _configure_gravity_model(
             f"Defaulting to 'central' gravity. Please update your configuration.",
             DeprecationWarning,
         )
-    
+
     gravity_type = getattr(settings.gravity, "type", settings.gravity)
     logger.info(f"Setting gravity model for {body_name}: {gravity_type}")
 

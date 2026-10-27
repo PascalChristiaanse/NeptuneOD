@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 import numpy as np
 from omegaconf import DictConfig
@@ -243,7 +244,15 @@ def _configure_gravity_model(
     if "gravity" not in settings:
         return
 
-    gravity_type = settings.gravity
+    if not hasattr(settings.gravity, "type"):
+        # Emit warning that gravity must now specify type explicitly
+        warnings.warn(
+            f"Gravity model for {body_name} does not specify 'type'. "
+            f"Defaulting to 'central' gravity. Please update your configuration.",
+            DeprecationWarning,
+        )
+    
+    gravity_type = getattr(settings.gravity, "type", settings.gravity)
     logger.info(f"Setting gravity model for {body_name}: {gravity_type}")
 
     match gravity_type:

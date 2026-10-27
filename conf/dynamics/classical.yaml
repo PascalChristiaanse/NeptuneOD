@@ -35,19 +35,26 @@ bodies_to_create:
       interpolator_cadance: 7200
       coverage_buffer: 8640000
   Sun:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Jupiter:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Saturn:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Uranus:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Mercury:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Venus:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Earth:
-    gravity: "central"
+    gravity: 
+      type: "central"
     ephemeris:
       type: "direct_spice"
     shape_model:
@@ -56,7 +63,8 @@ bodies_to_create:
       type: "GCRS_to_ITRS"
       nutation_model: "iau_2006"
   Mars:
-    gravity: "central"
+    gravity: 
+      type: "central"
   Triton Spice:
     ephemeris:
       type: "direct_spice"

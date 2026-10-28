@@ -1,0 +1,56 @@
+# @package _global_
+
+# Experiment: IS_PM_PL parameter set + Neptune inverse tidal quality factor (1/Q).
+#
+# Estimates:
+#   - Triton initial state
+#   - Neptune pole position (alpha_0, delta_0)
+#   - Neptune pole libration rates
+#   - Neptune inverse tidal quality factor 1/Q (tide raised on Neptune by Triton)
+#
+# Uses classical + Voyager 2 + Gaia data, with the Jacobson 2009 gravity field
+# extended by a direct tidal dissipation acceleration on Triton.
+
+defaults:
+  - /data: jacobson2009_voyager_gaia
+  - /parameters: IS_PM_PL_Q
+  - /logging: default
+  - /outlier_rejection: per_set_thresholds
+  - /weighting: voyager_fixed_gaia_fixed_scan
+  - _self_ # Apply experiment config fields after collections
+  - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
+  - /figures/prefit_residuals_spice_scan@figures.prefit_residuals_spice_scan
+  - /figures/prefit_residuals_prop@figures.prefit_residuals_prop
+  - /figures/prefit_residuals_prop_scan@figures.prefit_residuals_prop_scan
+  - /figures/postfit_residuals@figures.postfit_residuals
+  - /figures/postfit_residuals_scan@figures.postfit_residuals_scan
+  - /figures/prefit_normalized_residuals@figures.prefit_normalized_residuals
+  - /figures/postfit_normalized_residuals@figures.postfit_normalized_residuals
+  - /figures/prefit_normalized_residuals_scan@figures.prefit_normalized_residuals_scan
+  - /figures/postfit_normalized_residuals_scan@figures.postfit_normalized_residuals_scan
+  - /figures/residual_histogram
+  - /figures/residual_qq
+  - /figures/residual_scatter
+  - /figures/parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration
+  - /figures/covariance_ellipses
+  - /figures/RSW_distance
+  - /figures/prefit_rsw
+  - /figures/postfit_rsw
+  - /figures/propagated_formal_errors_cartesian
+  - /figures/propagated_formal_errors_rsw
+  - /figures/RSW_distance_with_uncertainty
+  - override /dynamics: jacobson2009_voyager_gaia_tidal
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/estimate_q/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings
+start_date: 1975-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+initial_epoch: 1989-08-25 09:10:56.182745873928070 # Voyager 2 closest approach to Triton (TDB epoch)

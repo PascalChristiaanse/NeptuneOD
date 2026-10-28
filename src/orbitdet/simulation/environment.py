@@ -1,6 +1,5 @@
 import logging
 import warnings
-from warnings import deprecated
 
 import numpy as np
 from omegaconf import DictConfig
@@ -488,14 +487,15 @@ def compute_normalized_coefficients(J2: float, J4: float) -> tuple[np.ndarray, n
     return Cbar, Sbar
 
 
-@deprecated(
-    """This function is deprecated and will be removed in future versions. """
-    """Use updated configuration methods instead."""
-)
+
 def _setup_gravity_neptune_jacobson2009(
     cfg: DictConfig, body_settings: env_setup.BodyListSettings
 ) -> None:
     """Setup Neptune's Jacobson 2009 gravity field model."""
+    logger.warning(
+        """_setup_gravity_neptune_jacobson2009 is deprecated and will be removed """
+        """in future versions. Use updated configuration methods instead."""
+    )
     # copied from Atanas Dzhurkov (2026)
     # Define spherical harmonics from Jacobson 2009
     J2 = 3408.428530717952e-6

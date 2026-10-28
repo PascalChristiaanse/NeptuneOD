@@ -66,6 +66,29 @@ def get_estimatable_parameter_settings(
                     )
                 )
                 logger.info("\t - Neptune J2 and J4 spherical harmonics coefficients")
+            case "neptune_inverse_tidal_quality_factor":
+                # Inverse tidal quality factor of Neptune (tide raised on Neptune,
+                # by Triton). Requires a direct_tidal_dissipation acceleration on
+                # Triton parameterised by (k2, 1/Q, tidal_period); see
+                # orbitdet.simulation.dynamics.
+                #
+                # NOTE: the deforming_body MUST be passed as a list. The single-string
+                # overload of tudatpy's inverse_tidal_quality_factor has a bug and
+                # returns a *time-lag* parameter instead.
+                estimated_parameters.append(
+                    param_setup.inverse_tidal_quality_factor("Neptune", ["Triton"])
+                )
+                logger.info(
+                    "\t - Neptune inverse tidal quality factor (1/Q), tide raised by Triton"
+                )
+            case "neptune_tidal_time_lag":
+                # Tidal time lag of Neptune (tide raised on Neptune by Triton).
+                # Mutually exclusive with neptune_inverse_tidal_quality_factor for the
+                # same (body, deforming_body) pair.
+                estimated_parameters.append(
+                    param_setup.direct_tidal_dissipation_time_lag("Neptune", ["Triton"])
+                )
+                logger.info("\t - Neptune tidal time lag (tau), tide raised by Triton")
             case _:
                 raise ValueError(f"Unknown parameter {param_name} specified for estimation")
 

@@ -436,6 +436,129 @@ class TestGetDynamicalModel:
         with pytest.raises(RuntimeError, match="only defined for Neptune"):
             get_dynamical_model(config, mock_runtime_context, mock_bodies)
 
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_direct_tidal_dissipation_from_inverse_quality_factor(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """Configured tidal dissipation is attached to the propagated body."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [
+                            {
+                                "type": "direct_tidal_dissipation_inv_quality",
+                                "k2_love_number": 1.27,
+                                "inverse_tidal_quality_factor": 0.01,
+                                "tidal_period": 64817.0,
+                                "use_tide_raised_on_planet": True,
+                                "include_direct_radial_component": False,
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args[0][1]
+        triton_accels = accelerations["Triton"]["Neptune"]
+        assert any(
+            isinstance(a, prop_setup.acceleration.DirectTidalDissipationAccelerationSettings)
+            for a in triton_accels
+        )
+
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_direct_tidal_dissipation_from_time_lag(self, mock_create_accel, mock_runtime_context):
+        """Configured tidal dissipation also supports the time-lag parameterisation."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [
+                            {
+                                "type": "direct_tidal_dissipation_time_lag",
+                                "k2_love_number": 1.27,
+                                "time_lag": 100.0,
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args[0][1]
+        triton_accels = accelerations["Triton"]["Neptune"]
+        assert any(
+            isinstance(a, prop_setup.acceleration.DirectTidalDissipationAccelerationSettings)
+            for a in triton_accels
+        )
+
+    def test_direct_tidal_dissipation_missing_field_raises(self, mock_runtime_context):
+        """A missing required acceleration field raises a clear error."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [
+                            {
+                                "type": "direct_tidal_dissipation_inv_quality",
+                                "inverse_tidal_quality_factor": 0.01,
+                                "tidal_period": 64817.0,
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+
+        with pytest.raises(ValueError, match="k2_love_number"):
+            get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+    def test_unknown_acceleration_type_raises(self, mock_runtime_context):
+        """An unknown acceleration type raises a clear error."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [{"type": "not_a_real_acceleration"}],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+
+        with pytest.raises(ValueError, match="Unknown acceleration type"):
+            get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
 
 class TestGetEnvironment:
     """Tests for get_environment function."""

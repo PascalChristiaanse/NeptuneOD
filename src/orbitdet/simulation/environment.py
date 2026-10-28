@@ -1,6 +1,5 @@
 import logging
 import warnings
-from warnings import deprecated
 
 import numpy as np
 from omegaconf import DictConfig
@@ -653,16 +652,16 @@ def _setup_gravity_neptune_jacobson2009(
     )
 
 
-@deprecated(
-    """This function is deprecated and will be removed in future versions. """
-    """Use updated configuration methods instead."""
-)
 def _setup_rotation_neptune_iau2015(
     cfg: DictConfig,
     body_settings: env_setup.BodyListSettings,
     original_frame: str,
 ) -> None:
     """Setup Neptune's IAU2015 rotation model."""
+    logger.warning(
+        """This function is deprecated and will be removed in future versions. """
+        """Use updated configuration methods instead."""
+    )
     target_frame = "IAU_Neptune"
     # Copied from Atanas Dzhurkov (2026), adapted to fit Hydra configuration
     nominal_meridian = np.deg2rad(249.978)  # W_0
@@ -711,16 +710,16 @@ def _setup_rotation_neptune_iau2015(
     )
 
 
-@deprecated(
-    """This function is deprecated and will be removed in future versions. """
-    """Use updated configuration methods instead."""
-)
 def _setup_rotation_neptune_jacobson2009(
     cfg: DictConfig,
     body_settings: env_setup.BodyListSettings,
     original_frame: str,
 ) -> None:
     """Setup Neptune's Jacobson 2009 pole rotation model."""
+    logger.warning(
+        """This function is deprecated and will be removed in future versions. """
+        """Use updated configuration methods instead."""
+    )
     target_frame = "IAU_Neptune"
     # Copied from Atanas Dzhurkov (2026), adapted to fit Hydra
     alpha_r = np.deg2rad(

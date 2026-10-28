@@ -23,6 +23,22 @@ from orbitdet.simulation import (
 )
 
 
+@pytest.fixture(autouse=True)
+def stub_spice_initial_state():
+    """Stub the SPICE ephemeris lookup used when no explicit state is given.
+
+    ``get_propagator_settings`` sources the initial state from SPICE unless an
+    explicit state is passed, so tests that do not load real kernels need this.
+    Tests that assert on the SPICE call still apply their own ``@patch``, which
+    takes precedence.
+    """
+    with patch(
+        "orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch",
+        return_value=[100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
+    ) as mock_get_state:
+        yield mock_get_state
+
+
 @pytest.fixture
 def mock_runtime_context(tmp_path):
     """Create a mock RuntimeContext for testing."""
@@ -62,7 +78,6 @@ def basic_config():
             "bodies_to_propagate": {
                 "Triton": {
                     "central_body": "Neptune",
-                    "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                 },
             },
             "propagation": {
@@ -104,7 +119,6 @@ def jacobson_config():
             "bodies_to_propagate": {
                 "Triton": {
                     "central_body": "Neptune",
-                    "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                 },
             },
             "propagation": {
@@ -653,67 +667,28 @@ class TestGetEnvironment:
 class TestGetPropagatorSettings:
     """Tests for get_propagator_settings function."""
 
-    @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
-    def test_propagator_creation_with_defined_initial_state(
-        self,
-        mock_translational,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test propagator creation with predefined initial state."""
-        mock_acceleration_settings = MagicMock()
-        mock_integrator_settings = MagicMock()
-
-        result = get_propagator_settings(  # noqa: F841
-            basic_config,
-            mock_runtime_context,
-            mock_acceleration_settings,
-            mock_integrator_settings,
-            [],
-        )
-
-        assert mock_translational.called
-
     @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
-    def test_propagator_creation_with_undefined_initial_state(
+    def test_propagator_creation_takes_state_from_spice(
         self,
         mock_translational,
         mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
-        """Test propagator creation falls back to SPICE for undefined initial state."""
-        # Create config with undefined initial state
-        config = OmegaConf.create(
-            {
-                "global_frame_orientation": "J2000",
-                "bodies_to_propagate": {
-                    "Triton": {
-                        "central_body": "Neptune",
-                        "initial_state": None,
-                    },
-                },
-                "propagation": {
-                    "set_integrated_result": True,
-                },
-            }
-        )
+        """Without an explicit state, the propagator uses the SPICE ephemeris."""
         mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
 
-        mock_acceleration_settings = MagicMock()
-        mock_integrator_settings = MagicMock()
-
-        with patch("orbitdet.simulation.propagation.logger"):
-            result = get_propagator_settings(  # noqa: F841
-                config,
-                mock_runtime_context,
-                mock_acceleration_settings,
-                mock_integrator_settings,
-                [],
-            )
+        result = get_propagator_settings(  # noqa: F841
+            basic_config,
+            mock_runtime_context,
+            MagicMock(),
+            MagicMock(),
+            [],
+        )
 
         assert mock_get_state.called
+        assert mock_translational.called
 
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_propagator_uses_correct_central_bodies(
@@ -726,23 +701,27 @@ class TestGetPropagatorSettings:
         mock_acceleration_settings = MagicMock()
         mock_integrator_settings = MagicMock()
 
-        get_propagator_settings(
-            basic_config,
-            mock_runtime_context,
-            mock_acceleration_settings,
-            mock_integrator_settings,
-            [],
-        )
+        with patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch") as m:
+            m.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
+            get_propagator_settings(
+                basic_config,
+                mock_runtime_context,
+                mock_acceleration_settings,
+                mock_integrator_settings,
+                [],
+            )
 
         call_kwargs = mock_translational.call_args[1]  # noqa: F841
 
         # Verify translational called with correct parameters
         assert mock_translational.called
 
+    @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_propagator_includes_multiple_propagated_bodies(
         self,
         mock_translational,
+        mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
@@ -753,11 +732,9 @@ class TestGetPropagatorSettings:
                 "bodies_to_propagate": {
                     "Triton": {
                         "central_body": "Neptune",
-                        "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                     },
                     "Proteus": {
                         "central_body": "Neptune",
-                        "initial_state": [117647.0, 0.0, 0.0, 0.0, 4750.0, 0.0],
                     },
                 },
                 "propagation": {
@@ -765,6 +742,7 @@ class TestGetPropagatorSettings:
                 },
             }
         )
+        mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
 
         mock_acceleration_settings = MagicMock()
         mock_integrator_settings = MagicMock()
@@ -778,15 +756,20 @@ class TestGetPropagatorSettings:
         )
 
         assert mock_translational.called
+        # One SPICE lookup per propagated body.
+        assert mock_get_state.call_count == 2
 
+    @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_propagator_formulation_is_passed_through(
         self,
         mock_translational,
+        mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
         """The propagator formulation must reach the tudatpy call."""
+        mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
         get_propagator_settings(
             basic_config,
             mock_runtime_context,
@@ -799,13 +782,16 @@ class TestGetPropagatorSettings:
         kwargs = mock_translational.call_args[1]
         assert kwargs["propagator"] is prop_setup.propagator.TranslationalPropagatorType.encke
 
+    @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_default_propagator_formulation_is_cowell(
         self,
         mock_translational,
+        mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
+        mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
         get_propagator_settings(
             basic_config,
             mock_runtime_context,
@@ -822,15 +808,17 @@ class TestGetPropagatorSettings:
         basic_config,
         mock_runtime_context,
     ):
-        with pytest.raises(ValueError, match="Unknown translational propagator"):
-            get_propagator_settings(
-                basic_config,
-                mock_runtime_context,
-                MagicMock(),
-                MagicMock(),
-                [],
-                propagator_type="not_a_propagator",
-            )
+        with patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch") as m:
+            m.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
+            with pytest.raises(ValueError, match="Unknown translational propagator"):
+                get_propagator_settings(
+                    basic_config,
+                    mock_runtime_context,
+                    MagicMock(),
+                    MagicMock(),
+                    [],
+                    propagator_type="not_a_propagator",
+                )
 
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_explicit_initial_state_is_passed_verbatim(

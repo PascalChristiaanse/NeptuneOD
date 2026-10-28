@@ -21,7 +21,6 @@ use_default_body_settings: false
 
 bodies_to_propagate:
   Triton:
-    initial_state: null
     central_body: "Neptune"
 
 bodies_to_create:

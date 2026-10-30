@@ -34,9 +34,14 @@ def get_dynamical_model(
                 )
                 continue  # skip self-acceleration
 
-            gravity_type = getattr(settings, "gravity", None)
-            if gravity_type is None:
+            gravity_settings = getattr(settings, "gravity", None)
+            if gravity_settings is None:
                 continue  # skip bodies with no explicit gravity model
+
+            # Gravity may be given either as a bare string ("central") or as a
+            # mapping with an explicit type ({"type": "central"}); see
+            # _configure_gravity_model in environment.py.
+            gravity_type = getattr(gravity_settings, "type", gravity_settings)
 
             match gravity_type:
                 case "central":

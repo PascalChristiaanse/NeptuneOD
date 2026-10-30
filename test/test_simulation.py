@@ -409,6 +409,62 @@ class TestGetDynamicalModel:
         assert mock_create_accel.called
         assert result == {"Triton": {"Neptune": []}}
 
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_nested_gravity_type_builds_accelerations(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """Gravity given as a mapping with an explicit ``type`` is honoured.
+
+        Regression test: the configs migrated to ``gravity: {type: ...}`` while
+        this module still matched against the bare string, so every acceleration
+        was silently dropped and Triton propagated without any acceleration
+        models.
+        """
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": {"type": "Jacobson2009"}},
+                    "Triton": {"gravity": {"type": "central"}},
+                    "Sun": {"gravity": {"type": "central"}},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args.args[1]
+        assert set(accelerations["Triton"]) == {"Neptune", "Sun"}
+
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_nested_jacobson_for_non_neptune_raises_error(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """The Jacobson guard also applies to the nested ``type`` form."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Sun": {"gravity": {"type": "Jacobson2009"}},
+                    "Triton": {"gravity": {"type": "central"}},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Sun",
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+
+        with pytest.raises(RuntimeError, match="only defined for Neptune"):
+            get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
     def test_propagate_body_not_in_creation_list_raises_error(self, mock_runtime_context):
         """Test that propagating undefined body raises RuntimeError."""
         config = OmegaConf.create(

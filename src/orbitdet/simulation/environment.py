@@ -291,7 +291,54 @@ def _configure_gravity_model(
             mu_sun = body_settings.get("Sun").gravity_field_settings.gravitational_parameter
             augmented_mu = mu_sun + mu_body
             body_settings.get("Sun").gravity_field_settings.gravitational_parameter = augmented_mu
+        case "spherical_harmonic_augmented":
+            # Spherical harmonics with custom terms, adjusted for inner satellites using method from
+            # Emel’yanov, N.V., Kanter, A.A. Orbits of new outer planetary satellites based on
+            # observations. Sol Syst Res 39, 112–123 (2005). https://doi.org/10.1007/s11208-005-0027-0
 
+            # Compute m_primary
+            m_primary = (
+                spice.get_body_gravitational_parameter(body_name) / constants.GRAVITATIONAL_CONSTANT
+            )
+            for perturbing_body in settings.gravity.perturbing_bodies:
+                m_primary += (
+                    spice.get_body_gravitational_parameter(perturbing_body)
+                    / constants.GRAVITATIONAL_CONSTANT
+                )
+            logger.info(f"Computed m_primary for {body_name}: {m_primary} kg")
+
+            # Compute J2 and J4
+            ref_radius = settings.gravity.reference_radius
+            J2 = settings.gravity.terms.J2
+            J4 = settings.gravity.terms.J4
+            J2_orig = J2
+            J4_orig = J4
+            for perturbing_body, parameters in settings.gravity.perturbing_bodies.items():
+                m_i = parameters.gravitational_parameter / constants.GRAVITATIONAL_CONSTANT
+                a_i = parameters.semimajor_axis
+                J2 += (1 / 2) * (m_i / m_primary) * ((a_i / ref_radius) ** 2)
+                J4 += (-3 / 8) * (m_i / m_primary) * ((a_i / ref_radius) ** 4)
+            logger.info(
+                f"""Computed augmented J2 for {body_name}: {J2} (original: {J2_orig}, """
+                f"""{100 * J2 / J2_orig - 100:.3e}% change)"""
+            )
+            logger.info(
+                f"""Computed augmented J4 for {body_name}: {J4} (original: {J4_orig}, """
+                f"""{100 * J4 / J4_orig - 100:.3e}% change)"""
+            )
+            Cbar, Sbar = compute_normalized_coefficients(J2, J4)
+
+            # set the gravity field settings
+            mu_N = spice.get_body_gravitational_parameter(body_name)
+            body_settings.get(
+                body_name
+            ).gravity_field_settings = env_setup.gravity_field.spherical_harmonic(
+                gravitational_parameter=mu_N,
+                reference_radius=ref_radius,
+                normalized_cosine_coefficients=Cbar,
+                normalized_sine_coefficients=Sbar,
+                associated_reference_frame="IAU_Neptune",
+            )
         case _:
             raise ValueError(f"Unsupported gravity model for {body_name}: {gravity_type}")
 
@@ -617,10 +664,30 @@ def _setup_neptune_default_ephemeris(
     )
 
 
+def compute_normalized_coefficients(J2: float, J4: float) -> tuple[np.ndarray, np.ndarray]:
+    """Compute normalized spherical harmonic coefficients from J2 and J4."""
+    Cbar = np.zeros((5, 5))
+    Sbar = np.zeros_like(Cbar)
+
+    # Normalized coefficients following
+    # Eckman, R.A., Brown, A.J., & Adamo, D.R. (2011).
+    # Normalization of Gravitational Acceleration Models.
+    Cbar[0, 0] = 1.0  # C̄₀₀ = 1 represents central point-mass gravity
+    Cbar[2, 0] = -J2 / np.sqrt(5.0)  # C̄20 = -J2 / sqrt(2*2+1)
+    Cbar[4, 0] = -J4 / 3.0  # C̄40 = -J4 / sqrt(2*4+1) = -J4/3
+
+    return Cbar, Sbar
+
+
+
 def _setup_gravity_neptune_jacobson2009(
     cfg: DictConfig, body_settings: env_setup.BodyListSettings
 ) -> None:
     """Setup Neptune's Jacobson 2009 gravity field model."""
+    logger.warning(
+        """_setup_gravity_neptune_jacobson2009 is deprecated and will be removed """
+        """in future versions. Use updated configuration methods instead."""
+    )
     # copied from Atanas Dzhurkov (2026)
     # Define spherical harmonics from Jacobson 2009
     J2 = 3408.428530717952e-6

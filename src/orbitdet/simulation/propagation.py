@@ -173,10 +173,9 @@ def get_propagator_settings(
         integrator_settings (prop_setup.integrator.IntegratorSettings): Integrator settings
         dependent_variables_to_save (list): Dependent variables to save during propagation
         initial_state (list[float] | None): Optional explicit initial state for the
-            propagated bodies. When provided, it overrides the per-body
-            ``initial_state`` entries in the configuration. When ``None``, the initial
-            state is taken from the configuration, falling back to the SPICE ephemeris
-            state for any body whose ``initial_state`` is not defined.
+            propagated bodies. When provided, it is used verbatim, in
+            ``bodies_to_propagate`` order. When ``None``, the state is taken from the
+            SPICE ephemeris at ``ctx.initial_epoch``.
         propagator_type (str): Translational propagator formulation, one of
             :data:`TRANSLATIONAL_PROPAGATORS` (default ``"cowell"``). The formulation
             only changes the elements in which the equations of motion are integrated;
@@ -189,39 +188,22 @@ def get_propagator_settings(
     if initial_state is None:
         initial_state = []
         for body, settings in cfg.bodies_to_propagate.items():
-            if settings.initial_state is None:
-                # emit warning if initial state is not defined and use default state
-                # from SPICE kernels
-                logger.warning(
-                    f"""Initial state for {body} is not defined in configuration."""
-                    """Using default state from SPICE kernels."""
-                )
-
-                state = spice.get_body_cartesian_state_at_epoch(
-                    target_body_name=body,
-                    observer_body_name=settings.central_body,
-                    reference_frame_name=cfg.global_frame_orientation,
-                    aberration_corrections="none",
-                    ephemeris_time=ctx.initial_epoch,
-                )
-                logger.info(
-                    "Initial state for %s taken from SPICE ephemeris (central body: %s, "
-                    "frame: %s, epoch: %s): %s",
-                    body,
-                    settings.central_body,
-                    cfg.global_frame_orientation,
-                    ctx.initial_epoch,
-                    list(state),
-                )
-                initial_state.extend(state)
-            else:
-                logger.info(
-                    "Initial state for %s taken from configuration (central body: %s): %s",
-                    body,
-                    settings.central_body,
-                    list(settings.initial_state),
-                )
-                initial_state.extend(settings.initial_state)
+            logger.info(
+                "Initial state for %s taken from SPICE ephemeris (central body: %s, "
+                "frame: %s, epoch: %s).",
+                body,
+                settings.central_body,
+                cfg.global_frame_orientation,
+                ctx.initial_epoch,
+            )
+            state = spice.get_body_cartesian_state_at_epoch(
+                target_body_name=body,
+                observer_body_name=settings.central_body,
+                reference_frame_name=cfg.global_frame_orientation,
+                aberration_corrections="none",
+                ephemeris_time=ctx.initial_epoch,
+            )
+            initial_state.extend(state)
     else:
         logger.info(
             "Using explicitly provided initial state for bodies %s: %s",

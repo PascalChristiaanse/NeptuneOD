@@ -1,0 +1,43 @@
+# @package _global_
+
+# Estimation settings: IS_PM_PL parameter set + Neptune inverse tidal quality factor.
+#
+# Mirrors `IS_PM_PL` (Triton initial state + Neptune pole position + pole libration
+# rates) and adds the inverse tidal quality factor 1/Q of Neptune, with the tide
+# raised on Neptune by Triton.
+#
+# Estimating 1/Q requires the dynamics to include a
+# `direct_tidal_dissipation_inv_quality` acceleration on Triton (see
+# `conf/dynamics/jacobson2009_voyager_gaia_tidal.yaml`), which parameterises the
+# model by (k2, 1/Q, tidal_period) rather than a tidal time lag.
+
+estimation:
+  max_iterations: 5
+  max_iterations_without_improvement: 3
+  # Anchor the a priori constraint to the initial parameter estimate rather than
+  # to each differential correction (see state_plus_neptune_tidal_Q.yaml).
+  apply_apriori_parameter_deviation: true
+  # A priori constraints following Wang et al. (2025): position sigma 100 km,
+  # velocity sigma 1 m/s, and Q = 100 with sigma_Q = 1e4. The estimated
+  # parameter is 1/Q, so the prior is expressed in 1/Q units. The literal
+  # sigma_Q = 1e4 -> sigma(1/Q) = 1.0 proved far too loose (first-iteration
+  # 1/Q update ~ -1e5, condition number ~1e55), so we tighten to a ~1% prior
+  # on Q: sigma(1/Q) = 1e-4.
+  # Pole/libration parameters are left unconstrained (default 1e30).
+  apriori:
+    position: 100.0e3   # m
+    velocity: 1.0       # m/s
+    neptune_inverse_tidal_quality_factor: 1.0e-4   # sigma(1/Q), ~1% on Q
+  # Parameters can be listed in two forms:
+  #   - plain:  <key>: true|false
+  #   - mapping: <key>: {value: <initial estimate>, apriori: [...]}
+  # The optional `value` sets the initial estimate of the parameter (via
+  # tudatpy's EstimatableParameter.set_parameter_value). For
+  # `neptune_inverse_tidal_quality_factor` below this overrides the value baked
+  # into the tidal acceleration model (`conf/dynamics/jacobson2009_tidal.yaml`).
+  parameters_to_estimate:
+    initial_state: true
+    iau_rotation_model_pole: true
+    iau_rotation_model_pole_librations: true
+    neptune_inverse_tidal_quality_factor:
+      value: 1.0e-4   # initial 1/Q (Q = 10000)

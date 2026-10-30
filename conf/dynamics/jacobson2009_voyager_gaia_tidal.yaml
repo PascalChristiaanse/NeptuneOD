@@ -1,0 +1,14 @@
+# @package _global_
+
+# Jacobson 2009 + Voyager 2 + Gaia dynamical model, extended with direct tidal
+# dissipation on Triton (tide raised on Neptune by Triton).
+#
+# Composes the Voyager/Gaia body set (needed by the classical + Voyager + Gaia
+# data bundle) with the direct tidal dissipation acceleration defined in
+# `jacobson2009_tidal`. Required to estimate Neptune's 1/Q; see
+# `conf/parameters/IS_PM_PL_Q.yaml`.
+
+defaults:
+  - /dynamics/jacobson2009_voyager_gaia
+  - /dynamics/jacobson2009_tidal
+  - _self_

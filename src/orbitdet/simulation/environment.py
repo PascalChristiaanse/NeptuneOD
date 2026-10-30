@@ -14,6 +14,11 @@ from tudatpy import constants
 
 logger = logging.getLogger(__name__)
 
+# Seconds in a Julian century (36525 days). Used to convert the
+# degrees-per-century rates and frequencies quoted in the IAU WGCCRE reports
+# and in Jacobson (2009).
+_JULIAN_CENTURY = 36525.0 * constants.JULIAN_DAY
+
 DEFAULT_BODIES = {
     "Sun",
     "Mercury",
@@ -404,10 +409,197 @@ def _configure_rotation_model(
                 )
             logger.info("Configuring Jacobson 2009 pole rotation model for Neptune.")
             _setup_rotation_neptune_jacobson2009(cfg, body_settings, original_frame)
+        case "iau_rotation_model":
+            _configure_iau_rotation_model(body_name, settings, body_settings, original_frame)
+        case "jacobson_converted_iau_rotation_model":
+            _configure_jacobson_converted_iau_rotation_model(
+                body_name, settings, body_settings, original_frame
+            )
         case _:
             raise ValueError(
                 f"Unsupported rotation model type for {body_name}: {rotation_model_type}"
             )
+
+
+def _configure_iau_rotation_model(
+    body_name: str,
+    settings: DictConfig,
+    body_settings: env_setup.BodyListSettings,
+    original_frame: str,
+) -> None:
+    """Configure an IAU-style rotation model from an explicit pole and terms.
+
+    Units follow the source papers (the IAU WGCCRE reports): angles are in
+    degrees, ``rotation_rate`` and ``pole_precession`` in degrees per day, and
+    periodic-term frequencies in degrees per century. All values are converted
+    to radians / radians per second here.
+
+    The pole is given directly through ``nominal_pole`` (``[alpha_0, delta_0]``)
+    plus optional ``pole_periodic_terms``. For the Jacobson (2009)
+    parameterisation use ``jacobson_converted_iau_rotation_model`` instead.
+    """
+    rm = settings.rotation_model
+
+    nominal_pole = np.deg2rad(np.asarray(rm.nominal_pole, dtype=float))
+    pole_periodic_terms = _parse_pole_periodic_terms(getattr(rm, "pole_periodic_terms", None))
+
+    _apply_iau_rotation_model(
+        body_name, rm, body_settings, original_frame, nominal_pole, pole_periodic_terms
+    )
+
+
+def _configure_jacobson_converted_iau_rotation_model(
+    body_name: str,
+    settings: DictConfig,
+    body_settings: env_setup.BodyListSettings,
+    original_frame: str,
+) -> None:
+    """Configure an IAU-style rotation model from Jacobson (2009) parameters.
+
+    The pole and nutation terms are derived from the raw Jacobson (2009)
+    parameters (``pole_ra``, ``pole_dec``, ``pole_epsilon``, ``pole_omega_0``,
+    ``pole_omega_dot``, ``pole_epoch``) and then fed into the same IAU rotation
+    model as ``iau_rotation_model``. Units follow the paper: angles in degrees,
+    ``pole_omega_dot`` in degrees per century.
+    """
+    rm = settings.rotation_model
+
+    nominal_pole, pole_periodic_terms = _derive_jacobson_pole(rm)
+
+    _apply_iau_rotation_model(
+        body_name, rm, body_settings, original_frame, nominal_pole, pole_periodic_terms
+    )
+
+
+def _apply_iau_rotation_model(
+    body_name: str,
+    rm: DictConfig,
+    body_settings: env_setup.BodyListSettings,
+    original_frame: str,
+    nominal_pole: np.ndarray,
+    pole_periodic_terms: dict[float, tuple[np.ndarray, float]],
+) -> None:
+    """Build and assign the IAU rotation model settings from resolved inputs.
+
+    Shared by ``iau_rotation_model`` and ``jacobson_converted_iau_rotation_model``.
+    """
+    target_frame = getattr(rm, "target_frame", f"IAU_{body_name.capitalize()}")
+    angle_base_frame = getattr(rm, "angle_base_frame", "J2000")
+
+    nominal_meridian = np.deg2rad(rm.nominal_meridian)
+    rotation_rate = np.deg2rad(rm.rotation_rate) / constants.JULIAN_DAY
+    pole_precession = (
+        np.deg2rad(np.asarray(getattr(rm, "pole_precession", [0.0, 0.0]), dtype=float))
+        / constants.JULIAN_DAY
+    )
+
+    meridian_periodic_terms = _parse_meridian_periodic_terms(
+        getattr(rm, "meridian_periodic_terms", None)
+    )
+
+    logger.info(
+        f"Configuring IAU rotation model for {body_name} "
+        f"(target frame '{target_frame}', angle base frame '{angle_base_frame}', "
+        f"{len(meridian_periodic_terms)} meridian and "
+        f"{len(pole_periodic_terms)} pole periodic term(s))."
+    )
+
+    body_settings.get(
+        body_name
+    ).rotation_model_settings = env_setup.rotation_model.iau_rotation_model(
+        original_frame,
+        target_frame,
+        nominal_meridian,
+        nominal_pole,
+        rotation_rate,
+        pole_precession,
+        meridian_periodic_terms,
+        pole_periodic_terms,
+        angle_base_frame=angle_base_frame,
+    )
+
+
+def _derive_jacobson_pole(
+    rm: DictConfig,
+) -> tuple[np.ndarray, dict[float, tuple[np.ndarray, float]]]:
+    """Derive the IAU pole and nutation terms from Jacobson (2009) parameters.
+
+    Jacobson (2009) parameterises Neptune's pole as
+
+        alpha(t) = alpha_r + alpha_1 sin(omega t) + alpha_2 sin(2 omega t)
+        delta(t) = delta_r + delta_1 cos(omega t) + delta_2 cos(2 omega t)
+        omega(t) = omega_0 + omega_dot (t - t_0)
+
+    where the amplitudes follow from the pole offset ``epsilon``. The paper
+    values (degrees, degrees/century) are converted here into the
+    ``nominal_pole`` and ``pole_periodic_terms`` inputs expected by tudatpy.
+    """
+    alpha_r = np.deg2rad(rm.pole_ra)
+    delta_r = np.deg2rad(rm.pole_dec)
+    epsilon = np.deg2rad(rm.pole_epsilon)
+    omega_0 = np.deg2rad(rm.pole_omega_0)
+    omega_dot = np.deg2rad(rm.pole_omega_dot) / _JULIAN_CENTURY
+
+    # Shift omega_0 from the paper epoch to J2000.
+    epoch = np.datetime64(rm.pole_epoch)
+    j2000 = np.datetime64("2000-01-01T12:00:00")
+    seconds_to_j2000 = (j2000 - epoch) / np.timedelta64(1, "s")
+    omega_0 = omega_0 + omega_dot * seconds_to_j2000
+
+    alpha_0 = alpha_r
+    alpha_1 = epsilon / np.cos(delta_r)
+    alpha_2 = -0.5 * epsilon**2 * np.tan(delta_r) / np.cos(delta_r)
+
+    delta_0 = delta_r - 0.25 * epsilon**2 * np.tan(delta_r)
+    delta_1 = -epsilon
+    delta_2 = 0.25 * epsilon**2 * np.tan(delta_r)
+
+    nominal_pole = np.array([alpha_0, delta_0])
+    pole_periodic_terms = {
+        omega_dot: (np.array([alpha_1, delta_1]), omega_0),
+        2.0 * omega_dot: (np.array([alpha_2, delta_2]), 2.0 * omega_0),
+    }
+    return nominal_pole, pole_periodic_terms
+
+
+def _parse_meridian_periodic_terms(
+    terms: list[DictConfig] | None,
+) -> dict[float, tuple[float, float]]:
+    """Parse meridian (W) libration terms into the mapping expected by tudatpy.
+
+    Each entry must provide ``frequency`` (deg/century), ``amplitude`` (deg) and
+    ``phase`` (deg). The returned mapping is keyed by the angular frequency in
+    rad/s, with values ``(W_i, phi_W_i)`` in radians.
+    """
+    if not terms:
+        return {}
+
+    parsed: dict[float, tuple[float, float]] = {}
+    for term in terms:
+        omega = np.deg2rad(term.frequency) / _JULIAN_CENTURY
+        parsed[omega] = (np.deg2rad(term.amplitude), np.deg2rad(term.phase))
+    return parsed
+
+
+def _parse_pole_periodic_terms(
+    terms: list[DictConfig] | None,
+) -> dict[float, tuple[np.ndarray, float]]:
+    """Parse pole (alpha, delta) nutation terms into the mapping expected by tudatpy.
+
+    Each entry must provide ``frequency`` (deg/century), ``amplitude``
+    (``[alpha_i, delta_i]`` in deg) and ``phase`` (deg). The returned mapping is
+    keyed by the angular frequency in rad/s, with values
+    ``([alpha_i, delta_i], phi_N_i)`` in radians.
+    """
+    if not terms:
+        return {}
+
+    parsed: dict[float, tuple[np.ndarray, float]] = {}
+    for term in terms:
+        omega = np.deg2rad(term.frequency) / _JULIAN_CENTURY
+        amplitude = np.deg2rad(np.asarray(term.amplitude, dtype=float))
+        parsed[omega] = (amplitude, np.deg2rad(term.phase))
+    return parsed
 
 
 def _configure_shape_model(
@@ -533,6 +725,10 @@ def _setup_rotation_neptune_iau2015(
     original_frame: str,
 ) -> None:
     """Setup Neptune's IAU2015 rotation model."""
+    logger.warning(
+        """This function is deprecated and will be removed in future versions. """
+        """Use updated configuration methods instead."""
+    )
     target_frame = "IAU_Neptune"
     # Copied from Atanas Dzhurkov (2026), adapted to fit Hydra configuration
     nominal_meridian = np.deg2rad(249.978)  # W_0
@@ -587,6 +783,10 @@ def _setup_rotation_neptune_jacobson2009(
     original_frame: str,
 ) -> None:
     """Setup Neptune's Jacobson 2009 pole rotation model."""
+    logger.warning(
+        """This function is deprecated and will be removed in future versions. """
+        """Use updated configuration methods instead."""
+    )
     target_frame = "IAU_Neptune"
     # Copied from Atanas Dzhurkov (2026), adapted to fit Hydra
     alpha_r = np.deg2rad(

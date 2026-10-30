@@ -932,6 +932,11 @@ class NormalizedResiduals(Plot):
             color = colors(set_index % colors.N)
             marker = marker_types[set_index % len(marker_types)]
 
+            if len(obs_set.observation_times) == 0:
+                # An empty set yields a 1-D empty `residuals` array, which cannot
+                # be indexed as (n, 2); skip it like Residuals._plot_single... does.
+                continue
+
             obs_times_sec_j2000 = np.array(
                 [epoch.to_float() for epoch in obs_set.observation_times]
             )
@@ -1169,6 +1174,11 @@ class NormalizedResidualScan(Plot):
             target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
             color = colors(set_index % colors.N)
             marker = marker_types[set_index % len(marker_types)]
+
+            if len(obs_set.observation_times) == 0:
+                # An empty set yields a 1-D empty `residuals` array, which cannot
+                # be indexed as (n, 2); skip it like Residuals._plot_single... does.
+                continue
 
             obs_times_sec_j2000 = np.array(
                 [epoch.to_float() for epoch in obs_set.observation_times]

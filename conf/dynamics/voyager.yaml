@@ -10,7 +10,6 @@ global_frame_orientation: "B1950"
 # Environment settings
 bodies_to_propagate:
   Triton:
-    initial_state: null
     central_body: "SSB"
 
 bodies_to_create:

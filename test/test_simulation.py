@@ -23,6 +23,22 @@ from orbitdet.simulation import (
 )
 
 
+@pytest.fixture(autouse=True)
+def stub_spice_initial_state():
+    """Stub the SPICE ephemeris lookup used when no explicit state is given.
+
+    ``get_propagator_settings`` sources the initial state from SPICE unless an
+    explicit state is passed, so tests that do not load real kernels need this.
+    Tests that assert on the SPICE call still apply their own ``@patch``, which
+    takes precedence.
+    """
+    with patch(
+        "orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch",
+        return_value=[100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
+    ) as mock_get_state:
+        yield mock_get_state
+
+
 @pytest.fixture
 def mock_runtime_context(tmp_path):
     """Create a mock RuntimeContext for testing."""
@@ -62,7 +78,6 @@ def basic_config():
             "bodies_to_propagate": {
                 "Triton": {
                     "central_body": "Neptune",
-                    "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                 },
             },
             "propagation": {
@@ -104,7 +119,6 @@ def jacobson_config():
             "bodies_to_propagate": {
                 "Triton": {
                     "central_body": "Neptune",
-                    "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                 },
             },
             "propagation": {
@@ -436,6 +450,129 @@ class TestGetDynamicalModel:
         with pytest.raises(RuntimeError, match="only defined for Neptune"):
             get_dynamical_model(config, mock_runtime_context, mock_bodies)
 
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_direct_tidal_dissipation_from_inverse_quality_factor(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """Configured tidal dissipation is attached to the propagated body."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [
+                            {
+                                "type": "direct_tidal_dissipation_inv_quality",
+                                "k2_love_number": 1.27,
+                                "inverse_tidal_quality_factor": 0.01,
+                                "tidal_period": 64817.0,
+                                "use_tide_raised_on_planet": True,
+                                "include_direct_radial_component": False,
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args[0][1]
+        triton_accels = accelerations["Triton"]["Neptune"]
+        assert any(
+            isinstance(a, prop_setup.acceleration.DirectTidalDissipationAccelerationSettings)
+            for a in triton_accels
+        )
+
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_direct_tidal_dissipation_from_time_lag(self, mock_create_accel, mock_runtime_context):
+        """Configured tidal dissipation also supports the time-lag parameterisation."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [
+                            {
+                                "type": "direct_tidal_dissipation_time_lag",
+                                "k2_love_number": 1.27,
+                                "time_lag": 100.0,
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args[0][1]
+        triton_accels = accelerations["Triton"]["Neptune"]
+        assert any(
+            isinstance(a, prop_setup.acceleration.DirectTidalDissipationAccelerationSettings)
+            for a in triton_accels
+        )
+
+    def test_direct_tidal_dissipation_missing_field_raises(self, mock_runtime_context):
+        """A missing required acceleration field raises a clear error."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [
+                            {
+                                "type": "direct_tidal_dissipation_inv_quality",
+                                "inverse_tidal_quality_factor": 0.01,
+                                "tidal_period": 64817.0,
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+
+        with pytest.raises(ValueError, match="k2_love_number"):
+            get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+    def test_unknown_acceleration_type_raises(self, mock_runtime_context):
+        """An unknown acceleration type raises a clear error."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": "central"},
+                    "Triton": {"gravity": "central"},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                        "accelerations": [{"type": "not_a_real_acceleration"}],
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+
+        with pytest.raises(ValueError, match="Unknown acceleration type"):
+            get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
 
 class TestGetEnvironment:
     """Tests for get_environment function."""
@@ -530,67 +667,28 @@ class TestGetEnvironment:
 class TestGetPropagatorSettings:
     """Tests for get_propagator_settings function."""
 
-    @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
-    def test_propagator_creation_with_defined_initial_state(
-        self,
-        mock_translational,
-        basic_config,
-        mock_runtime_context,
-    ):
-        """Test propagator creation with predefined initial state."""
-        mock_acceleration_settings = MagicMock()
-        mock_integrator_settings = MagicMock()
-
-        result = get_propagator_settings(  # noqa: F841
-            basic_config,
-            mock_runtime_context,
-            mock_acceleration_settings,
-            mock_integrator_settings,
-            [],
-        )
-
-        assert mock_translational.called
-
     @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
-    def test_propagator_creation_with_undefined_initial_state(
+    def test_propagator_creation_takes_state_from_spice(
         self,
         mock_translational,
         mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
-        """Test propagator creation falls back to SPICE for undefined initial state."""
-        # Create config with undefined initial state
-        config = OmegaConf.create(
-            {
-                "global_frame_orientation": "J2000",
-                "bodies_to_propagate": {
-                    "Triton": {
-                        "central_body": "Neptune",
-                        "initial_state": None,
-                    },
-                },
-                "propagation": {
-                    "set_integrated_result": True,
-                },
-            }
-        )
+        """Without an explicit state, the propagator uses the SPICE ephemeris."""
         mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
 
-        mock_acceleration_settings = MagicMock()
-        mock_integrator_settings = MagicMock()
-
-        with patch("orbitdet.simulation.propagation.logger"):
-            result = get_propagator_settings(  # noqa: F841
-                config,
-                mock_runtime_context,
-                mock_acceleration_settings,
-                mock_integrator_settings,
-                [],
-            )
+        result = get_propagator_settings(  # noqa: F841
+            basic_config,
+            mock_runtime_context,
+            MagicMock(),
+            MagicMock(),
+            [],
+        )
 
         assert mock_get_state.called
+        assert mock_translational.called
 
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_propagator_uses_correct_central_bodies(
@@ -603,23 +701,27 @@ class TestGetPropagatorSettings:
         mock_acceleration_settings = MagicMock()
         mock_integrator_settings = MagicMock()
 
-        get_propagator_settings(
-            basic_config,
-            mock_runtime_context,
-            mock_acceleration_settings,
-            mock_integrator_settings,
-            [],
-        )
+        with patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch") as m:
+            m.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
+            get_propagator_settings(
+                basic_config,
+                mock_runtime_context,
+                mock_acceleration_settings,
+                mock_integrator_settings,
+                [],
+            )
 
         call_kwargs = mock_translational.call_args[1]  # noqa: F841
 
         # Verify translational called with correct parameters
         assert mock_translational.called
 
+    @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_propagator_includes_multiple_propagated_bodies(
         self,
         mock_translational,
+        mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
@@ -630,11 +732,9 @@ class TestGetPropagatorSettings:
                 "bodies_to_propagate": {
                     "Triton": {
                         "central_body": "Neptune",
-                        "initial_state": [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0],
                     },
                     "Proteus": {
                         "central_body": "Neptune",
-                        "initial_state": [117647.0, 0.0, 0.0, 0.0, 4750.0, 0.0],
                     },
                 },
                 "propagation": {
@@ -642,6 +742,7 @@ class TestGetPropagatorSettings:
                 },
             }
         )
+        mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
 
         mock_acceleration_settings = MagicMock()
         mock_integrator_settings = MagicMock()
@@ -655,15 +756,20 @@ class TestGetPropagatorSettings:
         )
 
         assert mock_translational.called
+        # One SPICE lookup per propagated body.
+        assert mock_get_state.call_count == 2
 
+    @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_propagator_formulation_is_passed_through(
         self,
         mock_translational,
+        mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
         """The propagator formulation must reach the tudatpy call."""
+        mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
         get_propagator_settings(
             basic_config,
             mock_runtime_context,
@@ -676,13 +782,16 @@ class TestGetPropagatorSettings:
         kwargs = mock_translational.call_args[1]
         assert kwargs["propagator"] is prop_setup.propagator.TranslationalPropagatorType.encke
 
+    @patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch")
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_default_propagator_formulation_is_cowell(
         self,
         mock_translational,
+        mock_get_state,
         basic_config,
         mock_runtime_context,
     ):
+        mock_get_state.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
         get_propagator_settings(
             basic_config,
             mock_runtime_context,
@@ -699,15 +808,17 @@ class TestGetPropagatorSettings:
         basic_config,
         mock_runtime_context,
     ):
-        with pytest.raises(ValueError, match="Unknown translational propagator"):
-            get_propagator_settings(
-                basic_config,
-                mock_runtime_context,
-                MagicMock(),
-                MagicMock(),
-                [],
-                propagator_type="not_a_propagator",
-            )
+        with patch("orbitdet.simulation.propagation.spice.get_body_cartesian_state_at_epoch") as m:
+            m.return_value = [100000.0, 0.0, 0.0, 0.0, 5000.0, 0.0]
+            with pytest.raises(ValueError, match="Unknown translational propagator"):
+                get_propagator_settings(
+                    basic_config,
+                    mock_runtime_context,
+                    MagicMock(),
+                    MagicMock(),
+                    [],
+                    propagator_type="not_a_propagator",
+                )
 
     @patch("orbitdet.simulation.propagation.prop_setup.propagator.translational")
     def test_explicit_initial_state_is_passed_verbatim(

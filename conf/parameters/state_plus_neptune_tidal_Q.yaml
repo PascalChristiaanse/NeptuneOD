@@ -1,0 +1,42 @@
+# @package _global_
+
+# Estimation settings: Triton initial state + Neptune inverse tidal quality factor (1/Q).
+#
+# The tide is raised on Neptune by Triton (i.e. the dissipation acts on Triton's
+# orbit). Estimating 1/Q requires the dynamics configuration to include a
+# `direct_tidal_dissipation` acceleration on Triton parameterised by
+# (k2_love_number, inverse_tidal_quality_factor, tidal_period) rather than a
+# tidal time lag. See `conf/dynamics/jacobson2009_tidal.yaml`.
+#
+# Mutually exclusive with `neptune_tidal_time_lag` for the same (body,
+# deforming_body) pair.
+
+estimation:
+  max_iterations: 5
+  max_iterations_without_improvement: 3
+  # Anchor the a priori constraint to the initial parameter estimate rather than
+  # to each differential correction. This is essential here: 1/Q is effectively
+  # unobservable over this arc, so its design-matrix column is ~0 and the
+  # unanchored (Tikhonov) prior cannot stop the Gauss-Newton step from running
+  # away along that near-null direction (observed: ~1.8e9 m state update).
+  apply_apriori_parameter_deviation: true
+  # A priori constraints following Wang et al. (2025):
+  #   - position sigma 100 km, velocity sigma 1 m/s (on the Triton state)
+  #   - initial Q = 100 with "an uncertainty of 10 x 10^3"
+  #
+  # IMPORTANT: the estimated parameter is 1/Q, not Q, so the quoted Q
+  # uncertainty must be propagated to 1/Q units:
+  #     sigma(1/Q) ~ |d(1/Q)/dQ| * sigma_Q = sigma_Q / Q_nom^2
+  #
+  # The literal reading (sigma_Q = 1e4) gives sigma(1/Q) = 1.0, which is 100x
+  # the nominal 1/Q = 0.01 and far too loose: the first iteration still drove
+  # 1/Q to ~-1e5 with a condition number of ~1e55. We therefore tighten to a
+  # ~1% prior on Q, i.e. sigma(1/Q) = 1e-4 (sigma_Q ~ 1). This is the value
+  # that actually regularizes the normal matrix.
+  apriori:
+    position: 100.0e3   # m
+    velocity: 1.0       # m/s
+    neptune_inverse_tidal_quality_factor: 1.0e-4   # sigma(1/Q), ~1% on Q
+  parameters_to_estimate:
+    initial_state: true
+    neptune_inverse_tidal_quality_factor: true

@@ -1,9 +1,7 @@
 """Base class for plotter classes in the visualization module.
 
 A plotter class encapsulates the construction of a matplotlib figure and the
-bookkeeping every figure needs: saving it as a PDF to the Hydra output
-directory, logging it to Aim (as a static image), and attaching the saved PDF
-as an artifact reference.
+bookkeeping every figure needs: saving it as a PDF next to its pickled Figure.
 
 Subclasses implement :meth:`Plot._make_figure`, which builds and returns the
 ``(fig, axes)`` tuple. The public :meth:`Plot.plot` method wraps that with the
@@ -21,8 +19,6 @@ from pathlib import Path
 import matplotlib.dates as mdates
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
-
-from orbitdet.reproducibility import aim_log_artifact_reference, aim_log_figure
 
 
 def _snake_case(name: str) -> str:
@@ -82,8 +78,7 @@ class Plot(ABC):
     cfg : DictConfig
         The Hydra experiment configuration.
     name : str, optional
-        Base name used for output files and the Aim log entry.
-        Defaults to the snake_case class name.
+        Base name used for output files. Defaults to the snake_case class name.
     """
 
     def __init__(self, cfg: DictConfig, name: str | None = None, output_dir: Path | None = None):
@@ -112,8 +107,7 @@ class Plot(ABC):
             pickle.dump(fig, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def publish(self, fig, ax):
-        """Save the figure as PDF and pickle, log it to Aim, and
-        attach the PDF as a reference.
+        """Save the figure as PDF and pickle.
 
         Returns
         -------
@@ -133,9 +127,5 @@ class Plot(ABC):
         # Save the Matplotlib Figure for interactive inspection in VS Code.
         fig_path = output_dir / f"{self.name}.fig"
         self._save_figure_pickle(fig, fig_path)
-
-        # Preserve existing Aim integration.
-        aim_log_figure(fig, name=self.name)
-        aim_log_artifact_reference(pdf_path)
 
         return fig, ax

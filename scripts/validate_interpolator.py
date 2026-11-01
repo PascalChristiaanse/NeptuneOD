@@ -42,7 +42,6 @@ from tudatpy.math import interpolators as interp
 from orbitdet.data import KernelManager
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact_reference,
     enforce_initialization,
     initialize,
 )
@@ -239,7 +238,6 @@ def main(cfg: DictConfig):
         buffer_epochs=n_skip,
     )
     logger.info("Results saved to %s", npz_path)
-    aim_log_artifact_reference(npz_path)
 
     # --- Save metadata ---
     import json

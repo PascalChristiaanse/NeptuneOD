@@ -20,33 +20,24 @@ import logging.handlers
 import queue
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from omegaconf import DictConfig
 
 from orbitdet.reproducibility.logging.config import (
-    AIM_HANDLER_NAME,
     STDERR_HANDLER_NAME,
     LoggingSettings,
     build_sink_payload,
 )
-from orbitdet.reproducibility.logging.handlers import AimLogHandler
 from orbitdet.reproducibility.logging.listener import (
     DEFAULT_JOIN_TIMEOUT,
     BoundedQueueListener,
 )
 
-if TYPE_CHECKING:
-    from aim.sdk import Run
-
 __all__ = [
     "LoggingSettings",
     "BoundedQueueListener",
-    "AimLogHandler",
     "configure_logging",
     "shutdown_logging",
-    "attach_aim_run",
-    "get_aim_handler",
     "get_logger",
     "get_listener",
     "is_configured",
@@ -55,7 +46,6 @@ __all__ = [
 _lock = threading.Lock()
 _console_listener: BoundedQueueListener | None = None
 _io_listener: BoundedQueueListener | None = None
-_aim_handler: AimLogHandler | None = None
 _configured = False
 _configured_run_dir: Path | None = None
 
@@ -85,24 +75,6 @@ def get_listener() -> tuple[BoundedQueueListener | None, BoundedQueueListener | 
     return _console_listener, _io_listener
 
 
-def get_aim_handler() -> AimLogHandler | None:
-    """Return the active Aim handler, or ``None`` when not enabled."""
-    return _aim_handler
-
-
-def attach_aim_run(run: Run | None) -> None:
-    """Attach (or detach) the Aim run used by the Aim logging sink.
-
-    Configuration happens before the Aim run exists, so the pipeline starts with
-    a detached Aim handler. Call this once the run has been created.
-
-    Args:
-        run: The Aim run to forward records to, or ``None`` to detach.
-    """
-    if _aim_handler is not None:
-        _aim_handler.attach_run(run)
-
-
 def configure_logging(
     cfg: DictConfig | None = None,
     *,
@@ -130,7 +102,7 @@ def configure_logging(
     Raises:
         ValueError: If ``use_queue`` is true but the listener cannot be started.
     """
-    global _console_listener, _io_listener, _aim_handler, _configured, _configured_run_dir
+    global _console_listener, _io_listener, _configured, _configured_run_dir
 
     settings = LoggingSettings.from_config(cfg)
     resolved_run_dir = _resolve_run_dir(run_dir)
@@ -167,20 +139,10 @@ def configure_logging(
     for h in sinks:
         root.removeHandler(h)
 
-    if settings.aim.enabled:
-        aim_handler = AimLogHandler(
-            run=None,
-            level=settings.effective_aim_level,
-            max_warnings=settings.aim.max_warnings,
-        )
-        aim_handler.set_name(AIM_HANDLER_NAME)
-        sinks.append(aim_handler)
-        _aim_handler = aim_handler
-
     root.setLevel(settings.root_level)
 
     # Split sinks into console (fast, attach directly even in queued mode)
-    # and I/O (file + Aim, run on a background listener thread).
+    # and I/O (file sink, run on a background listener thread).
     # Console writes are ~µs and must appear *before* a long C++ call that
     # holds the GIL.  Queuing them would defer the write until the GIL is
     # released (3+ minutes later for tudatpy propagation), making the
@@ -215,24 +177,19 @@ def shutdown_logging() -> None:
     registered with :mod:`atexit`, so normal interpreter exit flushes logs
     without an explicit call.
     """
-    global _console_listener, _io_listener, _aim_handler, _configured, _configured_run_dir
+    global _console_listener, _io_listener, _configured, _configured_run_dir
 
     with _lock:
         io_listener = _io_listener
-        aim_handler = _aim_handler
         _console_listener = None
         _io_listener = None
-        _aim_handler = None
         _configured = False
         _configured_run_dir = None
 
-    # Stop the I/O listener first (drains the queue so Aim records are not
+    # Stop the I/O listener first (drains the queue so file records are not
     # lost). Console sinks run on the main thread; there is nothing to stop.
     if io_listener is not None:
         io_listener.stop()
-
-    if aim_handler is not None:
-        aim_handler.attach_run(None)
 
     root = logging.getLogger()
     for handler in list(root.handlers):

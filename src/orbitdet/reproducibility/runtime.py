@@ -7,20 +7,14 @@ import random
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import yaml
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-
-from orbitdet.reproducibility.aim import aim_add_tag, aim_finalize, aim_start_run
-
-if TYPE_CHECKING:
-    from aim.sdk import Run
 
 
 @dataclass
@@ -29,7 +23,6 @@ class RuntimeContext:
     output_dir: Path
     seed: int
     test_mode: bool
-    aim_run: Run | None = field(default=None, repr=False)
 
 
 _CONTEXT: RuntimeContext | None = None
@@ -190,21 +183,11 @@ def initialize(cfg: DictConfig) -> RuntimeContext:
 
     save_conda_environment(output_dir)
 
-    # Start an Aim run for experiment tracking
-    aim_run = aim_start_run(cfg, git_commit, output_dir, seed)
-
-    # Point the logging pipeline's Aim sink at the new run. Logging is
-    # configured before the run exists, so the handler starts detached.
-    from orbitdet.reproducibility.logging import attach_aim_run
-
-    attach_aim_run(aim_run)
-
     _CONTEXT = RuntimeContext(
         git_commit=git_commit,
         output_dir=output_dir,
         seed=seed,
         test_mode=False,
-        aim_run=aim_run,
     )
 
     OmegaConf.set_readonly(cfg, True)
@@ -229,8 +212,8 @@ def initialize_test_mode(
 
     set_random_seed(seed)
 
-    # Install the same logging pipeline as production (console split, no file,
-    # no Aim) so tests exercise the real handler wiring instead of a separate
+    # Install the same logging pipeline as production (console split, no file)
+    # so tests exercise the real handler wiring instead of a separate
     # basicConfig path. run_dir=None keeps it console-only.
     from orbitdet.reproducibility.logging import configure_logging
 
@@ -277,16 +260,8 @@ def enforce_initialization(func):
             logging.getLogger(func.__module__).exception("Uncaught exception")
             raise
         finally:
-            # NB: resolve the module through sys.modules rather than the
-            # closure's globals. Under the submitit launcher the decorated
-            # function is pickled into the child process, which can leave the
-            # wrapper's __globals__ pointing at a deserialized *copy* of this
-            # module; reading _CONTEXT through that copy would always see None
-            # and the completed/crashed tag would be silently lost.
-            ctx = sys.modules[__name__]._CONTEXT  # type: ignore[attr-defined]
-            if ctx is not None and ctx.aim_run is not None and outcome is not None:
-                aim_add_tag(ctx.aim_run, outcome)
-                aim_finalize(ctx.aim_run)
+            if outcome is not None:
+                logging.getLogger(func.__module__).info("Run outcome: %s", outcome)
 
         if sys.modules[__name__]._CONTEXT is None:  # noqa: SLF001
             raise RuntimeError(

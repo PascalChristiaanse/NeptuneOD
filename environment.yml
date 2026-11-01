@@ -30,7 +30,6 @@ dependencies:
   - hydra-core
   - hydra-submitit-launcher
   - beautifulsoup4
-  - aim
   - plotly
   - joblib
   - platformdirs

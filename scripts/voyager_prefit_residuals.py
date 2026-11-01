@@ -1,12 +1,9 @@
 import logging
 import os
-from pathlib import Path
 
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import observations as obs
@@ -16,8 +13,6 @@ from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact,
-    aim_log_metrics,
     enforce_initialization,
     initialize,
 )
@@ -88,21 +83,6 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
-    # Log metric summary of residuals to Aim
-    rms = np.sqrt(
-        np.mean(np.square(observations.get_single_observation_sets()[0].concatenated_residuals))
-    )
-    if rms.size > 0:
-        aim_log_metrics(
-            {
-                "residuals_rms": float(rms.std()),
-                "residuals_mean": float(rms.mean()),
-                "residuals_max": float(abs(rms).max()),
-                "num_observations": rms.size,
-            }
-        )
-        logger.info("Logged residual summary metrics to Aim.")
-
     residuals_psd = ResidualsPSD(cfg, observations, 30, cfg.figures.residuals_psd)
     fig_psd, ax_psd = residuals_psd._make_figure()
     residuals = Residuals(cfg, observations)
@@ -119,16 +99,10 @@ def main(cfg: DictConfig):
     ax[1].legend()
     logger.info("Pre-fit residuals plotted successfully.")
 
-    # Save, log to Aim, and attach the PDFs via the Plot base class after the
+    # Save and attach the PDFs via the Plot base class after the
     # closest-approach lines were added.
     residuals.publish(fig, ax)
     residuals_psd.publish(fig_psd, ax_psd)
-
-    # Also log config.yaml as artifact for this run
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    config_path = output_dir / "config.yaml"
-    if config_path.exists():
-        aim_log_artifact(config_path)
 
     backend = plt.get_backend().lower()
     if backend == "agg" or "inline" in backend:

@@ -6,13 +6,10 @@ Usage:
 
 import logging
 import os
-from pathlib import Path
 
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.dynamics import simulator as sim
@@ -23,8 +20,6 @@ from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact,
-    aim_log_metrics,
     enforce_initialization,
     initialize,
 )
@@ -104,37 +99,12 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
-    # Log metric summary of residuals to Aim
-    try:
-        residual_sets = observations.get_single_observation_sets()
-        concatenated = np.concatenate(
-            [np.asarray(obs_set.residuals).flatten() for obs_set in residual_sets]
-        )
-        if concatenated.size > 0:
-            aim_log_metrics(
-                {
-                    "residuals_rms": float(np.sqrt(np.mean(np.square(concatenated)))),
-                    "residuals_mean": float(np.mean(concatenated)),
-                    "residuals_max": float(np.abs(concatenated).max()),
-                    "num_observations": int(concatenated.size),
-                }
-            )
-            logger.info("Logged residual summary metrics to Aim.")
-    except Exception as exc:
-        logger.warning("Could not log residual summary metrics: %s", exc)
-
     Residuals(cfg, observations).plot()
     # ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
     ResidualsScan(cfg, observations).plot()
     # ResidualScanHistogram(cfg.figures, observations).plot()
 
     logger.info("Pre-fit residuals plotted successfully.")
-
-    # Also log config.yaml as artifact for this run
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    config_path = output_dir / "config.yaml"
-    if config_path.exists():
-        aim_log_artifact(config_path)
 
     backend = plt.get_backend().lower()
     if backend == "agg" or "inline" in backend:

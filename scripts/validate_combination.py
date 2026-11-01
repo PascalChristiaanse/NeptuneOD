@@ -77,8 +77,6 @@ from tudatpy.astro.time_representation import DateTime, iso_string_to_epoch_time
 from orbitdet.data import KernelManager
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact_reference,
-    aim_log_metrics,
     enforce_initialization,
     initialize,
 )
@@ -276,19 +274,8 @@ def main(cfg: DictConfig):
             reference_propagator=ref_propagator,
         )
         logger.info("Comparison time series saved to %s", npz_path)
-        aim_log_artifact_reference(npz_path)
 
     # --- Metrics to Aim -----------------------------------------------------
-    aim_log_metrics(
-        {
-            "error/pos_rms_m": comparison.metrics["pos_rms"],
-            "error/pos_max_m": comparison.metrics["pos_max"],
-            "error/pos_end_m": comparison.metrics["pos_end"],
-            "error/vel_rms_ms": comparison.metrics["vel_rms"],
-            "timing/test_seconds": test.integration_time,
-            "timing/reference_seconds": reference.integration_time,
-        }
-    )
 
     # --- Figure -------------------------------------------------------------
     logger.info("Plotting comparison figure...")
@@ -297,7 +284,6 @@ def main(cfg: DictConfig):
     pdf_path = output_dir / "combination_comparison.pdf"
     fig.savefig(pdf_path)
     logger.info("Comparison figure saved to %s", pdf_path)
-    aim_log_artifact_reference(pdf_path)
 
     from matplotlib import pyplot as plt
 

@@ -2,7 +2,7 @@
 DelftBlue validation soak (WP7).
 
 Runs a fast orbit determination with the new logging pipeline, then prints
-diagnostics so the operator can verify correctness without opening the Aim UI.
+diagnostics so the operator can verify correctness without a tracking UI.
 
 Usage (local test):
     python scripts/delftblue_validation.py --config-name=sweep/validation_fast \
@@ -16,10 +16,9 @@ What this tests:
        that deadlocked the old ``FdCapture`` mechanism).
     2. The stdout/stderr split: ``.err`` contains WARNING and above.
     3. The file sinks: ``run.log`` and ``errors.log`` are written.
-    4. The Aim handler: records appear in the Aim ``__log_records`` sequence.
-    5. ``@enforce_initialization``: a crashed job tags the Aim run and a
-       traceback lands in the child's ``.err``.
-    6. Per-job submitit folders: each job's logs are isolated.
+    4. ``@enforce_initialization``: a crashed job logs a traceback that lands in
+       the child's ``.err``.
+    5. Per-job submitit folders: each job's logs are isolated.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
-from orbitdet.reproducibility.logging import get_aim_handler, get_logger, shutdown_logging
+from orbitdet.reproducibility.logging import get_logger, shutdown_logging
 
 log = get_logger(__name__)
 
@@ -135,10 +134,6 @@ def main(cfg: DictConfig) -> None:
 
     log.info("VALIDATION-COMPLETED job=%s", job_num)
 
-    # Capture Aim run hash before shutdown_logging() detaches it.
-    handler = get_aim_handler()
-    aim_hash = handler.run.hash if (handler is not None and handler.run is not None) else None
-
     # Drain and shut down the logging pipeline before checking files,
     # otherwise queued records may still be in-flight.
     shutdown_logging()
@@ -162,12 +157,6 @@ def main(cfg: DictConfig) -> None:
         if sub.exists():
             for line in _verify_submitit_dir(str(sub)):
                 print(line, flush=True)
-
-    # Aim handler diagnostics (hash captured before shutdown).
-    if aim_hash:
-        print(f"{CHECK} Aim run hash: {aim_hash}", flush=True)
-    else:
-        print(f"{FAIL} No Aim run attached to handler", flush=True)
 
 
 if __name__ == "__main__":

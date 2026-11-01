@@ -34,6 +34,9 @@ dependencies:
   - joblib
   - platformdirs
 
+  # workflow
+  - snakemake
+
   - pip:
     # Tudatpy requirements
     - astroquery>=0.4.8.dev9306

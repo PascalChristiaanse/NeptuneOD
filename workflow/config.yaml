@@ -1,8 +1,32 @@
 # Snakemake workflow config.
 #
 # This is NOT the Hydra config tree (that stays in conf/). It only declares
-# which experiments the workflow knows about and which source files should
-# invalidate downstream jobs.
+# which experiments and sweeps the workflow knows about; the Hydra tree is
+# tracked separately, per stage, by the resolve_*_config rules.
+#
+# Adding an experiment means:
+#   1. adding its name to `experiments`,
+#   2. creating workflow/experiments/<name>.smk, and
+#   3. ensuring conf/experiment/<name>.yaml composes.
+#
+# Adding a sweep means:
+#   1. adding an entry to `sweeps` naming the experiment it sweeps over,
+#   2. ensuring conf/sweep/<name>.yaml declares hydra.sweeper.params, and
+#   3. checking its overrides only touch estimation-facing settings. A sweep
+#      whose overrides reach a shared stage is refused by
+#      orbitdet.pipeline.sweep_resolve, because the combinations would otherwise
+#      silently reuse preprocessing built with different settings.
 
 experiments:
-  - generate_prefit_residuals
+  - fit_to_ephemeris
+  - classic_triton_state
+
+# Sweep name -> the experiment it sweeps over.
+#
+# The base experiment matters because its preprocessing is *shared* by every
+# combination: the sweep stage rules depend on
+# results/<experiment>/preprocessing/weighted.tudat, so a sweep only re-runs the
+# estimation and covariance per combination.
+sweeps:
+  fit_to_ephemeris:
+    experiment: fit_to_ephemeris

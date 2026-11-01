@@ -8,19 +8,20 @@ two artifacts:
     ``save_to_binary``. Reloadable via ``ObservationCollection.load_from_binary``.
 ``dataset_metadata.json``
     The per-set metadata dict (``dataset_id``, ``index``, coordinate labels)
-    that ``select_observation_collection_by_tag`` needs. It is not recoverable
-    from the serialized collection, so it travels alongside it.
+    that ``select_observation_collection_by_tag`` and the weighting/outlier
+    engines need. It is not recoverable from the serialized collection, so it
+    travels alongside it.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 from omegaconf import DictConfig
 
 from orbitdet.observations import create_observation_collection
+from orbitdet.pipeline.artifacts import save_collection, save_metadata
 from orbitdet.pipeline.context import build_context
 from orbitdet.pipeline.setup import furnish_kernels
 from orbitdet.simulation import get_environment
@@ -52,19 +53,8 @@ def run_observations(cfg: DictConfig, output_dir: str | Path) -> tuple[Path, Pat
         len(dataset_metadata),
     )
 
-    obs_path = output_dir / "observations.tudat"
-    # tudat's save_to_binary appends ".tudat" unconditionally, so passing a path
-    # that already ends in ".tudat" yields "observations.tudat.tudat". Pass the
-    # stem and let tudat add the extension.
-    observations.save_to_binary(str(obs_path.with_suffix("")))
-    if not obs_path.exists():
-        raise RuntimeError(
-            f"Expected {obs_path} after save_to_binary, but it was not created. "
-            f"Directory contains: {sorted(p.name for p in output_dir.iterdir())}"
-        )
-
-    meta_path = output_dir / "dataset_metadata.json"
-    meta_path.write_text(json.dumps(dataset_metadata, indent=2, default=str))
+    obs_path = save_collection(observations, output_dir / "observations.tudat")
+    meta_path = save_metadata(dataset_metadata, output_dir / "dataset_metadata.json")
 
     logger.info("Wrote %s and %s", obs_path.name, meta_path.name)
     return obs_path, meta_path

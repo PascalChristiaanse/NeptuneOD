@@ -1,8 +1,8 @@
 """Explicit runtime context for pipeline stages.
 
 ``orbitdet.reproducibility.initialize`` builds a ``RuntimeContext`` but sources
-its output directory from ``HydraConfig`` and starts an Aim run. Pipeline stages
-need neither: the caller passes the output directory, and Aim is optional.
+its output directory from ``HydraConfig``. Pipeline stages need neither: the
+caller passes the output directory, so the DAG owns every path.
 
 The returned object is the *same* ``RuntimeContext`` type, so every existing
 ``get_environment(cfg, ctx)`` / ``get_propagator_settings(cfg, ctx, ...)`` call
@@ -49,7 +49,6 @@ def build_context(cfg: DictConfig, output_dir: str | Path) -> RuntimeContext:
         output_dir=output_dir,
         seed=int(cfg.seed),
         test_mode=False,
-        aim_run=None,
     )
 
     # The simulation builders read these three attributes off the context.

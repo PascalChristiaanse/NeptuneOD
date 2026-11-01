@@ -1,9 +1,9 @@
-"""CLI: download and furnish kernels.
+"""CLI: download and furnish SPICE kernels.
 
 Usage::
 
     python -m orbitdet.pipeline.run_kernels \
-        --config results/classic_triton_state/config.yaml \
+        --config results/classic_triton_state/config/kernels.yaml \
         --output-dir results/classic_triton_state
 """
 
@@ -22,8 +22,7 @@ def main() -> None:
 
     configure_cli_logging()
     cfg = parse_and_load(args)
-    stamp = run_kernels(cfg, args.output_dir)
-    print(stamp)
+    print(run_kernels(cfg, output_dir=args.output_dir))
 
 
 if __name__ == "__main__":

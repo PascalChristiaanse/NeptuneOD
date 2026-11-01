@@ -179,7 +179,7 @@ def stage_sources(entries: Iterable[str], root: Path = DEFAULT_ROOT) -> list[str
     ----------
     entries:
         Dotted module names the stage executes, e.g.
-        ``["orbitdet.pipeline.run_prefit_spice"]``.
+        ``["orbitdet.pipeline.run_estimation"]``.
     root:
         Import root containing the package.
 

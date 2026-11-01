@@ -1,155 +1,206 @@
-"""Stage: residual figures from the pre-fit residuals CSV.
+"""Stage: render figures drawn from an observation collection.
 
-This is the payoff of persisting residuals to CSV. The figure needs no
-``ObservationCollection``, no furnished SPICE pool, and no environment: it is a
-pure function of a CSV plus a config slice. That makes it fast, parallelisable,
-and re-runnable on its own — editing a figure title re-runs this rule and
-nothing else.
+The payoff of persisting the collection in its native form: a figure needs no
+live environment and no SPICE pool. It is a function of a collection artifact
+plus a config slice, so editing a figure's styling re-runs this rule and nothing
+else.
 
-The plotter classes in ``orbitdet.visualization`` expect a live
-``ObservationCollection``, so this stage builds a minimal stand-in from the CSV
-rows. Only the attributes the plotters actually read are provided.
+Why this is a table rather than a name-to-class lookup
+-----------------------------------------------------
+Different figures need *different subsets of the same collection*, and that is
+load-bearing rather than cosmetic:
+
+* ``prefit_residuals_spice``       -- every observation set
+* ``prefit_residuals_spice_scan``  -- Gaia only, because the scan-frame rotation
+  needs the archived ``position_angle_scan``, which only Gaia carries
+* ``prefit_normalized_residuals``  -- **non-Gaia only**, because a Gaia residual
+  is not meaningful without that same rotation
+
+So a figure name selects a *combination* of plotter class and set filter, not
+just a class. ``prefit_normalized_residuals`` and ``residual_qq`` both render a
+distribution plot, but over different sets.
+
+The name doubles as the styling key: the plotters look their configuration up
+under ``cfg.figures.<name>``, so it must match the key the experiment config
+declares.
 """
 
 from __future__ import annotations
 
-import csv
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
-import numpy as np
 from omegaconf import DictConfig
-from tudatpy.astro.time_representation import Time
+from tudatpy.estimation import observations as obs
 
-from orbitdet.visualization.residuals import Residuals
+from orbitdet.pipeline.artifacts import load_collection, load_metadata
+from orbitdet.utility import select_observation_collection_by_tag
+from orbitdet.visualization.residual_histogram import ResidualHistogram
+from orbitdet.visualization.residual_qq import ResidualQQ
+from orbitdet.visualization.residual_scatter import ResidualScatter
+from orbitdet.visualization.residuals import (
+    NormalizedResiduals,
+    NormalizedResidualScan,
+    Residuals,
+    ResidualsScan,
+)
 
 logger = logging.getLogger(__name__)
 
-RAD_TO_ARCSEC = 180.0 / np.pi * 3600.0
+#: ``(collection, metadata) -> collection | None``. Returning ``None`` means no
+#: set qualified, and the figure is skipped rather than drawn empty.
+SetFilter = Callable[[obs.ObservationCollection, dict], obs.ObservationCollection | None]
 
 
-def _load_residuals(csv_path: Path) -> dict[int, dict]:
-    """Group CSV rows into per-set structures keyed by ``set_index``."""
-    sets: dict[int, dict] = {}
-    with csv_path.open(newline="") as handle:
-        for row in csv.DictReader(handle):
-            index = int(row["set_index"])
-            entry = sets.setdefault(
-                index,
-                {
-                    "epochs": [],
-                    "components": {},
-                    "dataset_id": row["dataset_id"],
-                    "observable_type": row["observable_type"],
-                    "receiver_body": row.get("receiver_body", ""),
-                    "receiver_ref_point": row.get("receiver_ref_point", ""),
-                    "transmitter_body": row.get("transmitter_body", ""),
-                },
-            )
-            epoch = float(row["epoch_sec_j2000"])
-            if epoch not in entry["epochs"]:
-                entry["epochs"].append(epoch)
-            entry["components"].setdefault(epoch, {})[int(row["component"])] = float(
-                row["residual_rad"]
-            )
-    return sets
+def _all_sets(collection: obs.ObservationCollection, metadata: dict):
+    """Every observation set."""
+    return collection
 
 
-def _link_definition(entry: dict) -> SimpleNamespace:
-    """Rebuild the minimal link-end structure the plotters read for labels.
+def _gaia_only(collection: obs.ObservationCollection, metadata: dict):
+    """Only the Gaia sets, which carry ``position_angle_scan``."""
+    return select_observation_collection_by_tag(collection, metadata, "gaia")
 
-    ``Residuals`` inspects ``link_definition.link_ends`` to derive a series
-    label: it looks for a ``receiver`` entry, reads its ``reference_point`` and
-    ``body_name``, and falls back to ``observer`` or the first link end. Only
-    those attributes are needed, so plain namespaces suffice.
+
+def _non_gaia(collection: obs.ObservationCollection, metadata: dict):
+    """Every set except Gaia, whose residuals need the scan rotation."""
+    return select_observation_collection_by_tag(collection, metadata, "gaia", exclude=True)
+
+
+@dataclass(frozen=True)
+class FigureSpec:
+    """How to render one figure from a collection.
+
+    Attributes
+    ----------
+    plotter:
+        The ``Plot`` subclass to instantiate.
+    select:
+        Chooses the subset of the collection this figure applies to.
+    styled:
+        Whether the plotter accepts ``use_figure_name``. The residual plotters
+        do, and look their styling up under that key; the distribution plotters
+        name themselves after their class, so ``name`` is assigned afterwards.
     """
-    from tudatpy.estimation.observable_models_setup import links
 
-    receiver = SimpleNamespace(
-        body_name=entry["receiver_body"],
-        reference_point=entry["receiver_ref_point"],
-    )
-    transmitter = SimpleNamespace(
-        body_name=entry["transmitter_body"],
-        reference_point="",
-    )
-    return SimpleNamespace(link_ends={links.receiver: receiver, links.transmitter: transmitter})
+    plotter: type
+    select: SetFilter
+    styled: bool = True
 
 
-def _build_collection(sets: dict[int, dict]) -> SimpleNamespace:
-    """Build a minimal stand-in exposing what ``Residuals`` reads.
+#: Figure name -> spec. The name doubles as the styling key and the PDF stem.
+COLLECTION_FIGURES: dict[str, FigureSpec] = {
+    # Ephemeris-referenced residuals: every set, the Gaia-only scan variants,
+    # and the normalized non-Gaia view.
+    "prefit_residuals_spice": FigureSpec(Residuals, _all_sets),
+    "prefit_residuals_spice_scan": FigureSpec(ResidualsScan, _gaia_only),
+    "prefit_normalized_residuals": FigureSpec(NormalizedResiduals, _non_gaia),
+    "prefit_normalized_residuals_scan": FigureSpec(NormalizedResidualScan, _gaia_only),
+    # Propagated-trajectory residuals, pre-fit.
+    "prefit_residuals_prop": FigureSpec(Residuals, _all_sets),
+    "prefit_residuals_prop_scan": FigureSpec(ResidualsScan, _gaia_only),
+    # Propagated-trajectory residuals, post-fit.
+    "postfit_residuals": FigureSpec(Residuals, _all_sets),
+    "postfit_residuals_scan": FigureSpec(ResidualsScan, _gaia_only),
+    "postfit_normalized_residuals": FigureSpec(NormalizedResiduals, _non_gaia),
+    "postfit_normalized_residuals_scan": FigureSpec(NormalizedResidualScan, _gaia_only),
+    # Distribution summaries over every set.
+    "residual_qq": FigureSpec(ResidualQQ, _all_sets, styled=False),
+    "residual_scatter": FigureSpec(ResidualScatter, _all_sets, styled=False),
+    "residual_histogram": FigureSpec(ResidualHistogram, _all_sets, styled=False),
+}
 
-    ``Residuals`` calls ``get_single_observation_sets()`` and, per set, reads
-    ``observation_times``, ``residuals``, ``observable_type`` and
-    ``link_definition``.
+
+def _write_placeholder(pdf_path: Path, figure_name: str, reason: str) -> Path:
+    """Write a one-page PDF explaining why a figure has no data.
+
+    A figure whose filter matches nothing is a legitimate outcome -- a dataset
+    with no Gaia observations has no scan-frame figure -- but Snakemake requires
+    every declared output to exist. Writing an explicit placeholder keeps the
+    DAG unconditional *and* tells the reader why the figure is empty, which a
+    silently missing file would not.
     """
-    observation_sets = []
-    for index in sorted(sets):
-        entry = sets[index]
-        epochs = sorted(entry["epochs"])
-        n_components = max(len(c) for c in entry["components"].values())
-        residuals = np.array(
-            [
-                [entry["components"][epoch].get(k, 0.0) for k in range(n_components)]
-                for epoch in epochs
-            ]
-        )
-        observation_sets.append(
-            SimpleNamespace(
-                observation_times=[Time(epoch) for epoch in epochs],
-                residuals=residuals,
-                observable_type=entry["observable_type"],
-                link_definition=_link_definition(entry),
-            )
-        )
+    import matplotlib
 
-    return SimpleNamespace(get_single_observation_sets=lambda *args: observation_sets)
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+
+    fig = plt.figure(figsize=(8, 4))
+    fig.text(0.5, 0.62, figure_name, ha="center", va="center", fontsize=14, weight="bold")
+    fig.text(0.5, 0.42, reason, ha="center", va="center", fontsize=10, wrap=True)
+    fig.text(0.5, 0.2, "No figure produced.", ha="center", va="center", fontsize=9, style="italic")
+    fig.savefig(pdf_path)
+    plt.close(fig)
+    logger.info("Wrote placeholder %s (%s)", pdf_path.name, reason)
+    return pdf_path
 
 
-def run_residuals_figure(
+def run_collection_figure(
     cfg: DictConfig,
-    residuals_csv: str | Path,
+    observations_path: str | Path,
+    metadata_path: str | Path | None,
     output_dir: str | Path,
-    figure_name: str = "residuals",
+    figure_name: str,
 ) -> Path:
-    """Render the residual figure from the CSV.
+    """Render one collection-based figure.
 
     Parameters
     ----------
     cfg:
         The ``figures`` config slice.
-    residuals_csv:
-        ``residuals.csv`` from the prefit stage.
+    observations_path:
+        Collection carrying residuals.
+    metadata_path:
+        ``dataset_metadata.json``, needed by the tag-filtered figures. May be
+        ``None`` for figures that use every set.
     output_dir:
         Directory for the PDF.
     figure_name:
-        Key under ``cfg.figures`` holding this figure's styling. This must
-        match the name the experiment script passes to ``Residuals``, because
-        the plotter looks its styling up under exactly this key. It also
-        determines the output filename (``<figure_name>.pdf``).
+        Key under ``cfg.figures`` holding this figure's styling, and the base
+        name of the output PDF.
 
     Returns
     -------
     Path
-        The written PDF.
+        The written PDF. When the figure's filter matches no observation set, a
+        placeholder PDF is written instead of plotting, so the declared output
+        always exists.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = output_dir / f"{figure_name}.pdf"
 
-    sets = _load_residuals(Path(residuals_csv))
-    logger.info("Loaded %d observation set(s) from %s", len(sets), Path(residuals_csv).name)
+    spec = COLLECTION_FIGURES.get(figure_name)
+    if spec is None:
+        raise ValueError(
+            f"Unknown collection figure {figure_name!r}. Known: {sorted(COLLECTION_FIGURES)}"
+        )
 
-    collection = _build_collection(sets)
-    plotter = Residuals(
-        cfg,
-        use_figure_name=figure_name,
-        observation_collection=collection,
-    )
+    collection = load_collection(observations_path)
+    metadata = load_metadata(metadata_path) if metadata_path else {}
+
+    selected = spec.select(collection, metadata)
+    if selected is None:
+        return _write_placeholder(
+            pdf_path,
+            figure_name,
+            f"No observation set matched this figure's filter "
+            f"({spec.select.__name__.strip('_')}).",
+        )
+
+    if spec.styled:
+        plotter = spec.plotter(cfg, use_figure_name=figure_name, observation_collection=selected)
+    else:
+        plotter = spec.plotter(cfg, selected)
+
+    # Set the name explicitly so the output filename matches the DAG's declared
+    # output regardless of how the plotter would have named itself.
+    plotter.name = figure_name
     plotter.output_dir = output_dir
     plotter.plot()
 
-    pdf_path = output_dir / f"{figure_name}.pdf"
     if not pdf_path.exists():
         raise RuntimeError(
             f"Expected {pdf_path} after plotting, but it was not created. "

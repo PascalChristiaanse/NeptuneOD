@@ -19,14 +19,14 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     """Add the arguments every stage accepts.
 
     Stages take a *resolved* config path rather than an experiment name. The
-    resolved file is produced by the ``resolve_config`` rule and declared as an
-    input, so Snakemake tracks it and a change anywhere in ``conf/``
+    resolved file is produced by the ``resolve_*_config`` rules and declared as
+    an input, so Snakemake tracks it and a change anywhere in ``conf/``
     invalidates the downstream jobs.
     """
     parser.add_argument(
         "--config",
         required=True,
-        help="Resolved config YAML from the resolve_config rule.",
+        help="Resolved config YAML from a resolve_*_config rule.",
     )
     parser.add_argument(
         "--output-dir",

@@ -15,7 +15,7 @@ stage rule declares only its own slice as an input, so:
   produced it.
 
 Slicing matters. A single combined ``config.yaml`` would mean editing a figure
-title invalidates the observation build and the estimation — correct but
+title invalidates the observation build and the estimation -- correct but
 useless. With slices, editing ``conf/figures/residuals.yaml`` touches only the
 ``figures`` slice.
 
@@ -48,29 +48,73 @@ _KERNEL_KEYS = [
 ]
 
 # ``get_environment`` reads these.
+#
+# ``datasets`` belongs here, not only on the observations stage. The environment
+# build resolves a *tabulated* ephemeris by looking up
+# ``cfg.datasets.<source_dataset>`` (see ``_configure_ephemeris_model``), so any
+# stage that builds the environment needs the dataset config -- even one that
+# loads an already-built observation collection from disk. Omitting it fails
+# with "Voyager dataset configuration ... is required to build a tabulated
+# ephemeris", which is exactly what happened for classic_triton_state.
 _ENVIRONMENT_KEYS = [
     "bodies_to_create",
     "use_default_body_settings",
     "global_frame_origin",
     "global_frame_orientation",
+    "datasets",
 ]
 
-# Only the observations stage builds the collection from these.
+# Retained as a named group for readability at the call sites below.
 _DATASET_KEYS = ["datasets"]
+
+# ``get_dynamical_model``, ``get_integrator_settings`` and
+# ``get_propagator_settings`` read these, as do ``get_estimatable_parameters``
+# and the a priori covariance builder.
+_DYNAMICS_KEYS = ["bodies_to_propagate", "integrator", "propagation"]
+
+# ``get_estimatable_parameters`` and ``get_apriori_covariance_matrix``.
+_ESTIMATION_KEYS = ["estimation", "apriori"]
 
 #: Top-level config keys each stage actually reads.
 #:
-#: ``prefit_spice`` deliberately omits ``datasets``: it loads the collection
-#: from disk rather than rebuilding it, so a dataset change reaches it through
-#: the ``observations.tudat`` file dependency instead of through its config.
+#: Every stage that calls ``prepare_environment`` needs the full environment
+#: key set *including* ``datasets``, because the tabulated-ephemeris path reads
+#: ``cfg.datasets``. ``figures`` is the exception: it never builds an
+#: environment, so it needs no environmental keys at all.
 #:
 #: ``figures`` needs ``data_folder`` because the residual plotters resolve
 #: ground-station labels through ``get_observatory_info``, which reads
 #: ``observatories.txt`` from there.
+#:
+#: ``weighting`` and ``outlier_rejection`` each need their own subsystem config
+#: *and* ``grouping``: the outlier engine may be given its own ``grouping:`` node
+#: but falls back to the top-level one, and the weighting engine receives the
+#: top-level one explicitly.
 STAGE_KEYS: dict[str, list[str]] = {
     "kernels": _CONTEXT_KEYS + _KERNEL_KEYS,
     "observations": _CONTEXT_KEYS + _KERNEL_KEYS + _ENVIRONMENT_KEYS + _DATASET_KEYS,
-    "prefit_spice": _CONTEXT_KEYS + _KERNEL_KEYS + _ENVIRONMENT_KEYS,
+    "outlier_rejection": (
+        _CONTEXT_KEYS
+        + _KERNEL_KEYS
+        + _ENVIRONMENT_KEYS
+        + ["outlier_rejection", "grouping"]
+    ),
+    "weighting": _CONTEXT_KEYS
+    + _KERNEL_KEYS
+    + _ENVIRONMENT_KEYS
+    + ["weighting", "grouping"],
+    "dynamics": _CONTEXT_KEYS + _KERNEL_KEYS + _ENVIRONMENT_KEYS + _DYNAMICS_KEYS,
+    "prefit": _CONTEXT_KEYS + _KERNEL_KEYS + _ENVIRONMENT_KEYS + _DYNAMICS_KEYS,
+    "estimation": _CONTEXT_KEYS
+    + _KERNEL_KEYS
+    + _ENVIRONMENT_KEYS
+    + _DYNAMICS_KEYS
+    + _ESTIMATION_KEYS,
+    "covariance": _CONTEXT_KEYS
+    + _KERNEL_KEYS
+    + _ENVIRONMENT_KEYS
+    + _DYNAMICS_KEYS
+    + _ESTIMATION_KEYS,
     "figures": ["figures", "data_folder"],
 }
 

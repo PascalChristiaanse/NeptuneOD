@@ -31,6 +31,31 @@ from omegaconf import DictConfig
 
 logger = logging.getLogger(__name__)
 
+#: Columns of the per-source table, in display order.
+SOURCE_COLUMNS: list[str] = [
+    "source",
+    "dataset_id",
+    "observatory_code",
+    "n_obs",
+    "ra_type",
+    "ra_rms_arcsec",
+    "dec_type",
+    "dec_rms_arcsec",
+]
+
+#: Columns of the per-group table: the source columns plus the group id.
+GROUP_COLUMNS: list[str] = [
+    "source",
+    "dataset_id",
+    "observatory_code",
+    "group_id",
+    "n_obs",
+    "ra_type",
+    "ra_rms_arcsec",
+    "dec_type",
+    "dec_rms_arcsec",
+]
+
 
 class WeightSummaryTable:
     """Build summary tables from a weights DataFrame.
@@ -61,7 +86,7 @@ class WeightSummaryTable:
         """
         df = self.weights_df
         if df.empty:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=SOURCE_COLUMNS)
 
         source_col = "source_name" if "source_name" in df.columns else "set_id"
 
@@ -88,7 +113,7 @@ class WeightSummaryTable:
                 }
             )
 
-        result = pd.DataFrame(records)
+        result = pd.DataFrame(records, columns=SOURCE_COLUMNS)
         result = result.sort_values("source")
         result = result.reset_index(drop=True)
         return result
@@ -106,7 +131,7 @@ class WeightSummaryTable:
         """
         df = self.weights_df
         if df.empty:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=GROUP_COLUMNS)
 
         source_col = "source_name" if "source_name" in df.columns else "set_id"
 
@@ -134,7 +159,7 @@ class WeightSummaryTable:
                 }
             )
 
-        result = pd.DataFrame(records)
+        result = pd.DataFrame(records, columns=GROUP_COLUMNS)
         result = result.sort_values(["source", "group_id"])
         result = result.reset_index(drop=True)
         return result

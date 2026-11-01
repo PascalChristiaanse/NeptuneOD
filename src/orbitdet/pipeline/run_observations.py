@@ -3,7 +3,7 @@
 Usage::
 
     python -m orbitdet.pipeline.run_observations \
-        --config results/classic_triton_state/config.yaml \
+        --config results/classic_triton_state/config/observations.yaml \
         --output-dir results/classic_triton_state
 """
 
@@ -22,7 +22,7 @@ def main() -> None:
 
     configure_cli_logging()
     cfg = parse_and_load(args)
-    obs_path, meta_path = run_observations(cfg, args.output_dir)
+    obs_path, meta_path = run_observations(cfg, output_dir=args.output_dir)
     print(obs_path)
     print(meta_path)
 

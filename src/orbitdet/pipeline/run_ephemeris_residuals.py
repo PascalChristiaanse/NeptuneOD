@@ -1,12 +1,12 @@
-"""CLI: pre-fit residuals wrt SPICE.
+"""CLI: compute residuals against the SPICE ephemeris.
 
 Usage::
 
-    python -m orbitdet.pipeline.run_prefit_spice \
-        --config results/classic_triton_state/config.yaml \
+    python -m orbitdet.pipeline.run_ephemeris_residuals \
+        --config results/classic_triton_state/config/prefit.yaml \
         --observations results/classic_triton_state/observations.tudat \
         --metadata results/classic_triton_state/dataset_metadata.json \
-        --output-dir results/classic_triton_state/prefit_spice
+        --output-dir results/classic_triton_state/prefit_ephemeris
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 
 from orbitdet.pipeline.cli import add_common_args, configure_cli_logging, parse_and_load
-from orbitdet.pipeline.prefit import run_prefit_spice
+from orbitdet.pipeline.residuals import run_residuals_wrt_ephemeris
 
 
 def main() -> None:
@@ -26,12 +26,13 @@ def main() -> None:
 
     configure_cli_logging()
     cfg = parse_and_load(args)
-    csv_path = run_prefit_spice(
+    collection_path, csv_path = run_residuals_wrt_ephemeris(
         cfg,
         observations_path=args.observations,
         metadata_path=args.metadata,
         output_dir=args.output_dir,
     )
+    print(collection_path)
     print(csv_path)
 
 

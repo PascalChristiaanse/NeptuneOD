@@ -1,4 +1,4 @@
-"""Hydra-as-a-library config loading.
+"""Hydra-as-a-library config loading for pipeline stages.
 
 ``@hydra.main`` takes over the process: it creates a timestamped output
 directory, changes the working directory, and installs global state that

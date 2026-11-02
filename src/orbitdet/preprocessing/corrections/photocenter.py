@@ -8,6 +8,9 @@ shape with isotropic scattering, using a given body diameter.
 
 For asteroids the diameter is normally queried from JPL SBDB, but for other
 bodies (e.g. Triton) it can be passed explicitly.
+
+Reference: Fuentes-Munoz et al. (2024), for the spherical, isotropically
+scattering offset ratio as a function of solar phase angle.
 """
 
 from __future__ import annotations

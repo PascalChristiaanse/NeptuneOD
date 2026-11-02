@@ -121,7 +121,9 @@ def main(cfg: DictConfig):
 
     # Create observation collection
     logger.info("Creating observation collection...")
-    observations, observation_models, dataset_metadata = create_observation_collection(cfg, bodies)
+    observations, observation_models, dataset_metadata, standard_frame = (
+        create_observation_collection(cfg, bodies)
+    )
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies
@@ -286,9 +288,7 @@ def main(cfg: DictConfig):
     ).plot()
 
     logger.info("Pre-fit residuals computed and plotted successfully.")
-    # import matplotlib.pyplot as plt
-    # plt.show()
-    # return
+
 
     ################################################################
     ######################### ESTIMATION ###########################

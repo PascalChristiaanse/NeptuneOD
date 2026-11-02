@@ -4,6 +4,22 @@ import re
 import numpy as np
 import pandas as pd
 
+from orbitdet.preprocessing.columns import (
+    find_column as _find_column,
+)
+from orbitdet.preprocessing.columns import (
+    find_column_substring as _find_column_substring,
+)
+from orbitdet.preprocessing.columns import (
+    normalize_column_name as _normalize_column_name,
+)
+from orbitdet.preprocessing.columns import (
+    numeric_series as _numeric_series,
+)
+from orbitdet.preprocessing.columns import (
+    relative_position_scale as _relative_position_scale,
+)
+
 from .helpers import normalize_observatory_code
 
 ISO_TIME_COLUMN = "iso_time"
@@ -12,60 +28,58 @@ RELATIVE_POSITION_Y_COLUMN = "relative_position_y"
 
 logger = logging.getLogger(__name__)
 
-
-def _normalize_column_name(column_name: object) -> str:
-    return " ".join(str(column_name).strip().lower().replace("_", " ").split())
-
-
-def _find_column(
-    dataframe: pd.DataFrame, *needles: str, excludes: list[str] | None = None
-) -> str | None:
-    excludes = excludes or []
-    for column_name in dataframe.columns:
-        normalized = _normalize_column_name(column_name)
-
-        # Skip columns containing any excluded keywords
-        # Allow optional trailing "s" so that e.g. "second" also matches "seconds"
-        if any(re.search(rf"\b{re.escape(ex)}s?\b", normalized) for ex in excludes):
-            continue
-
-        matched_all = True
-        for needle in needles:
-            if needle == "jd":
-                if not ("jd" in normalized or "julian" in normalized):
-                    matched_all = False
-                    break
-            else:
-                if not re.search(rf"\b{re.escape(needle)}\b", normalized):
-                    matched_all = False
-                    break
-
-        if matched_all:
-            return str(column_name)
-
-    return None
+#: Substring that marks the Gaia DR1 catalogue reference epoch.
+_GAIA_DR1_EPOCH_MARKER = "2015"
 
 
-def _find_column_substring(
-    dataframe: pd.DataFrame, *needles: str, excludes: list[str] | None = None
-) -> str | None:
-    excludes = excludes or []
-    for column_name in dataframe.columns:
-        normalized = _normalize_column_name(column_name)
+def resolve_epoch_of_equinox(epoch_of_equinox: object, *, dataset: str = "") -> str:
+    """Return the equinox to precess from, overriding the misleading ``J2015.0``.
 
-        if any(ex in normalized for ex in excludes):
-            continue
+    ``nm0081`` (Wang et al. 2017, Gaia DR1) declares
+    ``epoch of equinox: J2015.0``, but 2015.0 is Gaia DR1's *catalogue
+    reference epoch* - the mean epoch of the observations that went into the
+    catalogue - not the equinox its coordinates are referred to.  The frame
+    itself is ICRS/J2000-aligned.
 
-        if all(needle in normalized for needle in needles):
-            return str(column_name)
+    Taking the label at face value precesses the data by ~15 years of
+    precession, about **700 arcsec**, which is the dominant error in the
+    dataset: measured against SPICE ``nep097``, nm0081 agrees with the Triton
+    ephemeris to ~3 arcsec as given, and to ~700 arcsec once precessed.  Its
+    Gaia DR2 siblings (nm0082/nm0084/nm0086) are all labelled ``J2000`` despite
+    DR2's catalogue epoch being 2015.5, which shows the field is populated
+    inconsistently across NSDB.
 
-    return None
+    So a ``2015`` label is treated as J2000 and a warning is logged.  This is a
+    deliberate, reversible override: delete :data:`_GAIA_DR1_EPOCH_MARKER` and
+    the check below once the underlying data is corrected upstream.
 
+    Args:
+        epoch_of_equinox: The raw label from the dataset configuration.
+        dataset: Dataset identifier, used only to make the warning actionable.
 
-def _numeric_series(dataframe: pd.DataFrame, column_name: str | None) -> pd.Series:
-    if column_name is None:
-        return pd.Series(0.0, index=dataframe.index, dtype="float64")
-    return pd.to_numeric(dataframe[column_name], errors="coerce")
+    Returns:
+        ``"J2000"`` for a 2015 label, otherwise the label unchanged.
+
+    Examples:
+        >>> resolve_epoch_of_equinox("J2015.0")
+        'J2000'
+        >>> resolve_epoch_of_equinox("date")
+        'date'
+        >>> resolve_epoch_of_equinox("J2000")
+        'J2000'
+    """
+    label = "" if epoch_of_equinox is None else str(epoch_of_equinox)
+    if _GAIA_DR1_EPOCH_MARKER in label:
+        logger.warning(
+            "Dataset %s declares 'epoch of equinox: %s', which is the Gaia DR1 "
+            "catalogue reference epoch rather than an equinox; its coordinates "
+            "are already J2000/ICRS-aligned. Treating it as J2000. Precessing it "
+            "instead would shift the data by ~700 arcsec.",
+            dataset or "<unknown>",
+            label,
+        )
+        return "J2000"
+    return label
 
 
 def _to_iso_string(timestamp: object) -> str | pd._libs.missing.NAType:
@@ -362,21 +376,6 @@ def set_ra_dec_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
         )
 
     return ("ra", "dec")
-
-
-def _relative_position_scale(column_name: str) -> float:
-    normalized = _normalize_column_name(column_name)
-
-    if "sec of time" in normalized or "seconds of time" in normalized:
-        return np.pi / 43200.0
-
-    if "arcsec" in normalized or "arc second" in normalized or "arcsecond" in normalized:
-        return np.pi / 648000.0
-
-    if "degree" in normalized or re.search(r"\bdeg\b", normalized):
-        return np.pi / 180.0
-
-    raise ValueError(f"Could not infer angular units from column '{column_name}'.")
 
 
 def _find_relative_position_x_column(dataframe: pd.DataFrame) -> str | None:

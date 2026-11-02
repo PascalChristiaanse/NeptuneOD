@@ -16,7 +16,7 @@ from orbitdet.observations import (
     register_dataset_factory,
 )
 from orbitdet.observations import collection as collection_module
-from orbitdet.observations.registry import _FACTORY_REGISTRY
+from orbitdet.observations.registry import _FACTORY_REGISTRY, dispatch_key
 
 
 @pytest.fixture(autouse=True)
@@ -127,8 +127,140 @@ class TestCentralFactory:
         dataset_cfg = OmegaConf.create({"file": "test.csv", "weight": 1.0})
         cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
 
-        with pytest.raises(ValueError, match="must have a 'type' field"):
+        with pytest.raises(ValueError, match="must have either a 'type' field"):
             create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
+
+    def test_dispatch_key_selects_the_factory(self):
+        # A config carrying the standard frame's two normalised fields dispatches
+        # on those, without consulting 'type' at all.  A synthetic key is used so
+        # the test does not depend on which real factories happen to be
+        # registered; test_standard_frame_factories covers the real ones.
+        dataset_cfg = OmegaConf.create(
+            {
+                "observation_type": "test_kind",
+                "coordinate_kind": "test_coords",
+                "file": "test.csv",
+            }
+        )
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
+        factory_calls = []
+
+        # A factory that declares `frame` receives it, which is how the dispatcher
+        # reaches the standard-frame consumers.
+        @register_dataset_factory(dispatch_key("test_kind", "test_coords"))
+        def factory(cfg, dataset_cfg, system_of_bodies, *, frame):
+            factory_calls.append((system_of_bodies, frame))
+            return "dataset", "settings"
+
+        assert create_observation_dataset(
+            cfg, dataset_cfg, SimpleNamespace(), frame="THE_FRAME"
+        ) == ("dataset", "settings")
+        assert len(factory_calls) == 1
+        assert factory_calls[0][1] == "THE_FRAME"
+
+    def test_dispatch_key_is_preferred_over_type(self):
+        # A config with both must dispatch on the normalised pair, so that adding
+        # the fields to a config actually switches it over.
+        dataset_cfg = OmegaConf.create(
+            {
+                "observation_type": "test_pref",
+                "coordinate_kind": "test_coords",
+                "type": "legacy_should_not_be_used",
+                "file": "test.csv",
+            }
+        )
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
+
+        @register_dataset_factory(dispatch_key("test_pref", "test_coords"))
+        def preferred(cfg, dataset_cfg, system_of_bodies):
+            return "preferred", "settings"
+
+        @register_dataset_factory("legacy_should_not_be_used")
+        def legacy(cfg, dataset_cfg, system_of_bodies):
+            return "legacy", "settings"
+
+        result = create_observation_dataset(cfg, dataset_cfg, SimpleNamespace())
+
+        assert result == ("preferred", "settings")
+
+    def test_factory_declaring_a_frame_receives_it(self):
+        # A factory that consumes a standard frame declares `frame`; the dispatcher
+        # passes it.  One that does not (Gaia, Voyager, simulated) is called the
+        # old way, so a single call site serves both.
+        dataset_cfg = OmegaConf.create({"type": "frame_consumer", "file": "t.csv"})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
+        received = {}
+
+        @register_dataset_factory("frame_consumer")
+        def factory(cfg, dataset_cfg, system_of_bodies, *, frame):
+            received["frame"] = frame
+            return "dataset", "settings"
+
+        create_observation_dataset(cfg, dataset_cfg, SimpleNamespace(), frame="THE_FRAME")
+
+        assert received["frame"] == "THE_FRAME"
+
+    def test_factory_without_a_frame_parameter_is_called_positionally(self):
+        dataset_cfg = OmegaConf.create({"type": "no_frame", "file": "t.csv"})
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
+
+        @register_dataset_factory("no_frame")
+        def factory(cfg, dataset_cfg, system_of_bodies):
+            return "dataset", "settings"
+
+        assert create_observation_dataset(cfg, dataset_cfg, SimpleNamespace(), frame="UNUSED") == (
+            "dataset",
+            "settings",
+        )
+
+    def test_dispatch_key_falls_back_to_type_when_unregistered(self):
+        # A standard-frame config whose key has no factory must still work via
+        # its legacy type, so adding the two fields to a config cannot strand a
+        # dataset whose factory has not been migrated yet.
+        dataset_cfg = OmegaConf.create(
+            {
+                "observation_type": "unmigrated_kind",
+                "coordinate_kind": "unmigrated_coords",
+                "type": "legacy_name",
+                "file": "test.csv",
+            }
+        )
+        cfg = OmegaConf.create({"datasets": {"test": dataset_cfg}})
+
+        @register_dataset_factory("legacy_name")
+        def factory(cfg, dataset_cfg, system_of_bodies):
+            return "dataset", "settings"
+
+        assert create_observation_dataset(cfg, dataset_cfg, SimpleNamespace()) == (
+            "dataset",
+            "settings",
+        )
+
+    def test_aliases_resolve_to_the_same_factory(self):
+        # The fused NSDB type strings stay registered as aliases so the 82
+        # committed configs keep loading unchanged.
+        @register_dataset_factory("canonical_name", aliases=["fused_typo_name"])
+        def factory(cfg, dataset_cfg, system_of_bodies):
+            return "dataset", "settings"
+
+        assert get_factory("canonical_name") is factory
+        assert get_factory("fused_typo_name") is factory
+
+    def test_alias_clash_leaves_the_registry_untouched(self):
+        @register_dataset_factory("taken_name")
+        def first(cfg, dataset_cfg, system_of_bodies):
+            return "first", "settings"
+
+        with pytest.raises(ValueError, match="already registered"):
+
+            @register_dataset_factory("fresh_name", aliases=["taken_name"])
+            def second(cfg, dataset_cfg, system_of_bodies):
+                return "second", "settings"
+
+        # The canonical name must not have been registered by the failed call.
+        assert get_factory("taken_name") is first
+        with pytest.raises(ValueError, match="No factory registered"):
+            get_factory("fresh_name")
 
     def test_unknown_type_raises_error(self):
         dataset_cfg = OmegaConf.create({"type": "unknown_modality_xyz", "file": "test.csv"})
@@ -151,7 +283,7 @@ class TestCollectionBuilder:
 
         created = []
 
-        def fake_create_observation_dataset(cfg, dataset_cfg, system):
+        def fake_create_observation_dataset(cfg, dataset_cfg, system, *, frame=None):
             created.append((dataset_cfg.type, system))
             return f"dataset:{dataset_cfg.type}", f"settings:{dataset_cfg.type}"
 
@@ -179,6 +311,7 @@ class TestCollectionBuilder:
         assert result[0] is merged_collection
         assert result[1] == ["settings:alpha", "settings:beta"]
         assert result[2] == {}  # dataset_metadata
+        assert result[3].empty  # standard frame: no NSDB dataset in this config
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
         merge_mock.assert_called_once()
         merged_collections = merge_mock.call_args.args[0]
@@ -210,7 +343,7 @@ class TestCollectionBuilder:
             ("dataset:gamma", None),
         ]
 
-        def fake_create_observation_dataset(cfg, dataset_cfg, system):
+        def fake_create_observation_dataset(cfg, dataset_cfg, system, *, frame=None):
             return created.pop(0)
 
         class FakeObservationCollection:
@@ -237,6 +370,7 @@ class TestCollectionBuilder:
         assert result[0] is merged_collection
         assert result[1] == ["settings:alpha", "settings:beta", None]
         assert result[2] == {}  # dataset_metadata
+        assert result[3].empty  # standard frame: no NSDB dataset in this config
         merge_mock.assert_called_once()
         merged_collections = merge_mock.call_args.args[0]
         assert len(merged_collections) == 1

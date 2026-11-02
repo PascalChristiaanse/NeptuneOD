@@ -3,9 +3,14 @@
 import logging
 from typing import Any
 
+import pandas as pd
 import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, ListConfig, OmegaConf
+
+from orbitdet.data.frame_sources import standard_frame_for
+from orbitdet.data.nsdb_source import NSDBSource
+from orbitdet.preprocessing.frames import convert_standard_frame
 
 from .factory import create_observation_dataset
 from .utils import get_set_identifier
@@ -69,7 +74,7 @@ def _coordinate_type_label(dataset_type: str) -> tuple[str, str]:
 
 def create_observation_collection(
     cfg: DictConfig, system_of_bodies: env.SystemOfBodies
-) -> tuple[obs.ObservationCollection, list[Any], dict[str, dict]]:
+) -> tuple[obs.ObservationCollection, list[Any], dict[str, list[dict]], pd.DataFrame]:
     """Build an observation collection from multiple dataset configs.
 
     Iterates through dataset configurations in a collection, dispatches each through
@@ -88,6 +93,13 @@ def create_observation_collection(
               with ``name`` (source author), ``coordinate_type`` (human-readable label),
               and ``index`` (position of the set in the final collection, so it can be
               retrieved via ``collection.get_single_observation_sets()[index]``).
+            - The concatenated standard frame: every row the NSDB-backed datasets
+              contributed, in dataset order, carrying the full schema (provenance,
+              units, epochs and measurements).  This is the same data the factories
+              consumed, so it replaces the hand-maintained metadata above.  Datasets
+              that build their observations from another source (Gaia, Voyager,
+              simulated) contribute no rows; a collection made only of those returns
+              an empty frame carrying the standard columns.
     """
     if not isinstance(cfg, DictConfig):
         raise TypeError(f"Expected DictConfig, got {type(cfg)}")
@@ -101,6 +113,18 @@ def create_observation_collection(
     observation_sets = []
     model_setting = []
     dataset_metadata: dict[str, list[dict]] = {}
+    # Standard frames, one per NSDB-backed dataset, in dataset order.  They are
+    # concatenated at the end and returned alongside the collection, so callers
+    # hold the data the observations were built from rather than a second,
+    # hand-maintained description of it.
+    standard_frames: list[pd.DataFrame] = []
+    # One reader per collection: parsing the descriptor and re-reading the
+    # observatory catalogue per dataset would be pure repetition.  The NSDB root
+    # is not read from ``cfg.data_folder``: every experiment config already uses
+    # that key for the *kernel* folder (``data/other``), so the descriptor is
+    # located from each dataset's own data file instead (see
+    # :meth:`orbitdet.data.nsdb_source.NSDBSource.descriptor_for`).
+    nsdb_source = NSDBSource()
     # Metadata entries per dataset, kept in dataset order.  Each entry is a
     # ``(set_id, metadata_dict)`` pair.  The ``index`` field (position of the set
     # in the final merged collection) is filled in below, once the merge order is
@@ -111,7 +135,31 @@ def create_observation_collection(
     for idx, (set_name, dataset_cfg) in enumerate(datasets.items()):
         try:
             logger.debug(f"Creating dataset {set_name} ({idx + 1}/{len(datasets)})")
-            dataset, model_settings = create_observation_dataset(cfg, dataset_cfg, system_of_bodies)
+            # NSDB datasets are read into a standard frame here, at the boundary,
+            # so the factory only ever sees data that satisfies the schema.  A
+            # modality with no frame of its own returns None and the factory
+            # falls back to its own source.
+            frame = standard_frame_for(
+                dataset_cfg,
+                cfg=cfg,
+                nsdb_source=nsdb_source,
+                system_of_bodies=system_of_bodies,
+            )
+            if frame is not None:
+                # Carry RA/Dec frames into the global orientation before the
+                # factory sees them.  A frame records the equinox *its source*
+                # used, and a factory should not have to know that; reorienting
+                # here means every factory receives coordinates already in the
+                # global frame.  Non-RA/Dec kinds are passed through untouched
+                # (they cannot be rotated on their own - see
+                # :func:`orbitdet.preprocessing.frames.convert_standard_frame`).
+                frame = convert_standard_frame(
+                    frame, str(cfg.get("global_frame_orientation", "J2000"))
+                )
+                standard_frames.append(frame)
+            dataset, model_settings = create_observation_dataset(
+                cfg, dataset_cfg, system_of_bodies, frame=frame
+            )
             observation_sets.append(dataset)
             model_setting.append(model_settings)
 
@@ -204,4 +252,15 @@ def create_observation_collection(
         else:
             flat_models.append(ms)
 
-    return total_collection, flat_models, dataset_metadata
+    if standard_frames:
+        standard_frame = pd.concat(standard_frames, ignore_index=True)
+    else:
+        # No NSDB-backed dataset in this collection (a Gaia-only, Voyager-only or
+        # simulated-only one), so there are no source rows to return.  An empty
+        # frame carrying the standard columns is returned rather than ``None`` so
+        # that consumers can index it unconditionally.
+        from orbitdet.preprocessing.schema import empty_frame
+
+        standard_frame = empty_frame()
+
+    return total_collection, flat_models, dataset_metadata, standard_frame

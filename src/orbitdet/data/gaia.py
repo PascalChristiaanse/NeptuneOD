@@ -35,9 +35,9 @@ from tudatpy.data.gaia.gaia import _ASTROMETRY_CATALOG
 from tudatpy.dynamics.environment import SystemOfBodies
 from tudatpy.estimation import observations
 
-from orbitdet.data.light_deflection import relativistic_light_deflection
-from orbitdet.data.photocenter import photocenter_offset_spherical
-from orbitdet.transformations import convert_radec_frame
+from orbitdet.preprocessing.corrections.light_deflection import relativistic_light_deflection
+from orbitdet.preprocessing.corrections.photocenter import photocenter_offset_spherical
+from orbitdet.preprocessing.frames import convert_radec_frame
 
 logger = logging.getLogger(__name__)
 

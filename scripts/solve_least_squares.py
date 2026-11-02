@@ -185,6 +185,19 @@ def main(cfg: DictConfig):
         logger.info("Outlier rejection metadata saved to %s", rejection_path)
     else:
         logger.info("Outlier rejection disabled.")
+    
+    # Wrt spice
+    Residuals(cfg, "prefit_residuals_spice", observations).plot()
+    from matplotlib import pyplot as plt
+    plt.show()
+    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
+    # archived position_angle_scan), so restrict the plot to the Gaia set.
+    gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
+    if gaia_observations is not None:
+        ResidualsScan(cfg, gaia_observations, use_figure_name="prefit_residuals_spice_scan").plot()
+    else:
+        logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
+    
 
     ################################################################
     ########################## Weighting ###########################

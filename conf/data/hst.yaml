@@ -1,0 +1,10 @@
+# @package _global_
+
+# Data variant: Jacobson 2009 dynamics + both HST astrometry sources.
+# Bundles the HST collection, dynamics, and kernels for this data selection.
+
+defaults:
+  - /collection: hst_collection
+  - /dynamics: jacobson2009_hst
+  - /kernels/jacobson2009
+  - /kernels/hst

@@ -1,0 +1,30 @@
+identifier: hst_springer_triton
+
+type: hst_springer
+target: Triton
+# Spacecraft observing the target (needs the standard HST SPICE kernel loaded).
+receiver: HST
+# Showalter et al. (2019) astrometry supplement (Excel workbook).
+file: data/manual/showalter2019_hst_astrometry.xlsx
+# Drop rows the authors flagged as unused in the orbit fit (Weight == 0).
+exclude_unused: true
+# The sheet stores absolute Neptune RA/Dec plus relative moon offsets, all in
+# J2000 (equinox of the ephemeris used for navigation).
+epoch_of_equinox: J2000
+
+# Provenance metadata (mirrors the NSDB/Voyager dataset configs).
+relative_to:
+  designation: absolute
+reference_frame: astrometric
+centre_of_frame: spacecraft
+coordinates: absolute
+receptor: CCD
+telescope: HST
+
+satellites:
+  Triton:
+    designation: N1-Triton
+
+reference: |-
+  Showalter M.R., de Pater I., Lissauer J.J. et al. (2019)
+  The seventh inner moon of Neptune. Nature 566, 350-353.

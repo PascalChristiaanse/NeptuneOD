@@ -1,0 +1,23 @@
+identifier: hst_mast_triton
+
+type: hst_mast
+target: Triton
+# Spacecraft observing the target (needs the standard HST SPICE kernel loaded).
+receiver: HST
+# MAST science data quality flag (S = science).
+sci_aec: S
+# Frame of the MAST pointing RA/Dec (astroquery returns J2000/ICRS-equivalent).
+epoch_of_equinox: J2000
+
+# Provenance metadata (mirrors the NSDB/Voyager dataset configs).
+relative_to:
+  designation: absolute
+reference_frame: astrometric
+centre_of_frame: spacecraft
+coordinates: absolute
+receptor: CCD
+telescope: HST
+
+satellites:
+  Triton:
+    designation: N1-Triton

@@ -1,0 +1,16 @@
+# @package _global_
+
+# Dynamical model for HST-era experiments.
+# Extends the classical Jacobson model with the HST spacecraft as an observer.
+# HST position comes from the standard NAIF ``hst.bsp`` kernel (NAIF ID -48),
+# so no custom tabulated ephemeris is needed (unlike Voyager/Gaia).
+
+defaults:
+  - /dynamics/jacobson2009
+  - _self_
+
+bodies_to_create:
+  HST:
+    placeholder: true
+    ephemeris:
+      type: "direct_spice"

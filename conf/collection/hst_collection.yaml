@@ -1,0 +1,16 @@
+# @package _global_
+
+# HST collection: both public HST astrometry sources combined.
+#   - hst_mast     : pointing RA/Dec from the MAST archive
+#   - hst_springer : Showalter et al. (2019) Springer supplement
+
+defaults:
+  # So far i cant find the proposal with proposal id "proposal 2957", so cant determine why
+  # we are getting the error systematic error signal. Random error seems very small so it might be synthetic/pointing data. 
+  # The instrument on mast is the FOS spectrograph, which is not a camera.
+  # For now, we will ignore this dataset and only use the Showalter et al data.
+  # - /datasets/hst_mast@datasets.hst_mast 
+  # Showalter et al. (2019) Springer supplement
+  - /datasets/hst_springer@datasets.hst_springer
+
+name: "HST Triton Data"

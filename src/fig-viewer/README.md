@@ -225,15 +225,19 @@ stores one — most commonly via `ax.format_coord = some_closure` or a
 ```python
 import functools
 
+
 # Bad: a nested closure cannot be pickled.
 def make_formatter(x_label, y_label):
     def _format(x, y):
         return f"{x_label}: {x}, {y_label}: {y}"
+
     return _format
+
 
 # Good: a module-level function wrapped in a picklable partial.
 def _format(x, y, x_label, y_label):
     return f"{x_label}: {x}, {y_label}: {y}"
+
 
 formatter = functools.partial(_format, x_label="x", y_label="y")
 ax.format_coord = formatter

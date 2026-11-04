@@ -7,8 +7,10 @@ observation frame (:mod:`orbitdet.preprocessing.schema`), which is the canonical
 weights and grouping.  This package adds the missing third piece: an **access
 layer** that joins the standard frame to the live
 :class:`~tudatpy.estimation.observations.SingleObservationSet` objects through
-the ``observation_set_index`` foreign key, and a set of pure **view** functions
-that convert the canonical frame to other representations on demand.
+the ``observation_set_index`` foreign key, a set of pure **view** functions that
+convert the canonical frame to other representations on demand, **statistics**
+that reduce it to tidy tables, and a **table** layer that publishes those tables
+alongside the run's figures.
 
 Design rules
 ------------
@@ -24,11 +26,13 @@ Example
 -------
 ::
 
-    from orbitdet.analysis import ObservationAccess
+    from orbitdet.analysis import ObservationAccess, aggregate
 
     access = ObservationAccess.build(collection, standard_frame)
     # ... run the estimation, which mutates the collection ...
     access.refresh()
+
+    summary = aggregate(access.frame, by="observatory_code")
 """
 
 from .access import (
@@ -41,6 +45,41 @@ from .access import (
     SetKey,
 )
 from .basis import BasisTransform, block_diagonal_basis, identity_basis, scan_basis
+from .clustering import cluster_by_gap, split_by_gap
+from .covariance import block_sigmas, condition_index, marginal_sigmas, principal_axes
+from .distribution import (
+    density_histogram,
+    find_psd_peaks,
+    lombscargle_psd,
+    normality_test,
+    qq_points,
+    standardize,
+    welch_psd,
+)
+from .frames import analysis_frame
+from .statistics import (
+    aggregate,
+    chi2,
+    chi2_from_matrix,
+    mahalanobis,
+    maximum,
+    mean,
+    median,
+    minimum,
+    normalized_residuals,
+    pooled_within_group_rms,
+    quadrature,
+    reduced_chi2,
+    rms,
+    sample_std,
+    weighted_rms,
+)
+from .tables import (
+    ObservatoryResidualSummary,
+    ResidualSummary,
+    SourceResidualSummary,
+    Table,
+)
 from .views import (
     ARCSEC_PER_RADIAN,
     rotate,
@@ -48,6 +87,7 @@ from .views import (
     to_mas,
     with_scan_frame,
 )
+from .whitening import Whitening
 
 __all__ = [
     # Access layer
@@ -63,10 +103,51 @@ __all__ = [
     "scan_basis",
     "identity_basis",
     "block_diagonal_basis",
+    # Frames
+    "analysis_frame",
+    # Clustering
+    "cluster_by_gap",
+    "split_by_gap",
+    # Covariance
+    "marginal_sigmas",
+    "block_sigmas",
+    "principal_axes",
+    "condition_index",
+    # Distribution
+    "standardize",
+    "qq_points",
+    "density_histogram",
+    "normality_test",
+    "welch_psd",
+    "lombscargle_psd",
+    "find_psd_peaks",
     # Views
     "to_arcsec",
     "to_mas",
     "rotate",
     "with_scan_frame",
     "ARCSEC_PER_RADIAN",
+    # Statistics
+    "rms",
+    "weighted_rms",
+    "mean",
+    "sample_std",
+    "median",
+    "minimum",
+    "maximum",
+    "quadrature",
+    "pooled_within_group_rms",
+    "normalized_residuals",
+    "chi2",
+    "chi2_from_matrix",
+    "mahalanobis",
+    "reduced_chi2",
+    "aggregate",
+    # Whitening
+    "Whitening",
+    # Tables
+    "Table",
+    "ResidualSummary",
+    "SourceResidualSummary",
+    "ObservatoryResidualSummary",
 ]

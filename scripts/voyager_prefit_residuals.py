@@ -12,6 +12,7 @@ from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 
+from orbitdet.analysis import ObservationAccess
 from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
@@ -68,7 +69,7 @@ def main(cfg: DictConfig):
     logger.info("Environment created successfully.")
 
     # Create observations
-    observations, observation_models, _, _ = create_observation_collection(cfg, bodies)
+    observations, observation_models, _, standard_frame = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Add range dependent variable to compute lighttime post simulation
@@ -103,9 +104,10 @@ def main(cfg: DictConfig):
         )
         logger.info("Logged residual summary metrics to Aim.")
 
-    residuals_psd = ResidualsPSD(cfg, observations, 30, cfg.figures.residuals_psd)
+    access = ObservationAccess.build(observations, standard_frame)
+    residuals_psd = ResidualsPSD(cfg, access, 30, cfg.figures.residuals_psd)
     fig_psd, ax_psd = residuals_psd._make_figure()
-    residuals = Residuals(cfg, observations)
+    residuals = Residuals(cfg, access)
     fig, ax = residuals._make_figure()
 
     # add line on y axis at date of voyager 2 closest approach to neptune,

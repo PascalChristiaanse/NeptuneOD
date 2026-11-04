@@ -19,6 +19,7 @@ from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 
+from orbitdet.analysis import ObservationAccess
 from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
@@ -83,7 +84,7 @@ def main(cfg: DictConfig):
     prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=[])
 
     # Create observations
-    observations, observation_models, _, _ = create_observation_collection(cfg, bodies)
+    observations, observation_models, _, standard_frame = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     if prop.processing_settings.set_integrated_result:
@@ -123,9 +124,10 @@ def main(cfg: DictConfig):
     except Exception as exc:
         logger.warning("Could not log residual summary metrics: %s", exc)
 
-    Residuals(cfg, observations).plot()
+    access = ObservationAccess.build(observations, standard_frame)
+    Residuals(cfg, access).plot()
     # ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
-    ResidualsScan(cfg, observations).plot()
+    ResidualsScan(cfg, access).plot()
     # ResidualScanHistogram(cfg.figures, observations).plot()
 
     logger.info("Pre-fit residuals plotted successfully.")

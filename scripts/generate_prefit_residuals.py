@@ -10,6 +10,7 @@ from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 
+from orbitdet.analysis import ObservationAccess
 from orbitdet.data import KernelManager
 from orbitdet.observations import create_observation_collection
 from orbitdet.reproducibility import RuntimeContext, enforce_initialization, initialize
@@ -72,7 +73,7 @@ def main(cfg: DictConfig):
         sim.create_dynamics_simulator(bodies, prop)
 
     # Create observations
-    observations, observation_models, _, _ = create_observation_collection(cfg, bodies)
+    observations, observation_models, _, standard_frame = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Create observation simulators for pre-fit residuals
@@ -87,7 +88,8 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
-    fig, ax = Residuals(cfg, observations).plot()
+    access = ObservationAccess.build(observations, standard_frame)
+    fig, ax = Residuals(cfg, access).plot()
     logger.info("Pre-fit residuals plotted successfully.")
 
     backend = plt.get_backend().lower()

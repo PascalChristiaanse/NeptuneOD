@@ -2,6 +2,7 @@ from .base import Plot
 from .covariance_ellipses import CovarianceEllipses
 from .dependent_variable import DependentVariable
 from .dependent_variable_differenced import DifferencedDependentVariables
+from .gaia_transit_errors import GaiaTransitErrorComponents
 from .parameter_correlation_heatmap import ParameterCorrelationHeatmap
 from .parameter_history_per_iteration import ParameterHistoryPerIteration
 from .propagated_formal_errors_cartesian import PropagatedFormalErrorsCartesian
@@ -26,6 +27,11 @@ from .validation import (
 )
 from .weight_groups import WeightGroups
 from .weight_summary_table import WeightSummaryTable
+from .whitened_residuals import (
+    MahalanobisResiduals,
+    SymmetricWhitenedResiduals,
+    WhitenedResidualScatter,
+)
 
 __all__ = [
     "Plot",
@@ -33,6 +39,7 @@ __all__ = [
     "CovarianceEllipses",
     "DependentVariable",
     "DifferencedDependentVariables",
+    "GaiaTransitErrorComponents",
     "IntegratorConvergence",
     "IntegratorErrorVsTime",
     "IntegratorErrorVsTimeFamily",
@@ -47,6 +54,9 @@ __all__ = [
     "ResidualsScan",
     "NormalizedResiduals",
     "NormalizedResidualScan",
+    "WhitenedResidualScatter",
+    "SymmetricWhitenedResiduals",
+    "MahalanobisResiduals",
     "ResidualHistogram",
     "ResidualScanHistogram",
     "ResidualsPSD",

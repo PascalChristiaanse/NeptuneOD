@@ -317,17 +317,24 @@ def main(cfg: DictConfig):
         f"max_iterations_without_improvement={max_iterations_without_improvement}"
     )
     # Build inverse a priori covariance matrix from configuration
-    inverse_apriori_covariance = get_apriori_covariance_matrix(cfg)
+    inverse_apriori_covariance = get_apriori_covariance_matrix(cfg, parameter_set)
+
+    apply_apriori_parameter_deviation = bool(
+        cfg.estimation.get("apply_apriori_parameter_deviation", False)
+    )
 
     if inverse_apriori_covariance is not None:
         estimation_input = est_an.EstimationInput(
             observations_and_times=observations,
             inverse_apriori_covariance=inverse_apriori_covariance,
             convergence_checker=convergence_settings,
+            apply_apriori_parameter_deviation=apply_apriori_parameter_deviation,
         )
         logger.info(
-            "Estimation input created with inverse a priori covariance matrix of shape %s",
+            "Estimation input created with inverse a priori covariance matrix of shape %s "
+            "(apply_apriori_parameter_deviation=%s)",
             inverse_apriori_covariance.shape,
+            apply_apriori_parameter_deviation,
         )
     else:
         estimation_input = est_an.EstimationInput(

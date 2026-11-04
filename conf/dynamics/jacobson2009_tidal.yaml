@@ -1,0 +1,42 @@
+# @package _global_
+
+# Jacobson 2009 dynamical model extended with direct tidal dissipation.
+#
+# Adds a Lainey et al. style direct tidal dissipation acceleration acting on
+# Triton, modelling the tide raised on Neptune by Triton. This is required to
+# estimate Neptune's tidal dissipation (1/Q or the tidal time lag); see
+# `conf/parameters/state_plus_neptune_tidal_Q.yaml`.
+#
+# The acceleration is parameterised by (k2, 1/Q, tidal_period) so that 1/Q can be
+# estimated directly. k2 is held fixed at the value below.
+
+defaults:
+  - /dynamics/jacobson2009
+  - _self_
+
+bodies_to_propagate:
+  Triton:
+    central_body: "Neptune"
+    accelerations:
+      - type: "direct_tidal_dissipation_inv_quality"
+        k2_love_number: 1.27                  # Fixed (not estimated)
+        inverse_tidal_quality_factor: 0.0001    # Initial value, corresponds to Q = 10000
+        # Tidal period driving the tide raised on Neptune by Triton.
+        #
+        # NOTE: this period is held FIXED during estimation. Its only role is the
+        # constant conversion between 1/Q and the tidal time lag, tau:
+        #     tau = T/(2*pi) * atan(1/Q)
+        # so it fixes the scale of the 1/Q <-> tau mapping, not a physical fit.
+        #
+        # Choice: the dominant tidal forcing on Neptune is at the synodic frequency
+        # |Omega_Neptune - n_Triton| (Tudat convention; see unitTestTidalPropertyEstimation):
+        #   Omega_Neptune = 541.1397757 deg/day  -> 1.09314e-4 rad/s
+        #   n_Triton      = 2*pi / 5.876854 d    -> 1.23743e-5 rad/s
+        #   T = 2*pi / |1.09314e-4 - 1.23743e-5| ~ 6.48e4 s (~0.75 d)
+        #
+        # (For a strictly retrograde orbit the correct rate is Omega + |n| ~ 1.22e-4
+        #  rad/s, giving T ~ 5.16e4 s. Pick whichever convention you standardise on;
+        #  be consistent and document the choice in the write-up.)
+        tidal_period: 64817.0
+        use_tide_raised_on_planet: true       # Tide raised on Neptune (by Triton)
+        include_direct_radial_component: false

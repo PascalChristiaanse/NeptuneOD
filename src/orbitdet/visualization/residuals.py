@@ -6,11 +6,8 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 from tudatpy.estimation import observations as obs
-from tudatpy.estimation.observable_models_setup import links
-from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.data.gaia import get_gaia_errors_for_epochs, get_scan_angles_for_epochs
-from orbitdet.observations import get_observatory_info
+from orbitdet.analysis import ObservationAccess, Whitening, analysis_frame, rms
 from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
 
 logger = logging.getLogger(__name__)
@@ -299,295 +296,192 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
 
 
 class Residuals(Plot):
-    """Plot pre-fit and post-fit residuals for the orbit determination.
+    """Plot residuals versus epoch, grouped by a standard-frame column.
+
+    Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the
+    standard observation frame joined to the live observation sets - and draws
+    one scatter series per group of a chosen column.  By default the grouping is
+    ``observatory_code``, so the same plot covers "per observatory", "per set
+    id", "per source", "per coordinate kind" or any other standard-frame column
+    without new code: pass ``group_by`` (or set ``group_by`` in the figure
+    config).  Each group's legend entry reports its per-component RMS, read from
+    :func:`orbitdet.analysis.statistics.rms`.
 
     Parameters
     ----------
     cfg : DictConfig
         The Hydra experiment configuration.
-    observation_collection : obs.ObservationCollection | None
-        A single observation collection. Optional if ``observation_collections``
-        is provided instead.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.  Positional shorthand:
+        ``Residuals(cfg, access)``.
+    use_figure_name : str | None
+        Name of the figure configuration block under ``cfg.figures`` (e.g.
+        ``"prefit_residuals_spice"``).  Defaults to ``"residuals"``.
+    group_by : str | list[str] | None
+        Standard-frame column(s) to group the scatter series by.  ``None``
+        (default) falls back to the figure config's ``group_by`` and then to
+        ``"observatory_code"``.
+    unit : str | None
+        Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.  ``None``
+        (default) uses the figure config's ``axes.unit`` (itself defaulting to
+        ``"arcsec"``).
     fig : plt.Figure | None
-        An optional pre-existing figure. Must be provided together with ``ax``.
+        An optional pre-existing figure.  Must be provided together with ``ax``.
     ax : plt.Axes | None
-        An optional pre-existing axes. Must be provided together with ``fig``.
-    observation_parsers : list[obs_proc.ObservationParserType] | None
-        Optional parsers to filter observation sets by type.
-    observation_collections : list[obs.ObservationCollection] | None
-        When provided, residuals are plotted from *all* collections in this list
-        instead of from the single ``observation_collection``. All observation
-        sets across all collections are plotted on the same axes.
-    collection_names : list[str] | None
-        Names for each collection in ``observation_collections``, used in the
-        legend. Must have the same length as ``observation_collections`` when
-        provided. Ignored when using a single ``observation_collection``.
+        An optional pre-existing axes (a length-2 sequence, RA then Dec).  Must be
+        provided together with ``fig``.
+    include_rejected : bool
+        Whether to plot rows that outlier rejection removed (``rejected`` true).
+        Defaults to ``False`` - rejected observations are left out.
     """
 
     def __init__(
         self,
         cfg: DictConfig,
+        access: ObservationAccess,
         use_figure_name: str | None = "residuals",
-        observation_collection: obs.ObservationCollection | None = None,
+        group_by: str | list[str] | None = None,
+        unit: str | None = None,
         fig: plt.Figure | None = None,
         ax: plt.Axes | None = None,
-        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
-        observation_collections: list[obs.ObservationCollection] | None = None,
-        collection_names: list[str] | None = None,
+        include_rejected: bool = False,
     ):
         super().__init__(cfg)
-        self.use_figure_name = use_figure_name
-        self.observation_collection = observation_collection
-        self.observation_parsers = observation_parsers
-        self.observation_collections = observation_collections
-        self.collection_names = collection_names
-
-        # At least one of observation_collection or observation_collections must be provided
-        if observation_collection is None and observation_collections is None:
-            raise ValueError(
-                "Either 'observation_collection' or 'observation_collections' must be provided."
-            )
-
-        # Validate collection_names length if provided
-        if (
-            observation_collections is not None
-            and collection_names is not None
-            and len(collection_names) != len(observation_collections)
-        ):
-            raise ValueError(
-                f"Length of collection_names ({len(collection_names)}) must match "
-                f"length of observation_collections ({len(observation_collections)})."
-            )
-
-        # If either fig or ax is provided, both must be provided
+        self.use_figure_name = use_figure_name or "residuals"
+        self.access = access
+        self.group_by = group_by
+        self.unit = unit
+        self.include_rejected = include_rejected
         if (fig is not None and ax is None) or (fig is None and ax is not None):
             raise ValueError("Both fig and ax must be provided together.")
-
         self.fig = fig
         self.ax = ax
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
+        self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
 
-    def _collect_observation_sets(
-        self,
-    ) -> list[obs.SingleObservationSet]:
-        """Collect all observation sets from single or multiple collections."""
-        if self.observation_collections is not None:
-            all_sets: list[obs.SingleObservationSet] = []
-            for collection in self.observation_collections:
-                if self.observation_parsers is None:
-                    all_sets.extend(collection.get_single_observation_sets())
-                else:
-                    all_sets.extend(
-                        collection.get_single_observation_sets(self.observation_parsers)
-                    )
-            return all_sets
-        else:
-            if self.observation_parsers is None:
-                return self.observation_collection.get_single_observation_sets()
-            else:
-                return self.observation_collection.get_single_observation_sets(
-                    self.observation_parsers
-                )
+    def _grouping(self, plot_cfg) -> list[str]:
+        """Resolve the grouping columns: argument, then config, then default."""
+        group_by = self.group_by
+        if group_by is None:
+            group_by = _cfg_get(plot_cfg, "group_by", default=None)
+        if group_by is None:
+            group_by = "observatory_code"
+        return [group_by] if isinstance(group_by, str) else list(group_by)
 
-    def _plot_single_observation_set(
-        self,
-        axs,
-        obs_set: obs.SingleObservationSet,
-        color,
-        marker,
-        marker_size,
-        label_prefix: str,
-    ):
-        """Plot RA and DEC residuals for one observation set on the given axes."""
-        if len(obs_set.observation_times) == 0:
-            return
+    @staticmethod
+    def _group_label(key, columns: list[str]) -> str:
+        """Render a groupby key as a legend label."""
+        values = key if isinstance(key, tuple) else (key,)
+        if len(columns) == 1:
+            return str(values[0])
+        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
 
-        obs_times_sec_j2000 = np.array([epoch.to_float() for epoch in obs_set.observation_times])
-        obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
-        residuals = np.array(obs_set.residuals)
-
-        ra_residuals_arcsec = _rad_to_arcsec(residuals[:, 0])
-        dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
-
-        ra_rms_arcsec = _rms_in_unit(ra_residuals_arcsec, unit="arcsec")
-        dec_rms_arcsec = _rms_in_unit(dec_residuals_arcsec, unit="arcsec")
-        ra_rms_label = f"{ra_rms_arcsec:.3e} arcsec" if ra_rms_arcsec is not None else None
-        dec_rms_label = f"{dec_rms_arcsec:.3e} arcsec" if dec_rms_arcsec is not None else None
-
-        # RA
-        axs[0].scatter(
-            obs_times,
-            ra_residuals_arcsec,
-            marker=marker,
-            s=marker_size,
-            label=f"{label_prefix} - RMS: {ra_rms_label}",
-            color=color,
-            alpha=0.5,
-        )
-        # DEC
-        axs[1].scatter(
-            obs_times,
-            dec_residuals_arcsec,
-            marker=marker,
-            s=marker_size,
-            label=f"{label_prefix} - RMS: {dec_rms_label}",
-            color=color,
-            alpha=0.5,
-        )
+    @staticmethod
+    def _rms_label(label: str, value: float, unit: str) -> str:
+        """Render a group's legend entry with its RMS."""
+        if value is None or not np.isfinite(value):
+            return label
+        return f"{label} - RMS: {value:.3e} {unit}"
 
     def _make_figure(self):
         cfg = self.cfg
-
-        """Plot pre-fit and post-fit residuals for the orbit determination."""
-
-        # Load plotting configuration
-
         plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
+        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
 
         if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(
-                2,
-                1,
-                figsize=(fig_w, fig_h),
-                sharex=True,
-            )
+            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
         else:
-            # Check if there are two subplots, one for RA and one for DEC
             if len(self.ax) != 2:
                 raise ValueError("Expected two subplots for RA and DEC residuals.")
-            fig = self.fig
-            axs = self.ax
+            fig, axs = self.fig, self.ax
+
+        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
+
+        # One tidy frame: standard columns + residual/weight/sigma + unit columns.
+        frame = analysis_frame(self.access, unit=unit, scan=False, normalized=False)
+        if not self.include_rejected and "rejected" in frame.columns:
+            frame = frame.loc[~frame["rejected"].astype(bool)]
+
+        first_col = f"residual_first_rad_{unit}"
+        second_col = f"residual_second_rad_{unit}"
+        if first_col not in frame.columns or second_col not in frame.columns:
+            raise ValueError(
+                f"Analysis frame has no '{first_col}'/'{second_col}' column; "
+                f"cannot plot residuals in unit '{unit}'."
+            )
+
+        group_cols = self._grouping(plot_cfg)
+        missing = [column for column in group_cols if column not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"Grouping column(s) {missing} are not in the standard frame. "
+                f"Available columns: {sorted(frame.columns)}."
+            )
 
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = [
-            "o",
-            "s",
-            "D",
-            "^",
-            "v",
-            "<",
-            ">",
-            "P",
-            "X",
-        ]
+        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        if self.observation_collections is not None:
-            # --- Multi-collection mode: one color/marker/name per collection ---
-            target_name = None
-            for coll_index, collection in enumerate(self.observation_collections):
-                color = colors(coll_index % colors.N)
-                marker = marker_types[coll_index % len(marker_types)]
-                name = (
-                    self.collection_names[coll_index]
-                    if self.collection_names is not None
-                    else f"Collection {coll_index}"
-                )
+        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+            color = colors(index % colors.N)
+            marker = marker_types[index % len(marker_types)]
+            label = self._group_label(key, group_cols)
 
-                if self.observation_parsers is None:
-                    coll_sets = collection.get_single_observation_sets()
-                else:
-                    coll_sets = collection.get_single_observation_sets(self.observation_parsers)
+            epochs = _seconds_since_j2000_to_datetimes(group["epoch_tdb"].to_numpy("float64"))
+            first = group[first_col].to_numpy("float64")
+            second = group[second_col].to_numpy("float64")
 
-                for obs_set in coll_sets:
-                    if target_name is None:
-                        link_ends = obs_set.link_definition.link_ends
-                        if links.transmitter in link_ends:
-                            target_name = link_ends[links.transmitter].body_name
-                        elif links.observed_body in link_ends:
-                            target_name = link_ends[links.observed_body].body_name
-                        else:
-                            target_name = list(link_ends.values())[-1].body_name
-                    self._plot_single_observation_set(
-                        axs, obs_set, color, marker, marker_size, name
-                    )
-        else:
-            # --- Single-collection mode: one color/marker/name per observation set ---
-            observation_sets = self._collect_observation_sets()
-            target_name = None
-            for set_index, obs_set in enumerate(observation_sets):
-                link_ends = obs_set.link_definition.link_ends
+            axs[0].scatter(
+                epochs,
+                first,
+                marker=marker,
+                s=marker_size,
+                color=color,
+                alpha=0.5,
+                label=self._rms_label(label, rms(first), unit),
+            )
+            axs[1].scatter(
+                epochs,
+                second,
+                marker=marker,
+                s=marker_size,
+                color=color,
+                alpha=0.5,
+                label=self._rms_label(label, rms(second), unit),
+            )
 
-                # Resolve a display label for this observation set.
-                # Simulated observations (relative_cartesian_position etc.) use
-                # observed_body / observer link ends, while astrometric observations
-                # use transmitter / receiver.  Try receiver first, fall back to
-                # observer, then just use the first link end.
-                if links.receiver in link_ends:
-                    ref_point = link_ends[links.receiver].reference_point
-                    if ref_point == "":
-                        body = link_ends[links.receiver].body_name
-                        info = {"code": "", "name": body, "region": "Geocentric"}
-                    elif int(ref_point) < 0:
-                        body = link_ends[links.receiver].body_name
-                        info = {"code": ref_point, "name": body, "region": "Spacecraft"}
-                    else:
-                        info = get_observatory_info(cfg, ref_point)
-                elif links.observer in link_ends:
-                    body = link_ends[links.observer].body_name
-                    info = {"code": "", "name": body, "region": body}
-                else:
-                    # Fallback: use the first available link end
-                    first_key = next(iter(link_ends.keys()))
-                    body = link_ends[first_key].body_name
-                    info = {"code": "", "name": body, "region": body}
+        target_name = "target"
+        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
+            target_name = str(frame["observed_object"].dropna().iloc[0])
 
-                # Determine target (observed body) — try transmitter first,
-                # then observed_body, then the last link end.
-                if links.transmitter in link_ends:
-                    target_name = link_ends[links.transmitter].body_name
-                elif links.observed_body in link_ends:
-                    target_name = link_ends[links.observed_body].body_name
-                else:
-                    target_name = list(link_ends.values())[-1].body_name
-
-                color = colors(set_index % colors.N)
-                marker = marker_types[set_index % len(marker_types)]
-
-                label_prefix = f"{info['name']} - {info['region']}"
-                self._plot_single_observation_set(
-                    axs, obs_set, color, marker, marker_size, label_prefix
-                )
-
-        # Titles and labels (configurable)
         title_ra = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension")
         title_dec = _cfg_get(plot_cfg, "titles", "dec", default="Declination")
-        suptitle = _cfg_get(
-            plot_cfg, "titles", "suptitle", default=f"Pre-Fit Residuals for {target_name}"
-        )
-        # Allow templates like "Pre-Fit Residuals for {target_name}" in config
+        suptitle = _cfg_get(plot_cfg, "titles", "suptitle", default="Residuals for {target_name}")
         try:
             if isinstance(suptitle, str):
                 suptitle = suptitle.format(target_name=target_name)
         except Exception:
-            # leave suptitle unchanged if formatting fails
             pass
 
         axs[0].set_title(title_ra)
         axs[1].set_title(title_dec)
-        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Residual [arcsec]")
+        y_label = _cfg_get(plot_cfg, "axes", "y_label", default=f"Residual [{unit}]")
         axs[0].set_ylabel(y_label)
         axs[1].set_ylabel(y_label)
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
         axs[0].set_xlabel(x_label)
-        _configure_datetime_axis(axs[0])
         axs[1].set_xlabel(x_label)
+        _configure_datetime_axis(axs[0])
         _configure_datetime_axis(axs[1])
 
-        # Hover formatter
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
-        hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="Residual [arcsec]")
+        hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default=f"Residual [{unit}]")
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
-        # axs[0].tick_params(axis="x", which="both", labelbottom=False)
-        # add legend with observatory names and RMS values
-        # Legend placement (configurable)
-        # Ensure legend params have correct types
+
         try:
             legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
         except Exception:
@@ -598,7 +492,6 @@ class Residuals(Plot):
             if isinstance(bbox, dict):
                 bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
             else:
-                # coerce sequence values to floats
                 bbox_tuple = tuple(float(x) for x in bbox)
         except Exception:
             bbox_tuple = (0.5, -0.15)
@@ -612,149 +505,179 @@ class Residuals(Plot):
 
 
 class ResidualsScan(Plot):
-    """Plot along-scan (AL) and across-scan (AC) residuals for Gaia observations.
+    """Plot along-scan (AL) and across-scan (AC) residuals, grouped by a column.
 
-    Rotates the RA/Dec residuals into the Gaia scan frame using the archived
-    ``position_angle_scan``.  This is registered in :mod:`orbitdet.data.gaia`
-    (see :func:`get_scan_angles_for_epochs`) when the observations are built via
-    :meth:`GaiaQuery.to_tudat`.
+    Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` and plots the
+    AL/AC residuals already rotated into the Gaia scan frame by
+    :func:`orbitdet.analysis.frames.analysis_frame`.  The scan angle is read from
+    the standard frame's ``scan_angle`` column (populated on ingest from the Gaia
+    archive's ``position_angle_scan``), so this plot no longer walks the
+    observation sets itself: it reads ``residual_along_scan_rad`` /
+    ``residual_across_scan_rad`` (and their unit columns) straight from the
+    analysis frame.
+
+    Only scanning-instrument rows carry a scan angle; frames without one cannot
+    be plotted in the scan frame and raise a :class:`ValueError`.  Rows grouped by
+    ``group_by`` (default ``"observatory_code"``), one scatter series per group,
+    with each group's RMS in the legend, exactly like :class:`Residuals`.
 
     Parameters
     ----------
     cfg : DictConfig
         The Hydra experiment configuration.
-    observation_collection : obs.ObservationCollection
-        The observation collection whose residuals are plotted.
-    observation_parsers : list[obs_proc.ObservationParserType] | None
-        Optional parsers to filter observation sets by type.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.  Positional shorthand:
+        ``ResidualsScan(cfg, access)``.
     use_figure_name : str | None
         Name of the figure configuration block under ``cfg.figures`` (e.g.
         ``"prefit_residuals_spice_scan"``).  When ``None`` the snake_case class
         name is used.
+    group_by : str | list[str] | None
+        Standard-frame column(s) to group the scatter series by.  ``None``
+        (default) falls back to the figure config's ``group_by`` and then to
+        ``"observatory_code"``.
+    unit : str | None
+        Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.  ``None``
+        (default) uses the figure config's ``axes.unit`` (itself defaulting to
+        ``"arcsec"``).
+    fig : plt.Figure | None
+        An optional pre-existing figure.  Must be provided together with ``ax``.
+    ax : plt.Axes | None
+        An optional pre-existing axes (a length-2 sequence, AL then AC).  Must be
+        provided together with ``fig``.
+    include_rejected : bool
+        Whether to plot rows that outlier rejection removed.  Defaults to
+        ``False``.
     """
 
     def __init__(
         self,
         cfg: DictConfig,
-        observation_collection: obs.ObservationCollection,
-        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        access: ObservationAccess,
         use_figure_name: str | None = None,
+        group_by: str | list[str] | None = None,
+        unit: str | None = None,
+        fig: plt.Figure | None = None,
+        ax: plt.Axes | None = None,
+        include_rejected: bool = False,
     ):
         super().__init__(cfg)
-        self.observation_collection = observation_collection
-        self.observation_parsers = observation_parsers
         self.use_figure_name = use_figure_name
+        self.access = access
+        self.group_by = group_by
+        self.unit = unit
+        self.include_rejected = include_rejected
+        if (fig is not None and ax is None) or (fig is None and ax is not None):
+            raise ValueError("Both fig and ax must be provided together.")
+        self.fig = fig
+        self.ax = ax
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
+
+    def _grouping(self, plot_cfg) -> list[str]:
+        """Resolve the grouping columns: argument, then config, then default."""
+        group_by = self.group_by
+        if group_by is None:
+            group_by = _cfg_get(plot_cfg, "group_by", default=None)
+        if group_by is None:
+            group_by = "observatory_code"
+        return [group_by] if isinstance(group_by, str) else list(group_by)
+
+    @staticmethod
+    def _group_label(key, columns: list[str]) -> str:
+        """Render a groupby key as a legend label."""
+        values = key if isinstance(key, tuple) else (key,)
+        if len(columns) == 1:
+            return str(values[0])
+        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
+
+    @staticmethod
+    def _rms_label(label: str, value: float, unit: str) -> str:
+        """Render a group's legend entry with its RMS."""
+        if value is None or not np.isfinite(value):
+            return label
+        return f"{label} - RMS: {value:.3e} {unit}"
 
     def _make_figure(self):
         cfg = self.cfg
-        observation_collection = self.observation_collection
-        observation_parsers = self.observation_parsers
-
-        if observation_parsers is None:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets()
-            )
-        else:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets(observation_parsers)
-            )
-
         plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
+        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-        unit = _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
 
-        fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharex=True)
+        if self.fig is None and self.ax is None:
+            fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharex=True)
+        else:
+            if len(self.ax) != 2:
+                raise ValueError("Expected two subplots for AL and AC residuals.")
+            fig, axs = self.fig, self.ax
+
+        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
+
+        # One tidy frame with the scan-frame columns added by the access layer.
+        frame = analysis_frame(self.access, unit=unit, scan=True, normalized=False)
+        al_col = f"residual_along_scan_rad_{unit}"
+        ac_col = f"residual_across_scan_rad_{unit}"
+        has_angle = "scan_angle" in frame.columns and frame["scan_angle"].notna().any()
+        if not has_angle or al_col not in frame.columns or ac_col not in frame.columns:
+            raise ValueError(
+                "ResidualsScan requires Gaia scan angles, but the frame carries no "
+                "scan_angle (the source did not record a position_angle_scan)."
+            )
+        # Only rows with a scan angle belong in the scan frame; a mixed collection
+        # (Gaia plus other observatories) keeps the Gaia rows and drops the rest.
+        frame = frame.loc[frame["scan_angle"].notna()]
+        if not self.include_rejected and "rejected" in frame.columns:
+            frame = frame.loc[~frame["rejected"].astype(bool)]
+
+        group_cols = self._grouping(plot_cfg)
+        missing = [column for column in group_cols if column not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"Grouping column(s) {missing} are not in the standard frame. "
+                f"Available columns: {sorted(frame.columns)}."
+            )
+
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        al_labels = []
-        ac_labels = []
-        for set_index, obs_set in enumerate(observation_sets):
-            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-            if observatory_code == "":
-                # Missing reference points imply spacecraft which use receiver name instead
-                observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                info = {"code": observatory_code}
-                info["name"] = observatory_name
-                info["region"] = "Spacecraft"
-            else:
-                info = get_observatory_info(cfg, observatory_code)
-            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
-            color = colors(set_index % colors.N)
-            marker = marker_types[set_index % len(marker_types)]
+        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+            color = colors(index % colors.N)
+            marker = marker_types[index % len(marker_types)]
+            label = self._group_label(key, group_cols)
 
-            obs_times_sec_j2000 = np.array(
-                [epoch.to_float() for epoch in obs_set.observation_times]
-            )
-            obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
-            residuals = np.array(obs_set.residuals)  # (n,2) [ΔRA, ΔDec] in rad
+            epochs = _seconds_since_j2000_to_datetimes(group["epoch_tdb"].to_numpy("float64"))
+            along = group[al_col].to_numpy("float64")
+            across = group[ac_col].to_numpy("float64")
 
-            # Observed angles, used for the cos(dec) tangent-plane factor.
-            observed = np.array(obs_set.concatenated_observations).reshape(-1, 2)
-            dec_obs = observed[:, 1]
-
-            # Physical angular offsets in the tangent plane (radians):
-            #   east  = ΔRA * cos(Dec)   (direction of increasing RA)
-            #   north = ΔDec             (direction of increasing Dec)
-            east = residuals[:, 0] * np.cos(dec_obs)
-            north = residuals[:, 1]
-
-            # Scan angles (radians) for these epochs.
-            scan_angles = get_scan_angles_for_epochs(obs_times_sec_j2000)
-            if scan_angles is None:
-                raise RuntimeError(
-                    "Could not find scan angles for the observation epochs. Ensure the "
-                    "observations were created via GaiaQuery.to_tudat(), which registers "
-                    "the position_angle_scan for each observation."
-                )
-            psi = scan_angles  # measured from North towards East
-
-            # Along-scan (AL) direction: unit vector in (east, north) coordinates.
-            #   AL = (sin psi, cos psi)
-            # Across-scan (AC) direction: perpendicular to AL.
-            #   AC = (cos psi, -sin psi)
-            al_in_unit = _rad_to_unit(east * np.sin(psi) + north * np.cos(psi), unit)
-            ac_in_unit = _rad_to_unit(east * np.cos(psi) - north * np.sin(psi), unit)
-
-            al_rms_unit = _rms_in_unit(al_in_unit, unit)
-            ac_rms_unit = _rms_in_unit(ac_in_unit, unit)
-            al_rms_label = f"{al_rms_unit:.3e} {unit}" if al_rms_unit is not None else None
-            ac_rms_label = f"{ac_rms_unit:.3e} {unit}" if ac_rms_unit is not None else None
-
-            al_labels.append(f"{info['name']} - {info['region']} - RMS: {al_rms_label}")
-            ac_labels.append(f"{info['name']} - {info['region']} - RMS: {ac_rms_label}")
-
-            # Along-scan
             axs[0].scatter(
-                obs_times,
-                al_in_unit,
+                epochs,
+                along,
                 marker=marker,
                 s=marker_size,
-                label=al_labels[-1],
                 color=color,
                 alpha=0.5,
+                label=self._rms_label(label, rms(along), unit),
             )
-            # Across-scan
             axs[1].scatter(
-                obs_times,
-                ac_in_unit,
+                epochs,
+                across,
                 marker=marker,
                 s=marker_size,
-                label=ac_labels[-1],
                 color=color,
                 alpha=0.5,
+                label=self._rms_label(label, rms(across), unit),
             )
 
-        # Titles and labels (configurable)
+        target_name = "target"
+        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
+            target_name = str(frame["observed_object"].dropna().iloc[0])
+
         title_al = _cfg_get(plot_cfg, "titles", "al", default="Along-scan")
         title_ac = _cfg_get(plot_cfg, "titles", "ac", default="Across-scan")
         suptitle = _cfg_get(
-            plot_cfg, "titles", "suptitle_scan", default=f"Pre-Fit Scan Residuals for {target_name}"
+            plot_cfg, "titles", "suptitle_scan", default="Scan Residuals for {target_name}"
         )
         try:
             if isinstance(suptitle, str):
@@ -769,18 +692,16 @@ class ResidualsScan(Plot):
         axs[1].set_ylabel(y_label)
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
         axs[0].set_xlabel(x_label)
-        _configure_datetime_axis(axs[0])
         axs[1].set_xlabel(x_label)
+        _configure_datetime_axis(axs[0])
         _configure_datetime_axis(axs[1])
 
-        # Hover formatter
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
         hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default=f"Residual [{unit}]")
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        # Legend placement
         try:
             legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
         except Exception:
@@ -804,222 +725,183 @@ class ResidualsScan(Plot):
 
 
 class NormalizedResiduals(Plot):
-    """Plot per-observation normalized RA/Dec residuals for any observation type.
+    """Plot per-observation normalized residuals, grouped by a column.
 
-    This is the non-rotated counterpart of :class:`NormalizedResidualScan`: each
-    residual component is divided by its own 1σ uncertainty, without rotating
-    into the Gaia scan frame::
+    Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` and plots the
+    normalized residuals ``z = r / σ`` computed by
+    :func:`orbitdet.analysis.statistics.normalized_residuals` - each residual
+    component divided by the 1σ its own applied weight matrix implies.  Because no
+    scan-frame rotation is required this works for *every* observation type
+    (NSDB astrometry, Voyager, Gaia, ...), and the normalized columns already come
+    out of :func:`orbitdet.analysis.frames.analysis_frame`.
 
-        z_RA  = ΔRA  / sigma_RA
-        z_Dec = ΔDec / sigma_Dec
+    A well-calibrated solution has ``RMS(z) ~ 1``; reference lines are drawn at 0
+    and ±1.  Rows are grouped by ``group_by`` (default ``"observatory_code"``), one
+    scatter series per group, with each group's ``RMS(z)`` in the legend.
 
-    Because no scan-frame rotation is required, this figure works for *all*
-    observation types (ground-station astrometry, Voyager, NSDB, ...), not just
-    Gaia.  Two normalization sources are supported (``normalization`` config key):
-
-    ``archive``
-        The archived Gaia random and systematic errors, combined in quadrature
-        (see :func:`_archive_radec_sigmas`).  Only Gaia sets carry these, so
-        non-Gaia sets are skipped in this column.
-    ``weights`` (default)
-        The weight matrix actually applied by the weighting strategy, inverted to
-        a local ``(RA, Dec)`` covariance (see :func:`_applied_radec_sigmas`).
-        This is the "what the estimator believes" σ and is available for every
-        weighted set.
-    ``both``
-        Draw both, side by side (rows = RA/Dec, columns = archive/weights), so the
-        two normalizations can be compared directly.
-
-    A well-calibrated solution has ``RMS(z) ~ 1``.  Sets without the required
-    data (registered archive errors, or a usable weight matrix) are skipped.
+    The normalization is the *applied-weight* sigma (the ``sigma_*_rad`` columns
+    the access layer fills).  For a full (off-diagonal) weight matrix this is the
+    componentwise normalization and ignores cross-observation correlation - which
+    is why the scan-frame figure (:class:`NormalizedResidualScan`) whitens
+    instead.
 
     Parameters
     ----------
     cfg : DictConfig
         The Hydra experiment configuration.
-    observation_collection : obs.ObservationCollection
-        The observation collection whose residuals are plotted.
-    observation_parsers : list[obs_proc.ObservationParserType] | None
-        Optional parsers to filter observation sets by type.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.
     use_figure_name : str | None
         Name of the figure configuration block under ``cfg.figures`` (e.g.
         ``"postfit_normalized_residuals"``).  When ``None`` the snake_case class
         name is used.
+    group_by : str | list[str] | None
+        Standard-frame column(s) to group the scatter series by.  ``None``
+        (default) falls back to the figure config's ``group_by`` and then to
+        ``"observatory_code"``.
+    fig : plt.Figure | None
+        An optional pre-existing figure.  Must be provided together with ``ax``.
+    ax : plt.Axes | None
+        An optional pre-existing axes (a length-2 sequence, first then second).
+        Must be provided together with ``fig``.
+    include_rejected : bool
+        Whether to plot rows that outlier rejection removed.  Defaults to
+        ``False``.
     """
 
     def __init__(
         self,
         cfg: DictConfig,
-        observation_collection: obs.ObservationCollection,
-        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        access: ObservationAccess,
         use_figure_name: str | None = None,
+        group_by: str | list[str] | None = None,
+        fig: plt.Figure | None = None,
+        ax: plt.Axes | None = None,
+        include_rejected: bool = False,
     ):
         super().__init__(cfg)
-        self.observation_collection = observation_collection
-        self.observation_parsers = observation_parsers
         self.use_figure_name = use_figure_name
+        self.access = access
+        self.group_by = group_by
+        self.include_rejected = include_rejected
+        if (fig is not None and ax is None) or (fig is None and ax is not None):
+            raise ValueError("Both fig and ax must be provided together.")
+        self.fig = fig
+        self.ax = ax
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
+
+    def _grouping(self, plot_cfg) -> list[str]:
+        """Resolve the grouping columns: argument, then config, then default."""
+        group_by = self.group_by
+        if group_by is None:
+            group_by = _cfg_get(plot_cfg, "group_by", default=None)
+        if group_by is None:
+            group_by = "observatory_code"
+        return [group_by] if isinstance(group_by, str) else list(group_by)
+
+    @staticmethod
+    def _group_label(key, columns: list[str]) -> str:
+        """Render a groupby key as a legend label."""
+        values = key if isinstance(key, tuple) else (key,)
+        if len(columns) == 1:
+            return str(values[0])
+        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
+
+    @staticmethod
+    def _rms_label(label: str, value: float) -> str:
+        """Render a group's legend entry with its RMS(z)."""
+        if value is None or not np.isfinite(value):
+            return label
+        return f"{label} - RMS(z): {value:.3f}"
 
     def _make_figure(self):
         cfg = self.cfg
-        observation_collection = self.observation_collection
-        observation_parsers = self.observation_parsers
-
-        if observation_parsers is None:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets()
-            )
-        else:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets(observation_parsers)
-            )
-
         plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
+        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
 
-        normalization = str(_cfg_get(plot_cfg, "normalization", default="weights")).lower()
-        if normalization not in ("archive", "weights", "both"):
+        if self.fig is None and self.ax is None:
+            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
+        else:
+            if len(self.ax) != 2:
+                raise ValueError("Expected two subplots for the two residual components.")
+            fig, axs = self.fig, self.ax
+
+        # The normalized columns come from the analysis frame.
+        frame = analysis_frame(self.access, unit=None, scan=False, normalized=True)
+        # Scanning-instrument rows (a finite scan_angle, e.g. Gaia) are not shown
+        # here: their RA/Dec normalization ignores the intra-scan correlation and
+        # is better handled by NormalizedResidualScan, which whitens.
+        if "scan_angle" in frame.columns:
+            frame = frame.loc[frame["scan_angle"].isna()]
+        if not self.include_rejected and "rejected" in frame.columns:
+            frame = frame.loc[~frame["rejected"].astype(bool)]
+        if frame.empty:
             raise ValueError(
-                f"NormalizedResiduals: 'normalization' must be one of "
-                f"'archive', 'weights', 'both', got {normalization!r}."
+                "NormalizedResiduals has no rows to plot: every observation carries a "
+                "scan_angle, so use NormalizedResidualScan for a scanning instrument."
             )
-        sources = ["archive", "weights"] if normalization == "both" else [normalization]
+
+        for column in ("z_first", "z_second"):
+            if column not in frame.columns:
+                raise ValueError(f"Analysis frame has no '{column}' column.")
+
+        group_cols = self._grouping(plot_cfg)
+        missing = [column for column in group_cols if column not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"Grouping column(s) {missing} are not in the standard frame. "
+                f"Available columns: {sorted(frame.columns)}."
+            )
 
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        # Layout: rows = RA/Dec, columns = normalization source(s).
-        n_rows = 2
-        n_cols = len(sources)
-        fig, axs = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharex=True, squeeze=False)
+        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+            color = colors(index % colors.N)
+            marker = marker_types[index % len(marker_types)]
+            label = self._group_label(key, group_cols)
 
-        target_name = ""
-        for set_index, obs_set in enumerate(observation_sets):
-            link_ends = obs_set.link_definition.link_ends
+            epochs = _seconds_since_j2000_to_datetimes(group["epoch_tdb"].to_numpy("float64"))
+            z_first = group["z_first"].to_numpy("float64")
+            z_second = group["z_second"].to_numpy("float64")
 
-            # Resolve a display label for this observation set.  Astrometric
-            # observations use transmitter/receiver, simulated ones use
-            # observed_body/observer.
-            if links.receiver in link_ends:
-                ref_point = link_ends[links.receiver].reference_point
-                if ref_point == "":
-                    body = link_ends[links.receiver].body_name
-                    info = {"code": "", "name": body, "region": "Geocentric"}
-                elif int(ref_point) < 0:
-                    body = link_ends[links.receiver].body_name
-                    info = {"code": ref_point, "name": body, "region": "Spacecraft"}
-                else:
-                    info = get_observatory_info(cfg, ref_point)
-            elif links.observer in link_ends:
-                body = link_ends[links.observer].body_name
-                info = {"code": "", "name": body, "region": body}
-            else:
-                first_key = next(iter(link_ends.keys()))
-                body = link_ends[first_key].body_name
-                info = {"code": "", "name": body, "region": body}
-
-            if links.transmitter in link_ends:
-                target_name = link_ends[links.transmitter].body_name
-            elif links.observed_body in link_ends:
-                target_name = link_ends[links.observed_body].body_name
-            else:
-                target_name = list(link_ends.values())[-1].body_name
-
-            color = colors(set_index % colors.N)
-            marker = marker_types[set_index % len(marker_types)]
-
-            obs_times_sec_j2000 = np.array(
-                [epoch.to_float() for epoch in obs_set.observation_times]
+            axs[0].scatter(
+                epochs,
+                z_first,
+                marker=marker,
+                s=marker_size,
+                color=color,
+                alpha=0.5,
+                label=self._rms_label(label, rms(z_first)),
             )
-            obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
-            residuals = np.array(obs_set.residuals)  # (n,2) [ΔRA, ΔDec] in rad
-            n_obs = residuals.shape[0]
-
-            # Per-source RA/Dec sigmas (radians).
-            sigmas: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-            if "archive" in sources:
-                errors = get_gaia_errors_for_epochs(obs_times_sec_j2000)
-                if errors is not None and len(errors) == len(obs_times_sec_j2000):
-                    sigmas["archive"] = _archive_radec_sigmas(errors)
-                else:
-                    logger.debug(
-                        "No Gaia archive errors registered for set '%s'; skipping archive "
-                        "normalization.",
-                        info.get("name", set_index),
-                    )
-            if "weights" in sources:
-                try:
-                    sigmas["weights"] = _applied_radec_sigmas(obs_set, n_obs)
-                except Exception as exc:
-                    logger.debug(
-                        "Could not read applied weights for set '%s': %s",
-                        info.get("name", set_index),
-                        exc,
-                    )
-
-            if not sigmas:
-                continue
-
-            for col, source in enumerate(sources):
-                if source not in sigmas:
-                    continue
-                sigma_ra, sigma_dec = sigmas[source]
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    z_ra = np.divide(
-                        residuals[:, 0],
-                        sigma_ra,
-                        out=np.full_like(residuals[:, 0], np.nan),
-                        where=sigma_ra > 0,
-                    )
-                    z_dec = np.divide(
-                        residuals[:, 1],
-                        sigma_dec,
-                        out=np.full_like(residuals[:, 1], np.nan),
-                        where=sigma_dec > 0,
-                    )
-
-                ra_rms = _rms_in_unit(z_ra, "unit")
-                dec_rms = _rms_in_unit(z_dec, "unit")
-                ra_rms_label = f"{ra_rms:.3f}" if ra_rms is not None else None
-                dec_rms_label = f"{dec_rms:.3f}" if dec_rms is not None else None
-
-                axs[0, col].scatter(
-                    obs_times,
-                    z_ra,
-                    marker=marker,
-                    s=marker_size,
-                    label=f"{info['name']} - {info['region']} - RMS(z): {ra_rms_label}",
-                    color=color,
-                    alpha=0.5,
-                )
-                axs[1, col].scatter(
-                    obs_times,
-                    z_dec,
-                    marker=marker,
-                    s=marker_size,
-                    label=f"{info['name']} - {info['region']} - RMS(z): {dec_rms_label}",
-                    color=color,
-                    alpha=0.5,
-                )
+            axs[1].scatter(
+                epochs,
+                z_second,
+                marker=marker,
+                s=marker_size,
+                color=color,
+                alpha=0.5,
+                label=self._rms_label(label, rms(z_second)),
+            )
 
         # Reference lines at 0 and +/-1 sigma.
-        for ax in axs.flat:
+        for ax in axs:
             ax.axhline(0.0, color="black", linewidth=0.8)
             ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
             ax.axhline(-1.0, color="grey", linestyle="--", linewidth=0.8)
 
-        title_ra = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension")
-        title_dec = _cfg_get(plot_cfg, "titles", "dec", default="Declination")
-        source_titles = {"archive": "archive σ", "weights": "applied weights σ"}
+        target_name = "target"
+        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
+            target_name = str(frame["observed_object"].dropna().iloc[0])
+
+        title_first = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension")
+        title_second = _cfg_get(plot_cfg, "titles", "dec", default="Declination")
         suptitle = _cfg_get(
-            plot_cfg,
-            "titles",
-            "suptitle",
-            default=f"Normalized Residuals for {target_name}",
+            plot_cfg, "titles", "suptitle", default="Normalized Residuals for {target_name}"
         )
         try:
             if isinstance(suptitle, str):
@@ -1027,25 +909,24 @@ class NormalizedResiduals(Plot):
         except Exception:
             pass
 
-        for col, source in enumerate(sources):
-            axs[0, col].set_title(f"{title_ra} [{source_titles[source]}]")
-            axs[1, col].set_title(f"{title_dec} [{source_titles[source]}]")
-
+        axs[0].set_title(title_first)
+        axs[1].set_title(title_second)
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Normalized residual [$\\sigma$]")
-        for row in range(n_rows):
-            axs[row, 0].set_ylabel(y_label)
+        axs[0].set_ylabel(y_label)
+        axs[1].set_ylabel(y_label)
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
-        for col in range(n_cols):
-            axs[1, col].set_xlabel(x_label)
-            _configure_datetime_axis(axs[1, col])
+        axs[0].set_xlabel(x_label)
+        axs[1].set_xlabel(x_label)
+        _configure_datetime_axis(axs[0])
+        _configure_datetime_axis(axs[1])
 
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
         hover_y_label = _cfg_get(
             plot_cfg, "axes", "hover_y_label", default="Normalized residual [$\\sigma$]"
         )
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
-        for ax in axs.flat:
-            ax.format_coord = fmt
+        axs[0].format_coord = fmt
+        axs[1].format_coord = fmt
 
         try:
             legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
@@ -1061,8 +942,8 @@ class NormalizedResiduals(Plot):
         except Exception:
             bbox_tuple = (0.5, -0.15)
 
-        for ax in axs.flat:
-            ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
 
@@ -1070,219 +951,264 @@ class NormalizedResiduals(Plot):
 
 
 class NormalizedResidualScan(Plot):
-    """Plot per-observation normalized along/across-scan residuals for Gaia data.
+    """Plot per-set Cholesky-whitened along/across-scan residuals for Gaia.
 
-    Each residual is divided by its own 1σ uncertainty, obtained by rotating a
-    per-observation ``(RA, Dec)`` covariance into the scan frame::
+    Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` and, for each
+    Gaia set, whitens the scan-frame residual vector through the Cholesky factor of
+    the set's applied weight matrix::
 
-        z_AL = AL / sigma_AL
-        z_AC = AC / sigma_AC
+        W_scan = L L^T,   z = L^T r_scan,   Cov(z) = I,
 
-    Two normalization sources are supported (``normalization`` config key):
+    then plots the two interleaved components of ``z`` (``z[0::2]`` as along-scan,
+    ``z[1::2]`` as across-scan) against the observation epochs.  For a
+    block-diagonal (per-observation) weight matrix ``L`` is block-diagonal too, so
+    the two columns are exactly the per-observation whitened AL/AC; for a dense
+    (cross-observation) matrix the components mix across the set, which is the
+    point - the correlation is removed rather than ignored.  A rank-deficient
+    weight matrix (a near-rank-1 archive transit covariance) has no lower
+    Cholesky factor, so the per-observation 2x2 blocks are whitened instead.
 
-    ``archive`` (default)
-        The archived Gaia random and systematic errors, combined in quadrature
-        (see :func:`_scan_frame_sigmas`).  This is the "what Gaia reports" σ.
-    ``weights``
-        The weight matrix actually applied by the weighting strategy, inverted to
-        a local covariance (see :func:`_applied_scan_sigmas`).  This is the "what
-        the estimator believes" σ.
-    ``both``
-        Draw both, side by side (rows = AL/AC, columns = archive/weights), so the
-        two normalizations can be compared directly.
+    This is the correct reduction for correlated observations, replacing the
+    marginal-σ normalization: dividing each component by its marginal σ leaves the
+    RA/Dec correlation in and inflates the variance.  A well-calibrated solution
+    has ``RMS(z) ~ 1``; reference lines are at 0 and ±1.
 
-    A well-calibrated solution has ``RMS(z) ~ 1``.  Sets without the required
-    data (registered archive errors, or a usable weight matrix) are skipped.
+    Only scanning-instrument rows carry a scan angle; a frame without one raises a
+    :class:`ValueError`.  Rows are grouped by ``group_by`` (default
+    ``"observatory_code"``), one scatter series per group.
 
     Parameters
     ----------
     cfg : DictConfig
         The Hydra experiment configuration.
-    observation_collection : obs.ObservationCollection
-        The observation collection whose residuals are plotted.
-    observation_parsers : list[obs_proc.ObservationParserType] | None
-        Optional parsers to filter observation sets by type.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.
     use_figure_name : str | None
         Name of the figure configuration block under ``cfg.figures`` (e.g.
         ``"postfit_normalized_residuals_scan"``).  When ``None`` the snake_case
         class name is used.
+    group_by : str | list[str] | None
+        Standard-frame column(s) to group the scatter series by.  ``None``
+        (default) falls back to the figure config's ``group_by`` and then to
+        ``"observatory_code"``.
+    fig : plt.Figure | None
+        An optional pre-existing figure.  Must be provided together with ``ax``.
+    ax : plt.Axes | None
+        An optional pre-existing axes (a length-2 sequence, AL then AC).  Must be
+        provided together with ``fig``.
+    include_rejected : bool
+        Whether to plot rows that outlier rejection removed.  Defaults to
+        ``False``.
     """
 
     def __init__(
         self,
         cfg: DictConfig,
-        observation_collection: obs.ObservationCollection,
-        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        access: ObservationAccess,
         use_figure_name: str | None = None,
+        group_by: str | list[str] | None = None,
+        fig: plt.Figure | None = None,
+        ax: plt.Axes | None = None,
+        include_rejected: bool = False,
     ):
         super().__init__(cfg)
-        self.observation_collection = observation_collection
-        self.observation_parsers = observation_parsers
         self.use_figure_name = use_figure_name
+        self.access = access
+        self.group_by = group_by
+        self.include_rejected = include_rejected
+        if (fig is not None and ax is None) or (fig is None and ax is not None):
+            raise ValueError("Both fig and ax must be provided together.")
+        self.fig = fig
+        self.ax = ax
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
+
+    def _grouping(self, plot_cfg) -> list[str]:
+        """Resolve the grouping columns: argument, then config, then default."""
+        group_by = self.group_by
+        if group_by is None:
+            group_by = _cfg_get(plot_cfg, "group_by", default=None)
+        if group_by is None:
+            group_by = "observatory_code"
+        return [group_by] if isinstance(group_by, str) else list(group_by)
+
+    @staticmethod
+    def _group_label(key, columns: list[str]) -> str:
+        """Render a groupby key as a legend label."""
+        values = key if isinstance(key, tuple) else (key,)
+        if len(columns) == 1:
+            return str(values[0])
+        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
+
+    @staticmethod
+    def _rms_label(label: str, value: float) -> str:
+        """Render a group's legend entry with its RMS(z)."""
+        if value is None or not np.isfinite(value):
+            return label
+        return f"{label} - RMS(z): {value:.3f}"
+
+    def _whitened_set(
+        self, set_index: int, rows: pd.DataFrame, al_col: str, ac_col: str
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Return ``(epochs, z_along, z_across)`` for one set, whitened, or ``None``.
+
+        The scan-frame residual vector is whitened through the Cholesky factor of
+        the set's scan-basis weight matrix.  When that factor is rank-deficient the
+        per-observation 2x2 blocks are whitened instead, so the AL/AC columns stay
+        defined.
+        """
+        if rows.empty:
+            return None
+        first = rows[al_col].to_numpy("float64")
+        second = rows[ac_col].to_numpy("float64")
+        keep = np.isfinite(first) & np.isfinite(second)
+        if not keep.any():
+            return None
+
+        weight_matrix = self.access.weight_matrix(set_index, basis="scan")
+        n_obs = len(rows)
+        if weight_matrix.shape[0] == 2 * n_obs:
+            index = np.repeat(keep, 2)
+            weight_matrix = weight_matrix[np.ix_(index, index)]
+
+        residual = np.stack([first[keep], second[keep]], axis=1).ravel()
+        if weight_matrix.shape[0] != residual.size:
+            return None
+
+        epochs = pd.to_numeric(rows["epoch_tdb"], errors="coerce").to_numpy("float64")[keep]
+        whitening = Whitening.from_weight_matrix(weight_matrix)
+        z = whitening.apply(residual)
+        if z.size == residual.size:
+            return epochs, z[0::2], z[1::2]
+
+        # Rank-deficient: whiten each observation's own 2x2 block.
+        z_al = np.full(residual.size // 2, np.nan)
+        z_ac = np.full(residual.size // 2, np.nan)
+        for i in range(residual.size // 2):
+            block = weight_matrix[2 * i : 2 * i + 2, 2 * i : 2 * i + 2]
+            block_whitening = Whitening.from_weight_matrix(block)
+            z_pair = block_whitening.apply(residual[2 * i : 2 * i + 2])
+            z_al[i] = z_pair[0] if z_pair.size > 0 else np.nan
+            z_ac[i] = z_pair[1] if z_pair.size > 1 else np.nan
+        return epochs, z_al, z_ac
 
     def _make_figure(self):
         cfg = self.cfg
-        observation_collection = self.observation_collection
-        observation_parsers = self.observation_parsers
-
-        if observation_parsers is None:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets()
-            )
-        else:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets(observation_parsers)
-            )
-
         plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug(f"Plotting configuration for '{self.use_figure_name}': {plot_cfg}")
+        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
 
-        normalization = str(_cfg_get(plot_cfg, "normalization", default="archive")).lower()
-        if normalization not in ("archive", "weights", "both"):
+        if self.fig is None and self.ax is None:
+            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
+        else:
+            if len(self.ax) != 2:
+                raise ValueError("Expected two subplots for AL and AC residuals.")
+            fig, axs = self.fig, self.ax
+
+        # Scan-frame residuals live in the analysis frame; whitening needs the
+        # set weight matrix, so the residue columns are read per set below.
+        frame = analysis_frame(self.access, unit=None, scan=True, normalized=False)
+        al_col = "residual_along_scan_rad"
+        ac_col = "residual_across_scan_rad"
+        has_angle = "scan_angle" in frame.columns and frame["scan_angle"].notna().any()
+        if not has_angle or al_col not in frame.columns or ac_col not in frame.columns:
             raise ValueError(
-                f"NormalizedResidualScan: 'normalization' must be one of "
-                f"'archive', 'weights', 'both', got {normalization!r}."
+                "NormalizedResidualScan requires Gaia scan angles, but the frame carries no "
+                "scan_angle (the source did not record a position_angle_scan)."
             )
-        sources = ["archive", "weights"] if normalization == "both" else [normalization]
+
+        group_frame = frame.loc[frame["scan_angle"].notna()]
+        if not self.include_rejected and "rejected" in group_frame.columns:
+            group_frame = group_frame.loc[~group_frame["rejected"].astype(bool)]
+
+        group_cols = self._grouping(plot_cfg)
+        missing = [column for column in group_cols if column not in group_frame.columns]
+        if missing:
+            raise ValueError(
+                f"Grouping column(s) {missing} are not in the standard frame. "
+                f"Available columns: {sorted(group_frame.columns)}."
+            )
 
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        # Layout: rows = AL/AC, columns = normalization source(s).
-        n_rows = 2
-        n_cols = len(sources)
-        fig, axs = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharex=True, squeeze=False)
+        for index, (key, group) in enumerate(
+            group_frame.groupby(group_cols, dropna=False, sort=True)
+        ):
+            color = colors(index % colors.N)
+            marker = marker_types[index % len(marker_types)]
+            label = self._group_label(key, group_cols)
 
-        target_name = ""
-        for set_index, obs_set in enumerate(observation_sets):
-            observatory_code = obs_set.link_definition.link_ends[links.receiver].reference_point
-            if observatory_code == "":
-                observatory_name = obs_set.link_definition.link_ends[links.receiver].body_name
-                info = {"code": observatory_code, "name": observatory_name, "region": "Spacecraft"}
-            else:
-                info = get_observatory_info(cfg, observatory_code)
-            target_name = obs_set.link_definition.link_ends[links.transmitter].body_name
-            color = colors(set_index % colors.N)
-            marker = marker_types[set_index % len(marker_types)]
-
-            obs_times_sec_j2000 = np.array(
-                [epoch.to_float() for epoch in obs_set.observation_times]
+            set_indices = (
+                group["observation_set_index"].dropna().astype(int).unique().tolist()
+                if "observation_set_index" in group.columns
+                else []
             )
-            obs_times = _seconds_since_j2000_to_datetimes(obs_times_sec_j2000)
-            residuals = np.array(obs_set.residuals)  # (n,2) [ΔRA, ΔDec] in rad
-
-            observed = np.array(obs_set.concatenated_observations).reshape(-1, 2)
-            dec_obs = observed[:, 1]
-
-            scan_angles = get_scan_angles_for_epochs(obs_times_sec_j2000)
-            if scan_angles is None:
-                raise RuntimeError(
-                    "Could not find scan angles for the observation epochs. Ensure the "
-                    "observations were created via GaiaQuery.to_tudat(), which registers "
-                    "the position_angle_scan for each observation."
-                )
-            psi = scan_angles
-
-            # Scan-frame residual components (radians).
-            al_rad, ac_rad = _scan_frame_components(residuals, dec_obs, psi)
-
-            # Per-source scan-frame sigmas (radians).
-            sigmas: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-            if "archive" in sources:
-                errors = get_gaia_errors_for_epochs(obs_times_sec_j2000)
-                if errors is not None and len(errors) == len(obs_times_sec_j2000):
-                    (
-                        ra_err_random,
-                        dec_err_random,
-                        corr_random,
-                        ra_err_sys,
-                        dec_err_sys,
-                        corr_sys,
-                    ) = errors.T
-                    sigma_al_rand, sigma_ac_rand = _scan_frame_sigmas(
-                        ra_err_random, dec_err_random, corr_random, psi, dec_obs
-                    )
-                    sigma_al_sys, sigma_ac_sys = _scan_frame_sigmas(
-                        ra_err_sys, dec_err_sys, corr_sys, psi, dec_obs
-                    )
-                    sigmas["archive"] = (
-                        np.sqrt(sigma_al_rand**2 + sigma_al_sys**2),
-                        np.sqrt(sigma_ac_rand**2 + sigma_ac_sys**2),
-                    )
+            set_column = (
+                group["observation_set_index"].astype(int)
+                if "observation_set_index" in group.columns
+                else None
+            )
+            epoch_chunks: list[np.ndarray] = []
+            al_chunks: list[np.ndarray] = []
+            ac_chunks: list[np.ndarray] = []
+            for set_index in set_indices:
+                if set_column is None:
+                    rows = group
                 else:
-                    logger.debug(
-                        "No Gaia archive errors registered for set '%s'; skipping archive "
-                        "normalization.",
-                        info.get("name", set_index),
-                    )
-            if "weights" in sources:
-                try:
-                    sigmas["weights"] = _applied_scan_sigmas(obs_set, psi, dec_obs)
-                except Exception as exc:  # pragma: no cover - defensive
-                    logger.debug(
-                        "Could not read applied weights for set '%s': %s",
-                        info.get("name", set_index),
-                        exc,
-                    )
-
-            if not sigmas:
+                    rows = group.loc[set_column == set_index]
+                whitened = self._whitened_set(set_index, rows, al_col, ac_col)
+                if whitened is None:
+                    continue
+                epochs, z_al, z_ac = whitened
+                epoch_chunks.append(epochs)
+                al_chunks.append(z_al)
+                ac_chunks.append(z_ac)
+            if not epoch_chunks:
                 continue
 
-            for col, source in enumerate(sources):
-                if source not in sigmas:
-                    continue
-                sigma_al, sigma_ac = sigmas[source]
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    z_al = np.divide(
-                        al_rad, sigma_al, out=np.full_like(al_rad, np.nan), where=sigma_al > 0
-                    )
-                    z_ac = np.divide(
-                        ac_rad, sigma_ac, out=np.full_like(ac_rad, np.nan), where=sigma_ac > 0
-                    )
+            epochs = _seconds_since_j2000_to_datetimes(np.concatenate(epoch_chunks))
+            z_al = np.concatenate(al_chunks)
+            z_ac = np.concatenate(ac_chunks)
 
-                al_rms = _rms_in_unit(z_al, "unit")
-                ac_rms = _rms_in_unit(z_ac, "unit")
-                al_rms_label = f"{al_rms:.3f}" if al_rms is not None else None
-                ac_rms_label = f"{ac_rms:.3f}" if ac_rms is not None else None
-
-                axs[0, col].scatter(
-                    obs_times,
-                    z_al,
-                    marker=marker,
-                    s=marker_size,
-                    label=f"{info['name']} - {info['region']} - RMS(z): {al_rms_label}",
-                    color=color,
-                    alpha=0.5,
-                )
-                axs[1, col].scatter(
-                    obs_times,
-                    z_ac,
-                    marker=marker,
-                    s=marker_size,
-                    label=f"{info['name']} - {info['region']} - RMS(z): {ac_rms_label}",
-                    color=color,
-                    alpha=0.5,
-                )
+            axs[0].scatter(
+                epochs,
+                z_al,
+                marker=marker,
+                s=marker_size,
+                color=color,
+                alpha=0.5,
+                label=self._rms_label(label, rms(z_al)),
+            )
+            axs[1].scatter(
+                epochs,
+                z_ac,
+                marker=marker,
+                s=marker_size,
+                color=color,
+                alpha=0.5,
+                label=self._rms_label(label, rms(z_ac)),
+            )
 
         # Reference lines at 0 and +/-1 sigma.
-        for ax in axs.flat:
+        for ax in axs:
             ax.axhline(0.0, color="black", linewidth=0.8)
             ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
             ax.axhline(-1.0, color="grey", linestyle="--", linewidth=0.8)
 
+        target_name = "target"
+        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
+            target_name = str(frame["observed_object"].dropna().iloc[0])
+
         title_al = _cfg_get(plot_cfg, "titles", "al", default="Along-scan")
         title_ac = _cfg_get(plot_cfg, "titles", "ac", default="Across-scan")
-        source_titles = {"archive": "archive σ", "weights": "applied weights σ"}
         suptitle = _cfg_get(
             plot_cfg,
             "titles",
             "suptitle_scan",
-            default=f"Normalized Scan Residuals for {target_name}",
+            default="Normalized Scan Residuals for {target_name}",
         )
         try:
             if isinstance(suptitle, str):
@@ -1290,25 +1216,24 @@ class NormalizedResidualScan(Plot):
         except Exception:
             pass
 
-        for col, source in enumerate(sources):
-            axs[0, col].set_title(f"{title_al} [{source_titles[source]}]")
-            axs[1, col].set_title(f"{title_ac} [{source_titles[source]}]")
-
-        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Normalized residual [σ]")
-        for row in range(n_rows):
-            axs[row, 0].set_ylabel(y_label)
+        axs[0].set_title(title_al)
+        axs[1].set_title(title_ac)
+        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Normalized residual [$\\sigma$]")
+        axs[0].set_ylabel(y_label)
+        axs[1].set_ylabel(y_label)
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Epoch")
-        for col in range(n_cols):
-            axs[1, col].set_xlabel(x_label)
-            _configure_datetime_axis(axs[1, col])
+        axs[0].set_xlabel(x_label)
+        axs[1].set_xlabel(x_label)
+        _configure_datetime_axis(axs[0])
+        _configure_datetime_axis(axs[1])
 
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="Epoch")
         hover_y_label = _cfg_get(
-            plot_cfg, "axes", "hover_y_label", default="Normalized residual [σ]"
+            plot_cfg, "axes", "hover_y_label", default="Normalized residual [$\\sigma$]"
         )
         fmt = _make_hover_formatter(hover_x_label, hover_y_label)
-        for ax in axs.flat:
-            ax.format_coord = fmt
+        axs[0].format_coord = fmt
+        axs[1].format_coord = fmt
 
         try:
             legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
@@ -1324,8 +1249,8 @@ class NormalizedResidualScan(Plot):
         except Exception:
             bbox_tuple = (0.5, -0.15)
 
-        for ax in axs.flat:
-            ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
 

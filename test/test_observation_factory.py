@@ -3,8 +3,13 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
+import pandas as pd
 import pytest
+import tudatpy.estimation.observable_models_setup as settings
+import tudatpy.estimation.observations as obs
 from omegaconf import OmegaConf
+from tudatpy.estimation.observable_models_setup import links
 
 from orbitdet.observations import (
     ObservationDatasetConfig,
@@ -17,6 +22,29 @@ from orbitdet.observations import (
 )
 from orbitdet.observations import collection as collection_module
 from orbitdet.observations.registry import _FACTORY_REGISTRY, dispatch_key
+from orbitdet.preprocessing.schema import OBSERVATION_SET_INDEX_COLUMN, build_frame
+
+
+def make_record(station: str, epoch: float, **overrides: object) -> dict[str, object]:
+    """Build one standard-frame record, overriding fields as needed."""
+    return {
+        "observed_object": "Triton",
+        "observatory_code": station,
+        "data_source": "nsdb",
+        "source_set_id": "nm0001",
+        "reference": "ref",
+        "observation_type": "absolute",
+        "coordinate_kind": "ra_dec",
+        "frame_center": "topocentric",
+        "original_equinox": "J2000",
+        "original_reference_frame": "astrometric",
+        "original_reduction": "none",
+        "receptor_type": "ccd",
+        "epoch_tdb": epoch,
+        "first_value": 2.0,
+        "second_value": -0.3,
+        **overrides,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -380,3 +408,157 @@ class TestCollectionBuilder:
     def test_collection_not_dictconfig_raises_error(self):
         with pytest.raises(TypeError, match="Expected DictConfig"):
             create_observation_collection({"datasets": []}, SimpleNamespace())
+
+    def test_collection_marks_each_row_with_the_set_it_built(self, monkeypatch):
+        """Each frame row carries the final index of the set built from it."""
+        system_of_bodies = SimpleNamespace()
+        collection_cfg = OmegaConf.create(
+            {"datasets": {"first": {"type": "alpha", "file": "data1.csv", "weight": 1.0}}}
+        )
+        frame = build_frame(
+            [
+                make_record("673", 1.0),
+                make_record("673", 2.0),
+                make_record("689", 3.0),
+            ]
+        )
+        times = {
+            "673": [1.0, 2.0],
+            "689": [3.0],
+        }
+
+        def make_set(station_name, epochs):
+            link_ends = {
+                links.transmitter: links.body_origin_link_end_id("Triton"),
+                links.receiver: links.body_reference_point_link_end_id("Earth", station_name),
+            }
+            return obs.create_single_observation_set(
+                settings.model_settings.ObservableType.angular_position_type,
+                link_ends,
+                [np.array([[0.5], [0.25]])] * len(epochs),
+                epochs,
+                links.LinkEndType.receiver,
+            )
+
+        merged = obs.ObservationCollection(
+            [make_set(name, epochs) for name, epochs in times.items()]
+        )
+
+        def fake_create_observation_dataset(cfg, dataset_cfg, system, *, frame=None):
+            return merged, "settings:alpha"
+
+        monkeypatch.setattr(
+            collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(collection_module, "standard_frame_for", lambda *a, **k: frame)
+
+        result = create_observation_collection(collection_cfg, system_of_bodies)
+        marked = result[3]
+
+        assert set(marked[OBSERVATION_SET_INDEX_COLUMN].dropna()) == {0.0, 1.0}
+        # Row order is preserved, so the frames' own epochs say which index is right.
+        by_epoch = dict(zip(marked["epoch_tdb"], marked[OBSERVATION_SET_INDEX_COLUMN], strict=True))
+        assert by_epoch[1.0] == 0.0
+        assert by_epoch[2.0] == 0.0
+        assert by_epoch[3.0] == 1.0
+        # The same walk fills the metadata's own index, so the two agree.
+        indices = {meta["index"] for entries in result[2].values() for meta in entries}
+        assert indices == {0, 1}
+
+    def test_collection_leaves_unbuildable_rows_unmarked(self, monkeypatch):
+        """A row the factory dropped gets no index rather than a wrong one."""
+        collection_cfg = OmegaConf.create(
+            {"datasets": {"first": {"type": "alpha", "file": "data1.csv", "weight": 1.0}}}
+        )
+        frame = build_frame([make_record("673", 1.0), make_record("673", np.nan)])
+
+        link_ends = {
+            links.transmitter: links.body_origin_link_end_id("Triton"),
+            links.receiver: links.body_reference_point_link_end_id("Earth", "673"),
+        }
+        built = obs.create_single_observation_set(
+            settings.model_settings.ObservableType.angular_position_type,
+            link_ends,
+            [np.array([[0.5], [0.25]])],
+            [1.0],
+            links.LinkEndType.receiver,
+        )
+        merged = obs.ObservationCollection([built])
+
+        def fake_create_observation_dataset(cfg, dataset_cfg, system, *, frame=None):
+            return merged, "settings:alpha"
+
+        monkeypatch.setattr(
+            collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(collection_module, "standard_frame_for", lambda *a, **k: frame)
+
+        marked = create_observation_collection(collection_cfg, SimpleNamespace())[3]
+
+        assert marked[OBSERVATION_SET_INDEX_COLUMN].tolist()[0] == 0.0
+        assert pd.isna(marked[OBSERVATION_SET_INDEX_COLUMN].tolist()[1])
+
+    def test_collection_marks_rows_when_merge_reorders_datasets(self, monkeypatch):
+        """A station observed by two datasets keeps its rows marked after the merge.
+
+        ``merge_observation_collections`` sorts sets by observable type, so two
+        datasets that observed from the same station need not appear in the final
+        collection in dataset order.  Resolving each set back to its frame by
+        ``set_id`` alone would then hand a set the other dataset's frame, and
+        because their epochs differ neither would match, leaving both datasets'
+        rows unmarked.
+        """
+        collection_cfg = OmegaConf.create(
+            {
+                "datasets": {
+                    "first": {"type": "alpha", "file": "data1.csv", "weight": 1.0},
+                    "second": {"type": "beta", "file": "data2.csv", "weight": 1.0},
+                }
+            }
+        )
+        # Both datasets observed from station 689, at different epochs.
+        frame_separation = build_frame([make_record("689", 10.0)])
+        frame_angular = build_frame([make_record("689", 20.0)])
+
+        def make_set(observable_type, size, epochs):
+            link_ends = {
+                links.transmitter: links.body_origin_link_end_id("Triton"),
+                links.receiver: links.body_reference_point_link_end_id("Earth", "689"),
+            }
+            return obs.create_single_observation_set(
+                observable_type,
+                link_ends,
+                [np.array([[0.5]] * size)] * len(epochs),
+                epochs,
+                links.LinkEndType.receiver,
+            )
+
+        separation = make_set(
+            settings.model_settings.ObservableType.separation_distance_type, 1, [10.0]
+        )
+        angular = make_set(settings.model_settings.ObservableType.angular_position_type, 2, [20.0])
+        # The first dataset builds the separation set, the second the angular set;
+        # the merge then orders the angular set (lower observable type) first.
+        per_dataset = iter(
+            [obs.ObservationCollection([separation]), obs.ObservationCollection([angular])]
+        )
+        frames = iter([frame_separation, frame_angular])
+
+        def fake_create_observation_dataset(cfg, dataset_cfg, system, *, frame=None):
+            return next(per_dataset), "settings:alpha"
+
+        monkeypatch.setattr(
+            collection_module, "create_observation_dataset", fake_create_observation_dataset
+        )
+        monkeypatch.setattr(collection_module, "standard_frame_for", lambda *a, **k: next(frames))
+
+        result = create_observation_collection(collection_cfg, SimpleNamespace())
+        marked, sets = result[3], result[0].get_single_observation_sets()
+
+        # The merge put the angular set first, so neither dataset's rows line up
+        # with a ``set_id`` queue; identity resolution keeps each pointed at its own.
+        assert sets[0] is angular
+        assert sets[1] is separation
+        by_epoch = dict(zip(marked["epoch_tdb"], marked[OBSERVATION_SET_INDEX_COLUMN], strict=True))
+        assert sets[int(by_epoch[10.0])] is separation
+        assert sets[int(by_epoch[20.0])] is angular

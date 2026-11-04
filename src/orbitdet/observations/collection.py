@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
@@ -11,11 +12,74 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 from orbitdet.data.frame_sources import standard_frame_for
 from orbitdet.data.nsdb_source import NSDBSource
 from orbitdet.preprocessing.frames import convert_standard_frame
+from orbitdet.preprocessing.schema import OBSERVATION_SET_INDEX_COLUMN
 
 from .factory import create_observation_dataset
+from .helpers import normalize_observatory_code
+from .standard_frames import EPOCH_COLUMN
 from .utils import get_set_identifier
 
 logger = logging.getLogger(__name__)
+
+
+def _frame_candidates(frame: pd.DataFrame, single_set) -> np.ndarray:
+    """Return the positions in ``frame`` the set could have been built from.
+
+    A factory splits a frame by observatory, so the frame's own
+    ``observatory_code`` says which rows belong to which set - and constraining
+    the search to them is what keeps two stations that observed at the same
+    instant from being attributed to each other.  Sets whose identifier is not a
+    code in the frame (a spacecraft's body name, a geocentric observer) fall back
+    to every row, which is sound because such a dataset yields a single set.
+    """
+    every_row = np.arange(len(frame), dtype=int)
+    if "observatory_code" not in frame.columns:
+        return every_row
+    want = normalize_observatory_code(get_set_identifier(single_set))
+    codes = frame["observatory_code"].astype(str).map(normalize_observatory_code)
+    matches = np.flatnonzero(codes.to_numpy(dtype=object) == want)
+    return matches if matches.size else every_row
+
+
+def _rows_of_set(frame: pd.DataFrame, single_set, candidates: np.ndarray) -> np.ndarray:
+    """Return the positions in ``frame`` of the rows ``single_set`` was built from.
+
+    A Tudat ``SingleObservationSet`` keeps only its epochs, so a set is matched
+    back to the frame it came from on that column.  The frame is not recoverable
+    from the set afterwards, which is why the link is made here rather than being
+    written out by each factory - and why the factories stay untouched.
+
+    Rows are consumed in file order, so a frame holding the same epoch twice maps
+    its two rows to the set's two observations in the order both were built in:
+    the grouping and ``_usable_rows`` both preserve file order.  Each set is
+    matched independently, because a position angle and a separation in one
+    dataset are built from the *same* rows and neither consumes the other's.
+
+    Args:
+        frame: The standard frame the set was built from.
+        single_set: The observation set.
+        candidates: Positions in ``frame`` the set could have been built from.
+
+    Returns:
+        Positions into ``frame``, in the order the set's epochs appear.  Empty
+        when the frame carries no such epoch, which leaves those rows' set index
+        null rather than guessing one.
+    """
+    if EPOCH_COLUMN not in frame.columns or candidates.size == 0:
+        return np.array([], dtype=int)
+
+    epochs = pd.to_numeric(frame[EPOCH_COLUMN], errors="coerce").to_numpy(dtype="float64")
+    used = np.zeros(epochs.shape, dtype=bool)
+    positions: list[int] = []
+    for epoch in single_set.observation_times:
+        close = np.isclose(epochs, float(epoch), rtol=1e-12, atol=1e-6)
+        matches = candidates[close[candidates] & ~used[candidates]]
+        if matches.size == 0:
+            continue
+        position = int(matches[0])
+        used[position] = True
+        positions.append(position)
+    return np.asarray(positions, dtype=int)
 
 
 def _source_name(dataset_cfg: DictConfig, set_name: str) -> str:
@@ -93,13 +157,18 @@ def create_observation_collection(
               with ``name`` (source author), ``coordinate_type`` (human-readable label),
               and ``index`` (position of the set in the final collection, so it can be
               retrieved via ``collection.get_single_observation_sets()[index]``).
-            - The concatenated standard frame: every row the NSDB-backed datasets
+            - The concatenated standard frame: every row the frame-backed datasets
               contributed, in dataset order, carrying the full schema (provenance,
               units, epochs and measurements).  This is the same data the factories
-              consumed, so it replaces the hand-maintained metadata above.  Datasets
-              that build their observations from another source (Gaia, Voyager,
-              simulated) contribute no rows; a collection made only of those returns
-              an empty frame carrying the standard columns.
+              consumed, so it replaces the hand-maintained metadata above.  The
+              ``observation_set_index`` column holds the index of the set each row
+              was used to build, so a row can be traced back with
+              ``collection.get_single_observation_sets()[index]``; it is null for
+              a row no set was built from.  A row whose two values became two sets
+              (a position angle and a separation) names the first.  Datasets that
+              build their observations from another source (a simulated or
+              hand-written table) contribute no rows; a collection made only of
+              those returns an empty frame carrying the standard columns.
     """
     if not isinstance(cfg, DictConfig):
         raise TypeError(f"Expected DictConfig, got {type(cfg)}")
@@ -113,11 +182,23 @@ def create_observation_collection(
     observation_sets = []
     model_setting = []
     dataset_metadata: dict[str, list[dict]] = {}
-    # Standard frames, one per NSDB-backed dataset, in dataset order.  They are
+    # Standard frames, one per frame-backed dataset, in dataset order.  They are
     # concatenated at the end and returned alongside the collection, so callers
     # hold the data the observations were built from rather than a second,
     # hand-maintained description of it.
     standard_frames: list[pd.DataFrame] = []
+    # Every single observation set the factories produced, as
+    # ``(set, metadata, frame_position)``.  ``frame_position`` is the position in
+    # ``standard_frames`` of the standard frame the set was built from, or ``None``
+    # for a modality that built from its own source.  A Tudat
+    # ``merge_observation_collections`` **sorts** sets by link ends and observable
+    # type but preserves each set's **object identity**, so the final collection is
+    # walked below and every set looked up here by ``id``.  A FIFO queue keyed by
+    # ``set_id`` cannot stand in for that: where a station several datasets observed
+    # from, the merge need not order those datasets' sets in dataset order, and a
+    # queue would then hand a set the wrong dataset's frame and leave its rows
+    # unmarked.
+    set_records: list[tuple[obs.SingleObservationSet, dict, int | None]] = []
     # One reader per collection: parsing the descriptor and re-reading the
     # observatory catalogue per dataset would be pure repetition.  The NSDB root
     # is not read from ``cfg.data_folder``: every experiment config already uses
@@ -125,12 +206,6 @@ def create_observation_collection(
     # located from each dataset's own data file instead (see
     # :meth:`orbitdet.data.nsdb_source.NSDBSource.descriptor_for`).
     nsdb_source = NSDBSource()
-    # Metadata entries per dataset, kept in dataset order.  Each entry is a
-    # ``(set_id, metadata_dict)`` pair.  The ``index`` field (position of the set
-    # in the final merged collection) is filled in below, once the merge order is
-    # known, so that callers can retrieve a set via
-    # ``collection.get_single_observation_sets()[index]``.
-    per_dataset_metadata: list[list[tuple[str, dict]]] = []
 
     for idx, (set_name, dataset_cfg) in enumerate(datasets.items()):
         try:
@@ -157,6 +232,7 @@ def create_observation_collection(
                     frame, str(cfg.get("global_frame_orientation", "J2000"))
                 )
                 standard_frames.append(frame)
+            frame_position = None if frame is None else len(standard_frames) - 1
             dataset, model_settings = create_observation_dataset(
                 cfg, dataset_cfg, system_of_bodies, frame=frame
             )
@@ -168,7 +244,6 @@ def create_observation_collection(
             dataset_id = dataset_cfg.get("identifier", set_name)
             obs_code = _observatory_code(dataset_cfg)
             ra_type, dec_type = _coordinate_type_label(dataset_cfg.get("type", ""))
-            dataset_entries: list[tuple[str, dict]] = []
             if isinstance(dataset, obs.ObservationCollection):
                 single_sets = dataset.get_single_observation_sets()
             elif isinstance(dataset, obs.SingleObservationSet):
@@ -176,21 +251,20 @@ def create_observation_collection(
             else:
                 single_sets = []
             for single_set in single_sets:
-                set_id = get_set_identifier(single_set)
-                dataset_entries.append(
+                set_records.append(
                     (
-                        set_id,
+                        single_set,
                         {
                             "name": source_name,
                             "dataset_id": dataset_id,
-                            "observatory_code": obs_code or set_id,
+                            "observatory_code": obs_code or get_set_identifier(single_set),
                             "ra_type": ra_type,
                             "dec_type": dec_type,
                             "index": None,
                         },
+                        frame_position,
                     )
                 )
-            per_dataset_metadata.append(dataset_entries)
 
             logger.debug(f"Successfully created dataset {set_name} ({idx + 1}/{len(datasets)})")
         except Exception as e:
@@ -217,27 +291,46 @@ def create_observation_collection(
 
     # Assign the final index of each single observation set.  ``merge_observation_collections``
     # orders sets internally (by observable type, then link ends), so we cannot rely on
-    # insertion order.  Instead we walk the final collection in the exact order returned by
-    # ``get_single_observation_sets()`` and consume a FIFO queue of metadata entries per
-    # ``set_id``.  This mirrors how ``WeightEngine``/``OutlierEngine`` iterate the collection,
-    # so ``index`` always matches the position a caller would retrieve via
-    # ``total_collection.get_single_observation_sets()[index]``.
-    meta_queues: dict[str, list[dict]] = {}
-    for entries in per_dataset_metadata:
-        for set_id, meta in entries:
-            meta_queues.setdefault(set_id, []).append(meta)
+    # insertion order.  It does preserve each set's object identity, though, so we resolve
+    # every set in the final collection by ``id`` back to the frame and metadata it was
+    # created with.  This mirrors how ``WeightEngine``/``OutlierEngine`` iterate the
+    # collection, so ``index`` always matches the position a caller would retrieve via
+    # ``total_collection.get_single_observation_sets()[index]``.  A ``set_id`` FIFO queue
+    # cannot stand in for identity: where several datasets observed from one station the
+    # merge need not order their sets in dataset order, and the queue would then attribute
+    # one dataset's rows to another dataset's set.
+    by_identity = {id(single_set): (meta, position) for single_set, meta, position in set_records}
+
+    # One column buffer per frame, filled during the walk and attached afterwards.
+    set_index_columns = [
+        np.full(len(data_frame), np.nan, dtype="float64") for data_frame in standard_frames
+    ]
 
     for set_index, single_set in enumerate(total_collection.get_single_observation_sets()):
         set_id = get_set_identifier(single_set)
-        queue = meta_queues.get(set_id)
-        if not queue:
+        record = by_identity.get(id(single_set))
+        if record is None:
             logger.warning(
-                "No dataset metadata available for observation set '%s' at index %d.",
+                "Observation set '%s' at index %d was not created by this builder; its "
+                "rows and metadata cannot be resolved.",
                 set_id,
                 set_index,
             )
             continue
-        meta = queue.pop(0)
+        meta, position = record
+        if position is not None:
+            data_frame = standard_frames[position]
+            rows = _rows_of_set(data_frame, single_set, _frame_candidates(data_frame, single_set))
+            # First set wins.  One row can feed more than one set - a
+            # position-angle-separation row carries both a position angle and a
+            # separation, and each becomes its own set - and a single float cannot
+            # name both.  Keeping the first means the column points at the set
+            # built from the row's *first* component, which is the primary one;
+            # the further sets are listed in ``dataset_metadata``, keyed by the
+            # same set_id.
+            fresh = rows[np.isnan(set_index_columns[position][rows])]
+            if fresh.size:
+                set_index_columns[position][fresh] = float(set_index)
         meta["index"] = set_index
         dataset_metadata.setdefault(set_id, []).append(meta)
 
@@ -254,11 +347,12 @@ def create_observation_collection(
 
     if standard_frames:
         standard_frame = pd.concat(standard_frames, ignore_index=True)
+        standard_frame[OBSERVATION_SET_INDEX_COLUMN] = np.concatenate(set_index_columns)
     else:
-        # No NSDB-backed dataset in this collection (a Gaia-only, Voyager-only or
-        # simulated-only one), so there are no source rows to return.  An empty
-        # frame carrying the standard columns is returned rather than ``None`` so
-        # that consumers can index it unconditionally.
+        # No frame-backed dataset in this collection (a Gaia-only, simulated-only
+        # one, or a hand-written table), so there are no source rows to return.
+        # An empty frame carrying the standard columns is returned rather than
+        # ``None`` so that consumers can index it unconditionally.
         from orbitdet.preprocessing.schema import empty_frame
 
         standard_frame = empty_frame()

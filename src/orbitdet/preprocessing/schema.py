@@ -102,6 +102,7 @@ __all__ = [
     "ReductionCatalogue",
     "DataSource",
     "ColumnSpec",
+    "OBSERVATION_SET_INDEX_COLUMN",
     "STANDARD_DATAFRAME_COLUMNS",
     "COLUMN_SPECS",
     "REQUIRED_COLUMNS",
@@ -296,6 +297,17 @@ class ColumnSpec:
     unit: str | None = None
 
 
+#: Column holding the position of the observation set each row was used to build.
+#:
+#: The value is the index of the set in the collection the frame was assembled
+#: into, so a row can be traced back with
+#: ``collection.get_single_observation_sets()[index]``.  It is a foreign key
+#: rather than a copy of the set: the set stays the authority on which
+#: observations it holds.  Only
+#: :func:`orbitdet.observations.collection.create_observation_collection` fills
+#: it in, because the final order is decided by the merge.
+OBSERVATION_SET_INDEX_COLUMN: str = "observation_set_index"
+
 #: The full standard observation dataframe schema, in canonical column order.
 #:
 #: This is the single source of truth for the dataframe contract: every column
@@ -467,6 +479,19 @@ STANDARD_DATAFRAME_COLUMNS: tuple[ColumnSpec, ...] = (
         "for scanning instruments (Gaia), where it defines the frame the "
         "uncertainties are diagonal in.",
         "rad",
+    ),
+    # -- Provenance of the built set ----------------------------------------
+    ColumnSpec(
+        OBSERVATION_SET_INDEX_COLUMN,
+        "float64",
+        False,
+        "Index of the single observation set this row was used to build, in the "
+        "collection the frame was assembled into: "
+        "collection.get_single_observation_sets()[observation_set_index]. Null "
+        "for a row no set was built from, and for a frame that was never "
+        "assembled into a collection. A row whose first and second values became "
+        "separate sets - a position angle and a separation - names the first; the "
+        "rest are listed in the collection's dataset metadata.",
     ),
 )
 

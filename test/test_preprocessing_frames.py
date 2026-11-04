@@ -3,9 +3,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-from astropy import units as u
-from astropy.coordinates import FK5, ICRS, SkyCoord
-from astropy.time import Time
 from tudatpy.interface import spice
 
 from orbitdet.preprocessing.frames import (
@@ -60,14 +57,20 @@ def angular_separation_deg(ra1, dec1, ra2, dec2) -> np.ndarray:
 
 class TestClassifyFrame:
     @pytest.mark.parametrize(
-        "frame", ["J2000", "B1950", "ECLIPJ2000", "ECLIPB1950", "j2000", "EME2000", "J2000.0"]
+        "frame",
+        ["J2000", "B1950", "ECLIPJ2000", "ECLIPB1950", "j2000", "EME2000", "J2000.0"],
     )
     def test_spice_frames(self, frame):
         assert classify_frame(frame) is FrameKind.SPICE
 
     @pytest.mark.parametrize("frame", ["ICRS", "ICRF", "icrs", " ICRS "])
-    def test_icrs_frames(self, frame):
-        assert classify_frame(frame) is FrameKind.ICRS
+    def test_icrs_names_are_spice_frames(self, frame):
+        """ICRS/ICRF are aliases for J2000, not a separate frame.
+
+        The SPICE kernels this pipeline loads are ICRF-referenced and labelled
+        J2000, so no rotation is required between them.
+        """
+        assert classify_frame(frame) is FrameKind.SPICE
 
     @pytest.mark.parametrize("frame", ["date", "Date", "of date", "mean of date", "MOD"])
     def test_of_date_frames(self, frame):
@@ -117,9 +120,9 @@ class TestCanonicalizeFrame:
         assert canonicalize_frame(given) == expected
 
     @pytest.mark.parametrize("frame", ["ICRS", "ICRF"])
-    def test_icrs_names_are_preserved(self, frame):
-        assert canonicalize_frame(frame) == frame
-        assert canonicalize_frame(frame.lower()) == frame
+    def test_icrs_names_resolve_to_j2000(self, frame):
+        assert canonicalize_frame(frame) == "J2000"
+        assert canonicalize_frame(frame.lower()) == "J2000"
 
     @pytest.mark.parametrize("frame", ["ECLIPJ2000", "J2015.0", "date", "true of date"])
     def test_unmappable_names_pass_through_unchanged(self, frame):
@@ -257,7 +260,14 @@ class TestOfDateConversions:
             convert_radec_frame(data, "ra", "dec", "date", "J2000", time_column="nope")
 
 
-class TestIcrSConversions:
+class TestIcrSAliasing:
+    """ICRS/ICRF are aliases for J2000, not a distinct frame.
+
+    The SPICE kernels this pipeline loads are ICRF-referenced and labelled
+    J2000, so NAIF prescribes no transformation between them.  Applying the
+    FK5 frame bias here would introduce a ~25 mas error rather than remove one.
+    """
+
     @pytest.mark.parametrize("target", ["J2000", "ECLIPJ2000", "B1950"])
     def test_icrs_to_other_and_back(self, target):
         data = sky_frame()
@@ -269,32 +279,24 @@ class TestIcrSConversions:
             np.max(angular_separation_deg(data["ra"], data["dec"], back["ra"], back["dec"])) < 1e-8
         )
 
-    def test_icrs_to_j2000_is_the_frame_bias(self):
-        """ICRS and FK5 J2000 differ by ~17-20 mas, not zero."""
+    def test_icrs_to_j2000_is_the_identity(self):
+        """No frame bias is applied: the loaded kernels are ICRF-referenced."""
         data = sky_frame(50, seed=11)
         out = convert_radec_frame(data, "ra", "dec", "ICRS", "J2000")
-        separation_arcsec = (
-            np.max(angular_separation_deg(data["ra"], data["dec"], out["ra"], out["dec"])) * 3600.0
-        )
 
-        assert 0.005 < separation_arcsec < 0.1
+        assert_frame_converted_equally(out, data)
 
-    def test_icrs_to_j2000_matches_astropy_directly(self):
-        data = sky_frame(30, seed=12)
-        ours = convert_radec_frame(data, "ra", "dec", "ICRS", "J2000")
-
-        theirs = SkyCoord(
-            data["ra"].to_numpy() * u.deg, data["dec"].to_numpy() * u.deg, frame=ICRS()
-        ).transform_to(FK5(equinox=Time("J2000", scale="tt")))
-
-        assert np.max(np.abs(ours["dec"] - theirs.dec.deg)) < 1e-9
-        assert (
-            np.max(angular_separation_deg(ours["ra"], ours["dec"], theirs.ra.deg, theirs.dec.deg))
-            < 1e-9
+    @pytest.mark.parametrize("target", ["J2000", "ECLIPJ2000", "B1950"])
+    def test_icrs_matches_j2000_for_every_target(self, target):
+        """An ICRS conversion must equal the same conversion from J2000."""
+        data = sky_frame(50, seed=13)
+        assert_frame_converted_equally(
+            convert_radec_frame(data, "ra", "dec", "ICRS", target, time_column="epoch"),
+            convert_radec_frame(data, "ra", "dec", "J2000", target, time_column="epoch"),
         )
 
     def test_icrs_to_j2000_needs_no_epoch(self):
-        """The frame bias is a constant rotation, so no time is required."""
+        """The alias is a fixed frame, so no time is required."""
         data = sky_frame()[["ra", "dec"]]
         with_epoch = convert_radec_frame(sky_frame(), "ra", "dec", "ICRS", "J2000")
         without = convert_radec_frame(data, "ra", "dec", "ICRS", "J2000")
@@ -384,12 +386,7 @@ class TestRaWrap:
         assert np.allclose(difference, np.round(difference))
 
     def test_ra_wrap_is_honoured_for_icrs_input(self):
-        """The ICRS route must respect ``ra_wrap`` like every other route.
-
-        Astropy returns RA in ``[0, 2*pi)``, so the principal-interval
-        convention has to be restored explicitly rather than being left to the
-        coordinate library.
-        """
+        """The ICRS alias must respect ``ra_wrap`` like every other route."""
         rng = np.random.default_rng(23)
         ra = np.concatenate(
             [rng.uniform(0.0, 0.5, 50), rng.uniform(2 * np.pi - 0.5, 2 * np.pi, 50)]

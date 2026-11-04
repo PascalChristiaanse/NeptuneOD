@@ -15,15 +15,15 @@ scattered across the call sites.
 
 Frame name vocabulary
 ---------------------
-Four kinds of name reach this module, and they must be distinguished before any
+Three kinds of name reach this module, and they must be distinguished before any
 conversion can happen:
 
 SPICE frames
     ``J2000``, ``B1950``, ``ECLIPJ2000``.  Rotated with SPICE's ``pxform``.
-ICRS
-    ``ICRS`` and ``ICRF``.  **Not** a SPICE frame.  Differs from FK5 J2000 by the
-    frame bias of ~17-20 mas, so it is rotated through Astropy rather than being
-    approximated as J2000.
+    ``ICRS`` and ``ICRF`` are aliases for ``J2000`` here, not a separate frame:
+    the SPICE kernels this pipeline loads are ICRF-referenced and merely
+    *labelled* ``J2000``, so no rotation is required between them.  See
+    :data:`ICRS_FRAME_NAMES`.
 Equinox labels
     ``date``, ``J2015.0``, ``1905.0``, ``true of date``.  No SPICE frame exists;
     routed through :mod:`~orbitdet.preprocessing.precession`.
@@ -77,10 +77,20 @@ __all__ = [
 ]
 
 
-#: Names that denote the International Celestial Reference System.  ICRS and the
-#: FK5 mean equator and equinox of J2000 are *not* the same frame: they differ by
-#: the frame bias, ~17-20 mas.  SPICE cannot represent ICRS, so these names route
-#: through Astropy.
+#: Names that denote the International Celestial Reference System.  They are
+#: treated as aliases for ``J2000`` rather than as a distinct frame.
+#:
+#: The *definitions* of ICRS and FK5 J2000 do differ by the frame bias,
+#: ~17-20 mas, but that is not the comparison that matters here.  The SPICE
+#: kernels this pipeline loads - ``DE440.bsp``, ``nep097.bsp``, the IAU rotation
+#: models - are ICRF-referenced and, for historical and backward-compatibility
+#: reasons, *labelled* ``J2000``; NAIF states that no transformation is required
+#: between the two for such data.  So the pipeline's ``J2000`` already *is* the
+#: ICRS realisation, and rotating by the frame bias would introduce an error
+#: rather than remove one.
+#:
+#: See the "ICRF vs J2000" section of the NAIF frames required reading:
+#: https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/frames.html
 ICRS_FRAME_NAMES = frozenset({"ICRS", "ICRF"})
 
 #: SPICE frames that also have a well-defined equinox, so precession can express
@@ -97,7 +107,6 @@ class FrameKind(StrEnum):
     """
 
     SPICE = "spice"
-    ICRS = "icrs"
     EQUINOX = "equinox"
     OF_DATE = "of_date"
     TRUE_OF_DATE = "true_of_date"
@@ -117,7 +126,7 @@ def classify_frame(frame: str) -> FrameKind:
     Examples:
         >>> classify_frame("J2000") is FrameKind.SPICE
         True
-        >>> classify_frame("ICRS") is FrameKind.ICRS
+        >>> classify_frame("ICRS") is FrameKind.SPICE
         True
         >>> classify_frame("date") is FrameKind.OF_DATE
         True
@@ -129,10 +138,9 @@ def classify_frame(frame: str) -> FrameKind:
     # Check the alias map first: it is the single source of truth for spellings
     # SPICE does not itself recognise, so "EME2000" and "J2000.0" must be
     # classified by what they resolve to rather than falling through to the
-    # equinox vocabulary as unknown names.
+    # equinox vocabulary as unknown names.  ICRS/ICRF resolve to J2000, which is
+    # a SPICE frame.
     canonical = canonicalize_frame(text)
-    if canonical.upper() in ICRS_FRAME_NAMES:
-        return FrameKind.ICRS
     if is_spice_frame(canonical.upper()):
         return FrameKind.SPICE
 
@@ -177,7 +185,7 @@ def canonicalize_frame(frame: str) -> str:
         >>> canonicalize_frame("J2000.0")
         'J2000'
         >>> canonicalize_frame("ICRF")
-        'ICRF'
+        'J2000'
     """
     text = str(frame).strip()
 
@@ -192,8 +200,11 @@ def canonicalize_frame(frame: str) -> str:
         return aliases[text]
 
     if text.upper() in ICRS_FRAME_NAMES:
-        # Preserve the caller's spelling; both names are handled identically.
-        return text.upper()
+        # ICRS/ICRF are the ICRS realisation, which is what the loaded SPICE
+        # kernels are referenced to while being labelled J2000.  Resolving them
+        # to J2000 makes the conversion between the two the identity, which is
+        # what NAIF prescribes for these data products.
+        return "J2000"
 
     return text
 
@@ -216,8 +227,9 @@ def convert_radec_frame(
 ) -> pd.DataFrame:
     """Convert RA/Dec columns between reference frames.
 
-    Handles SPICE frames, ICRS, the of-date equinoxes, arbitrary Julian and
-    Besselian equinoxes, and the ``astrometric``/``apparent`` kind labels.
+    Handles SPICE frames (including ``ICRS``/``ICRF``, which are aliases for
+    ``J2000``), the of-date equinoxes, arbitrary Julian and Besselian equinoxes,
+    and the ``astrometric``/``apparent`` kind labels.
 
     Args:
         data: Dataframe containing the RA/Dec columns.
@@ -228,8 +240,7 @@ def convert_radec_frame(
         output_frame: Frame to convert to.
         time_column: Column holding the observation epoch as TDB seconds since
             J2000.  **Required** whenever either frame is time-dependent, which
-            includes ``date``, ``true of date``, ``ICRS`` and any of-date
-            conversion.
+            includes ``date``, ``true of date`` and any of-date conversion.
         ra_wrap: If ``True`` (default), wrap the output RA into ``[0, 360)``.
             If ``False``, return it in ``[-180, 180)``.
         angle_unit: Unit of the RA/Dec columns, ``"deg"`` (default) or ``"rad"``.
@@ -448,11 +459,17 @@ def _convert_radec_radians(
     fk4_convention: Fk4Convention = Fk4Convention.SPICE,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Route a radian RA/Dec conversion to the right implementation."""
+    # Resolve aliases once, here, so every downstream layer sees the canonical
+    # name.  In particular ICRS/ICRF become J2000, which keeps the precession
+    # vocabulary from having to know about them.
+    input_frame = canonicalize_frame(input_frame)
+    output_frame = canonicalize_frame(output_frame)
+
     is_date = input_kind in (FrameKind.OF_DATE, FrameKind.TRUE_OF_DATE)
     to_date = output_kind in (FrameKind.OF_DATE, FrameKind.TRUE_OF_DATE)
 
-    # Only the of-date families actually need the epoch: ICRS->J2000 is a fixed
-    # frame bias, and the fixed frames need no time at all.
+    # Only the of-date families actually need the epoch: the fixed frames,
+    # including ICRS/ICRF (which are aliases for J2000), need no time at all.
     if (is_date or to_date) and epochs is None:
         which = "input" if is_date else "output"
         offending = input_frame if is_date else output_frame
@@ -460,21 +477,6 @@ def _convert_radec_radians(
             f"time_column is required to convert between {input_frame!r} and "
             f"{output_frame!r}: the {which} frame ({offending!r}) is defined "
             f"relative to the observation date."
-        )
-
-    # ICRS is not a SPICE frame and differs from J2000 by the frame bias.  Route
-    # through Astropy for the bias, then continue from J2000.
-    if input_kind is FrameKind.ICRS or output_kind is FrameKind.ICRS:
-        return _convert_icrs(
-            ra,
-            dec,
-            input_kind,
-            output_kind,
-            input_frame,
-            output_frame,
-            epochs,
-            wrap,
-            fk4_convention,
         )
 
     return _precess_or_rotate(
@@ -501,7 +503,7 @@ def _precess_or_rotate(
     wrap: bool,
     fk4_convention: Fk4Convention = Fk4Convention.SPICE,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Convert between two non-ICRS frames, chaining through J2000 when needed.
+    """Convert between two frames, chaining through J2000 when needed.
 
     A direct precession is used whenever both frames can be expressed as
     equinoxes.  Otherwise the conversion goes through J2000, because two cases
@@ -593,101 +595,6 @@ def _requires_j2000_hub(
         )
 
     return False
-
-
-def _convert_icrs(
-    ra: np.ndarray,
-    dec: np.ndarray,
-    input_kind: FrameKind,
-    output_kind: FrameKind,
-    input_frame: str,
-    output_frame: str,
-    epochs: np.ndarray | None,
-    wrap: bool,
-    fk4_convention: Fk4Convention = Fk4Convention.SPICE,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Route a conversion involving ICRS through Astropy's frame bias."""
-    from astropy import units as u
-    from astropy.coordinates import FK5, ICRS, SkyCoord
-    from astropy.time import Time
-
-    def build(frame_kind: FrameKind, frame_name: str):
-        if frame_kind is FrameKind.ICRS:
-            return ICRS()
-        if frame_kind is FrameKind.SPICE and canonicalize_frame(frame_name) == "J2000":
-            return FK5(equinox=Time("J2000", scale="tt"))
-        return None
-
-    input_astropy = build(input_kind, input_frame)
-    output_astropy = build(output_kind, output_frame)
-
-    if input_astropy is None or output_astropy is None:
-        # One side is neither ICRS nor J2000, so chain through J2000: convert
-        # that side to J2000 first, then apply the frame bias.
-        if input_kind is FrameKind.ICRS:
-            raised_ra, raised_dec = _convert_icrs(
-                ra,
-                dec,
-                FrameKind.ICRS,
-                FrameKind.SPICE,
-                input_frame,
-                "J2000",
-                epochs,
-                wrap=False,
-                fk4_convention=fk4_convention,
-            )
-            return _precess_or_rotate(
-                raised_ra,
-                raised_dec,
-                "J2000",
-                output_frame,
-                epochs,
-                FrameKind.SPICE,
-                output_kind,
-                wrap,
-                fk4_convention,
-            )
-
-        to_j2000_ra, to_j2000_dec = _precess_or_rotate(
-            ra,
-            dec,
-            input_frame,
-            "J2000",
-            epochs,
-            input_kind,
-            FrameKind.SPICE,
-            False,
-            fk4_convention,
-        )
-        return _convert_icrs(
-            to_j2000_ra,
-            to_j2000_dec,
-            FrameKind.SPICE,
-            FrameKind.ICRS,
-            "J2000",
-            output_frame,
-            epochs,
-            wrap,
-            fk4_convention,
-        )
-
-    valid = np.isfinite(ra) & np.isfinite(dec)
-    out_ra = np.full_like(ra, np.nan)
-    out_dec = np.full_like(dec, np.nan)
-    if valid.any():
-        converted = SkyCoord(
-            ra[valid] * u.rad, dec[valid] * u.rad, frame=input_astropy
-        ).transform_to(output_astropy)
-        # Astropy reports RA in [0, 2*pi); restore the module's convention.
-        out_ra[valid] = converted.ra.to(u.rad).value
-        out_dec[valid] = converted.dec.to(u.rad).value
-
-    if wrap:
-        out_ra = np.mod(out_ra, 2.0 * np.pi)
-    else:
-        out_ra = np.remainder(out_ra + np.pi, 2.0 * np.pi) - np.pi
-
-    return out_ra, out_dec
 
 
 def _spice_radec_convert(

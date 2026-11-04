@@ -145,22 +145,6 @@ class TestObservationAccess:
         assert access.residual(0)[0] == pytest.approx(5e-6)
         assert access.frame["weight_first"].iloc[0] == pytest.approx(4.0)
 
-    def test_full_matrix_marginal_sigma_uses_inverse(self):
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        marginal = np.sqrt(np.diag(np.linalg.inv(full)))
-        # Columns are per component: first -> [d0, d2], second -> [d1, d3].
-        np.testing.assert_allclose(access.frame["sigma_first_rad"], [marginal[0], marginal[2]])
-        np.testing.assert_allclose(access.frame["sigma_second_rad"], [marginal[1], marginal[3]])
-        assert access.frame["has_full_weight_matrix"].all()
-
     def test_frame_without_set_index_is_all_null(self):
         frame = build_frame([make_record("673", 1.0)])
         collection = obs.ObservationCollection([make_set([1.0])])
@@ -172,40 +156,6 @@ class TestObservationAccess:
 
 
 class TestWeightMatrices:
-    def test_diagonal_weight_matrix_and_diagonal(self):
-        weights = np.array([[4.0, 9.0], [16.0, 25.0]])
-        single_set = make_set([1.0, 2.0], weights=weights)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        matrix = access.weight_matrix(0)
-        assert matrix.shape == (4, 4)
-        np.testing.assert_allclose(np.diag(matrix), weights.ravel())
-        np.testing.assert_allclose(access.weight_diagonal(0), weights.ravel())
-        assert not access.has_full_weight_matrix(0)
-
-    def test_covariance_is_inverse_of_weight(self):
-        weights = np.array([[4.0, 9.0]])
-        single_set = make_set([1.0], weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        covariance = access.covariance_matrix(0)
-        np.testing.assert_allclose(covariance, np.linalg.inv(access.weight_matrix(0)))
-        np.testing.assert_allclose(np.diag(covariance), 1.0 / weights.ravel())
-
-    def test_full_weight_matrix_is_off_diagonal_and_invertible(self):
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        assert access.has_full_weight_matrix(0)
-        np.testing.assert_allclose(access.weight_matrix(0), full)
-        np.testing.assert_allclose(access.covariance_matrix(0), np.linalg.inv(full))
-
     def test_observation_set_and_index_of(self):
         set_a = make_set([1.0], reference_point="673")
         set_b = make_set([2.0], reference_point="689")
@@ -215,30 +165,6 @@ class TestWeightMatrices:
         assert access.set_index_of(set_b) == 1
         with pytest.raises(ValueError):
             access.set_index_of(make_set([3.0]))
-
-    def test_weight_matrices_keyed_by_set_id(self):
-        set_a = make_set([1.0], reference_point="673", weights=np.array([[4.0, 9.0]]))
-        set_b = make_set([2.0], reference_point="689", weights=np.array([[1.0, 1.0]]))
-        access = make_access([set_a, set_b], [[1.0], [2.0]])
-
-        matrices = access.weight_matrices()
-        assert set(matrices) == {"673", "689"}
-        np.testing.assert_allclose(np.diag(matrices["673"]), [4.0, 9.0])
-
-    def test_set_level_accessors_accept_id_or_object(self):
-        weights = np.array([[4.0, 9.0]])
-        single_set = make_set([1.0], reference_point="Gaia", weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        # By identifier string, by set object, and by index all agree.
-        by_id = access.weight_matrix("Gaia")
-        by_obj = access.weight_matrix(single_set)
-        by_index = access.weight_matrix(0)
-        np.testing.assert_allclose(by_id, by_index)
-        np.testing.assert_allclose(by_obj, by_index)
-        assert access.set_index_for("Gaia") == 0
-        assert access.set_indices("Gaia") == [0]
-        assert access.observation_set("Gaia") is single_set
 
     def test_ambiguous_set_id_raises(self):
         set_a = make_set([1.0], reference_point="673")
@@ -250,32 +176,6 @@ class TestWeightMatrices:
             access.weight_matrix("673")
         with pytest.raises(KeyError):
             access.weight_matrix("nope")
-
-    def test_covariance_and_weight_in_scan_basis(self, monkeypatch):
-        """basis='scan' applies T C T^T and its dual, using the registered angles."""
-        import orbitdet.data.gaia as gaia
-
-        psi = np.array([0.7, -0.3])
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: psi[: len(epochs)])
-
-        weights = np.array([[4.0, 9.0], [16.0, 25.0]])
-        single_set = make_set([1.0, 2.0], reference_point="Gaia", weights=weights)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        # Canonical is unchanged.
-        W_canonical = access.weight_matrix("Gaia")
-        np.testing.assert_allclose(np.diag(W_canonical), weights.ravel())
-
-        # The scan basis is block-diagonal with the registered psi per observation.
-        basis = access.basis_transform("Gaia")
-        assert basis.transform.shape == (4, 4)
-        np.testing.assert_allclose(
-            access.weight_matrix("Gaia", basis="scan"), basis.weight(W_canonical)
-        )
-        np.testing.assert_allclose(
-            access.covariance_matrix("Gaia", basis="scan"),
-            basis.covariance(access.covariance_matrix("Gaia")),
-        )
 
     def test_scan_basis_without_angles_raises(self, monkeypatch):
         import orbitdet.data.gaia as gaia

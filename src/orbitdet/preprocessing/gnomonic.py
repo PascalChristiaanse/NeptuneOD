@@ -7,12 +7,6 @@ sphere at the planet's position.  The observation model measures an *angle* from
 the observatory, so the offsets must be projected back onto the sphere before
 they mean anything geometrically.
 
-This is the pure half of that work: spherical trigonometry with no ephemerides,
-no Tudat and no config.  Supplying the tangent point - the planet's topocentric
-direction, which needs the system of bodies - is the caller's job.
-
-Two conventions are easy to confuse, so they are named explicitly:
-
 ``standard -> relative``
     Plane offsets to a direction on the sphere, expressed as offsets from the
     tangent point.  This is the direction the ingestion path needs: a raw file

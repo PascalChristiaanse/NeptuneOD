@@ -1,5 +1,7 @@
 residual_qq:
   output_file: "residual_qq.pdf"
+  # Standard-frame column(s) the Q-Q series are grouped by.
+  group_by: "observatory_code"
   figure:
     width: 16.54
     height: 8.27

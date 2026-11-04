@@ -1,5 +1,7 @@
 residual_scatter:
   output_file: "residual_scatter.pdf"
+  # Standard-frame column(s) the marker shapes are grouped by.
+  group_by: "observatory_code"
   figure:
     width: 8.27
     height: 8.27
@@ -8,6 +10,7 @@ residual_scatter:
   axes:
     x_label: "RA Residual [arcsec]"
     y_label: "DEC Residual [arcsec]"
+    unit: "arcsec"   # Display unit for residuals: "arcsec" or "mas"
     colorbar_label: "Epoch"
     hover_x_label: "RA Residual [arcsec]"
     hover_y_label: "DEC Residual [arcsec]"

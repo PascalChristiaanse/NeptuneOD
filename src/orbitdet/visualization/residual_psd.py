@@ -7,14 +7,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter, LogLocator
 from omegaconf import DictConfig
-from scipy.signal import find_peaks, lombscargle, welch
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
-from tudatpy.estimation import observations as obs
-from tudatpy.estimation.observable_models_setup import links
-from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot
+from orbitdet.analysis import ObservationAccess, analysis_frame
+from orbitdet.analysis.distribution import find_psd_peaks, lombscargle_psd, welch_psd
+from orbitdet.visualization.base import Plot, _snake_case
+from orbitdet.visualization.residuals import _cfg_get
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -134,141 +132,6 @@ def _period_to_frequency(period: np.ndarray) -> np.ndarray:
     )
 
 
-def _resample_uniform(
-    times_days: np.ndarray, values: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, float]:
-    finite_mask = np.isfinite(times_days) & np.isfinite(values)
-    times_days = times_days[finite_mask]
-    values = values[finite_mask]
-
-    if times_days.size < 2:
-        raise ValueError("Need at least two finite residual samples to compute a PSD.")
-
-    order = np.argsort(times_days)
-    times_days = times_days[order]
-    values = values[order]
-
-    unique_times, unique_indices = np.unique(times_days, return_index=True)
-    values = values[unique_indices]
-
-    if unique_times.size < 2:
-        raise ValueError("Need at least two unique observation times to compute a PSD.")
-
-    sample_spacing_days = float(np.median(np.diff(unique_times)))
-    if not np.isfinite(sample_spacing_days) or sample_spacing_days <= 0.0:
-        raise ValueError("Could not infer a valid sampling interval for the residual PSD.")
-
-    uniform_times = np.arange(
-        unique_times[0], unique_times[-1] + sample_spacing_days / 2.0, sample_spacing_days
-    )
-    uniform_values = np.interp(uniform_times, unique_times, values)
-    return uniform_times, uniform_values, sample_spacing_days
-
-
-def _compute_psd(
-    times_days: np.ndarray,
-    values: np.ndarray,
-    window_length_days: float,
-    window_type: str,
-    method: str,
-) -> tuple[np.ndarray, np.ndarray]:
-    if method == "welch":
-        _, uniform_values, sample_spacing_days = _resample_uniform(times_days, values)
-        centered = uniform_values - np.mean(uniform_values)
-        sample_count = centered.size
-        window_length_samples = int(round(window_length_days / sample_spacing_days))
-        window_length_samples = max(8, window_length_samples)
-        window_length_samples = min(window_length_samples, sample_count)
-
-        noverlap = window_length_samples // 2
-        try:
-            frequencies, power_density = welch(
-                centered,
-                fs=1.0 / sample_spacing_days,
-                window=window_type,
-                nperseg=window_length_samples,
-                noverlap=noverlap,
-                detrend="constant",
-                scaling="density",
-                return_onesided=True,
-            )
-        except ValueError as exc:
-            raise ValueError(
-                f"Unsupported window type '{window_type}' for Welch PSD. "
-                "Use a SciPy-compatible window name (e.g., hamming, hann, boxcar, blackman)."
-            ) from exc
-        return frequencies, power_density
-
-    if method == "lombscargle":
-        return _compute_lombscargle(times_days, values)
-
-    raise ValueError(f"Unsupported PSD method '{method}'. Supported methods: welch, lombscargle")
-
-
-def _compute_lombscargle(
-    times_days: np.ndarray,
-    values: np.ndarray,
-    frequencies_per_decade: int = DEFAULT_LOMB_FREQS_PER_DECADE,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute a Lomb-Scargle periodogram on irregularly sampled data.
-
-    Unlike Welch, Lomb-Scargle does not require uniform resampling, so it is
-    appropriate for bursty Gaia observations separated by long gaps.
-    """
-    finite_mask = np.isfinite(times_days) & np.isfinite(values)
-    times_days = times_days[finite_mask]
-    values = values[finite_mask]
-
-    if times_days.size < 2:
-        raise ValueError("Need at least two finite residual samples to compute a PSD.")
-
-    order = np.argsort(times_days)
-    times_days = times_days[order]
-    values = values[order]
-
-    centered = values - np.mean(values)
-    span_days = float(times_days[-1] - times_days[0])
-    if span_days <= 0.0:
-        raise ValueError("Could not infer a valid sampling interval for the residual PSD.")
-
-    # Frequency grid: from one cycle over the full span up to a physically
-    # meaningful ceiling. The raw within-cluster spacing (~seconds) would push
-    # the Nyquist to thousands of cycles/day, which is meaningless for orbit
-    # residuals; cap at 1 cycle/day (periods >= 1 day) so the Triton peak
-    # (period ~5.9 d) is well resolved without flooding the spectrum with
-    # high-frequency noise. A log-spaced grid keeps the peak well sampled.
-    f_min = 1.0 / span_days
-    f_max = min(1.0, 0.5 / float(np.median(np.diff(times_days))))
-    if not np.isfinite(f_max) or f_max <= f_min:
-        f_max = f_min * 10.0
-
-    num_frequencies = frequencies_per_decade * int(np.log10(f_max / f_min)) + 1
-    frequencies = np.geomspace(f_min, f_max, num=num_frequencies)
-    power_density = lombscargle(times_days, centered, frequencies, normalize=True)
-    return frequencies, power_density
-
-
-def _find_psd_peaks(
-    frequencies: np.ndarray,
-    power_density: np.ndarray,
-    prominence: float = 0.1,
-) -> list[tuple[float, float]]:
-    """Return (frequency, power) of the most prominent PSD peaks, sorted by power."""
-    positive = frequencies > 0.0
-    frequencies = frequencies[positive]
-    power_density = power_density[positive]
-    if frequencies.size == 0:
-        return []
-
-    peaks, properties = find_peaks(power_density, prominence=prominence)
-    if peaks.size == 0:
-        return []
-
-    peak_power = power_density[peaks]
-    order = np.argsort(peak_power)[::-1]
-    return [(float(frequencies[peaks[i]]), float(peak_power[i])) for i in order]
-
-
 def _plot_psd_series(
     ax: plt.Axes,
     frequencies: np.ndarray,
@@ -337,38 +200,74 @@ def _configure_psd_axis(
 
 
 class ResidualsPSD(Plot):
-    """Plot Welch PSD spectra of the residual signal for the orbit determination."""
+    """Plot Welch or Lomb-Scargle PSD spectra of the residual signal.
+
+    Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the
+    standard observation frame joined to the live observation sets - so the
+    residuals, epochs and grouping column come from one tidy frame instead of a
+    per-set walk over the collection's link ends.  The spectral estimate itself
+    is delegated to :mod:`orbitdet.analysis.distribution`.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.
+    window_length_days : float
+        Welch segment length in days (ignored by the Lomb-Scargle method).
+    plot_cfg : DictConfig | dict
+        The figure configuration block (``cfg.figures.residuals_psd``).
+    use_figure_name : str | None
+        Name of the figure configuration block under ``cfg.figures``, used for
+        the output file name.  Defaults to ``"residuals_psd"``.
+    group_by : str | list[str] | None
+        Standard-frame column(s) to group the spectra by.  ``None`` (default)
+        falls back to the figure config's ``group_by`` and then to
+        ``"observatory_code"``.
+    include_rejected : bool
+        Whether to include rows that outlier rejection removed.
+    """
 
     def __init__(
         self,
         cfg: DictConfig,
-        observation_collection: obs.ObservationCollection,
+        access: ObservationAccess,
         window_length_days: float,
         plot_cfg,
-        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        use_figure_name: str | None = "residuals_psd",
+        group_by: str | list[str] | None = None,
+        include_rejected: bool = False,
     ):
         super().__init__(cfg)
-        self.observation_collection = observation_collection
+        self.access = access
         self.window_length_days = window_length_days
         self.plot_cfg = plot_cfg
-        self.observation_parsers = observation_parsers
+        self.use_figure_name = use_figure_name
+        self.group_by = group_by
+        self.include_rejected = include_rejected
+        self.name = use_figure_name or _snake_case(self.__class__.__name__)
+
+    def _grouping(self, plot_cfg) -> list[str]:
+        """Resolve the grouping columns: argument, then config, then default."""
+        group_by = self.group_by
+        if group_by is None:
+            group_by = _cfg_get(plot_cfg, "group_by", default=None)
+        if group_by is None:
+            group_by = "observatory_code"
+        return [group_by] if isinstance(group_by, str) else list(group_by)
+
+    @staticmethod
+    def _group_label(key, columns: list[str]) -> str:
+        """Render a groupby key as a legend label."""
+        values = key if isinstance(key, tuple) else (key,)
+        if len(columns) == 1:
+            return str(values[0])
+        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
 
     def _make_figure(self):
-        cfg = self.cfg
-        observation_collection = self.observation_collection
         window_length_days = self.window_length_days
         plot_cfg = self.plot_cfg
-        observation_parsers = self.observation_parsers
-
-        """Plot Welch PSD spectra of the residual signal for the orbit determination."""
-        if observation_parsers is None:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets()
-            )
-        else:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets(observation_parsers)
-            )
 
         figure_cfg = plot_cfg.get("figure", {})
         styling_cfg = plot_cfg.get("styling", {})
@@ -399,43 +298,38 @@ class ResidualsPSD(Plot):
         min_frequency = np.inf
         max_frequency = 0.0
 
-        for set_index, obs_set in enumerate(observation_sets):
-            if len(obs_set.observation_times) == 0:
-                continue
+        # One tidy frame: standard columns + residual/weight/sigma columns.
+        frame = analysis_frame(self.access, unit=None, scan=False, normalized=False)
+        if not self.include_rejected and "rejected" in frame.columns:
+            frame = frame.loc[~frame["rejected"].astype(bool)]
 
-            link_ends = obs_set.link_definition.link_ends
+        group_cols = self._grouping(plot_cfg)
+        missing = [column for column in group_cols if column not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"Grouping column(s) {missing} are not in the standard frame. "
+                f"Available columns: {sorted(frame.columns)}."
+            )
 
-            # Resolve a display label for this observation set.
-            if links.receiver in link_ends:
-                ref_point = link_ends[links.receiver].reference_point
-                if ref_point == "":
-                    body = link_ends[links.receiver].body_name
-                    info = {"code": "", "name": body, "region": "Spacecraft"}
-                else:
-                    info = get_observatory_info(cfg, ref_point)
-            elif links.observer in link_ends:
-                body = link_ends[links.observer].body_name
-                info = {"code": "", "name": body, "region": body}
-            else:
-                first_key = next(iter(link_ends.keys()))
-                body = link_ends[first_key].body_name
-                info = {"code": "", "name": body, "region": body}
+        target_name = "target"
+        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
+            target_name = str(frame["observed_object"].dropna().iloc[0])
 
-            # Determine target (observed body)
-            if links.transmitter in link_ends:
-                target_name = link_ends[links.transmitter].body_name
-            elif links.observed_body in link_ends:
-                target_name = link_ends[links.observed_body].body_name
-            else:
-                target_name = list(link_ends.values())[-1].body_name
+        for set_index, (key, group) in enumerate(
+            frame.groupby(group_cols, dropna=False, sort=True)
+        ):
+            label = self._group_label(key, group_cols)
             color = colors(set_index % colors.N)
 
-            obs_times_sec_j2000 = np.array(
-                [epoch.to_float() for epoch in obs_set.observation_times]
+            obs_times_sec_j2000 = group["epoch_tdb"].to_numpy("float64")
+            residuals = np.column_stack(
+                [
+                    group["residual_first_rad"].to_numpy("float64"),
+                    group["residual_second_rad"].to_numpy("float64"),
+                ]
             )
-            residuals = np.array(obs_set.residuals)
 
-            time_mask = np.ones(obs_times_sec_j2000.shape, dtype=bool)
+            time_mask = np.isfinite(obs_times_sec_j2000)
             if time_start_seconds is not None:
                 time_mask &= obs_times_sec_j2000 >= time_start_seconds
             if time_end_seconds is not None:
@@ -444,7 +338,7 @@ class ResidualsPSD(Plot):
             if not np.any(time_mask):
                 logger.warning(
                     "Skipping %s because no observations fall inside the configured time range.",
-                    info["name"],
+                    label,
                 )
                 continue
 
@@ -458,20 +352,24 @@ class ResidualsPSD(Plot):
             dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
 
             try:
-                _, ra_uniform, ra_dt_days = _resample_uniform(obs_times_days, ra_residuals_arcsec)
-                _, dec_uniform, dec_dt_days = _resample_uniform(
-                    obs_times_days, dec_residuals_arcsec
-                )
-                ra_freq, ra_psd = _compute_psd(
-                    ra_uniform, ra_dt_days, window_length_days, window_type, method
-                )
-                dec_freq, dec_psd = _compute_psd(
-                    dec_uniform, dec_dt_days, window_length_days, window_type, method
-                )
+                if method == "welch":
+                    ra_freq, ra_psd = welch_psd(
+                        obs_times_days,
+                        ra_residuals_arcsec,
+                        window_length=window_length_days,
+                        window=window_type,
+                    )
+                    dec_freq, dec_psd = welch_psd(
+                        obs_times_days,
+                        dec_residuals_arcsec,
+                        window_length=window_length_days,
+                        window=window_type,
+                    )
+                else:
+                    ra_freq, ra_psd = lombscargle_psd(obs_times_days, ra_residuals_arcsec)
+                    dec_freq, dec_psd = lombscargle_psd(obs_times_days, dec_residuals_arcsec)
             except ValueError as exc:
-                logger.warning(
-                    "Skipping %s because PSD computation failed: %s", info["name"], str(exc)
-                )
+                logger.warning("Skipping %s because PSD computation failed: %s", label, str(exc))
                 continue
             positive_ra = ra_freq > 0.0
             positive_dec = dec_freq > 0.0
@@ -486,7 +384,7 @@ class ResidualsPSD(Plot):
                 axs[0],
                 ra_freq,
                 ra_psd,
-                label=f"{info['name']} - {info['region']}",
+                label=label,
                 color=color,
                 line_width=line_width,
             )
@@ -494,14 +392,14 @@ class ResidualsPSD(Plot):
                 axs[1],
                 dec_freq,
                 dec_psd,
-                label=f"{info['name']} - {info['region']}",
+                label=label,
                 color=color,
                 line_width=line_width,
             )
 
             if annotate_peaks:
                 for axis, freq, psd in ((axs[0], ra_freq, ra_psd), (axs[1], dec_freq, dec_psd)):
-                    for peak_freq, peak_power in _find_psd_peaks(
+                    for peak_freq, peak_power in find_psd_peaks(
                         freq, psd, prominence=peak_prominence
                     )[:3]:
                         axis.axvline(

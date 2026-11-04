@@ -2,86 +2,19 @@
 
 This module provides methods for formatting common observation-epoch encodings into a single, 
 uniform representation: seconds since the J2000.0 epoch, 2000-01-01T12:00:00, as TudatPy renders it.
-Conversions are routed through :class:`tudatpy.astro.time_representation.DateTime` .
+Conversions are routed through :class:`tudatpy.astro.time_representation.DateTime` . 
+The timescale is not applied here, only the numeric representation of the epoch is produced.  
+The timescale is applied later by :mod:`orbitdet.preprocessing.time_scales`.
 
-Design
-------
-Each source encoding is reduced to an ISO-8601 string and handed to 
-``DateTime.from_iso_string(...).to_epoch()``, 
-with the numeric forms going through ``DateTime.from_julian_day`` and
-``DateTime.from_modified_julian_day``.  No epoch arithmetic is reimplemented
-here.
-
-What the module does own is the part ``DateTime`` cannot do - deciding **which
-columns carry the epoch and in what form** (:func:`detect_epoch_layout`), and
-reducing each source's quirks to something ``DateTime`` accepts.  There is no
-``SystemOfBodies`` and no timescale here.
-
-Epoch convention
-----------------
-One day is 86400 seconds, uniformly, so ``JD 2451545.0`` is epoch zero and
-``2012-06-30T11:11:37`` is a fraction ``40297/86400`` through its day even though
-that day carried a leap second.  This is TudatPy's convention, and it is the
-convention here because the conversion *is* TudatPy's.
-
-``astropy`` is not used for epochs anywhere in this module.  Its UTC Julian Date
-is leap-second-aware and compresses the 86401-second day into a 1.0-day span, so
-seconds-since-J2000 derived from it are displaced by up to a second on
-leap-second days (~0.47 s on 2012-06-30) - comparable to the precision of the
-historical data itself.
-
-Supported input layouts
------------------------
-Julian Date
-    A single column labelled ``JD``, ``Julian date``, ``Julian day``, etc.
-Modified Julian Date
-    A single column labelled ``MJD`` or ``Modified Julian date``.  Detected
-    *before* the Julian-date search, because ``mjd`` would otherwise be claimed
-    by it.
-Calendar parts
-    Separate ``year`` / ``month`` / ``day`` columns, with optional
-    ``hour`` / ``minute`` / ``second``.  A fractional day carries into the time
-    of day.  Right-ascension and declination components are excluded, since
-    ``hour`` and ``second`` are angular units there.
-ISO-8601 strings
-    A column already holding ``YYYY-MM-DDThh:mm:ss`` text.  A bare date is
-    padded with ``T00:00:00``, and a trailing ``Z`` or numeric UTC offset is
-    resolved to the equivalent UTC instant.
-
-Detection runs MJD, then JD, then a column whose label declares a Julian-Date
-reference, then ISO, then calendar.
 
 Source quirks
 -------------
-* A **fractional day** and the equivalent ``hour`` / ``minute`` / ``second``
-  components describe the same instant, so a source may use either.
 * An **absent time column** means midnight; an absent ``year`` / ``month`` /
   ``day`` means no epoch at all.
 * A **declared reference** in a column label, as in ``with respect to JD
   2440000.0``, is carried on the layout as ``offset_days`` and added before
   conversion.  It is ignored when the values are already absolute dates.
 * ``hour = 24`` advances the day rather than failing.
-
-Failure behaviour
------------------
-A missing ``year`` / ``month`` / ``day``, an unparseable ISO string, and a
-non-finite or unrepresentable Julian Date all yield NaN for that row, with a
-warning where a value was present but unusable.  An impossible calendar date
-raises ``RuntimeError``, and a negative month or day raises ``ValueError``: a
-date that does not exist means the source is being misread, and a silently
-wrong epoch is indistinguishable from a wrong orbit afterwards.
-
-Public API
-----------
-:class:`EpochLayout`, :func:`detect_epoch_layout`,
-:func:`to_seconds_since_j2000`, :func:`seconds_since_j2000_to_julian_date`,
-:func:`seconds_since_j2000_to_datetime`, and the constants
-:data:`SECONDS_PER_DAY`, :data:`MJD_OFFSET_DAYS`, :data:`JD_J2000`,
-:data:`EPOCH_COLUMN`.
-
-See Also
---------
-orbitdet.preprocessing.time_scales : applies the clock to the count produced here.
 """
 
 from __future__ import annotations
@@ -378,12 +311,6 @@ def _iso_string_from_calendar_components(
     ``day = 9.5208`` and one writing ``day = 9`` with ``hour = 12`` produce the
     identical string, so the caller does not have to know which convention its
     source uses.
-
-    Rendering to text rather than calling ``DateTime(...)`` keeps the conversion
-    on one code path: the string is read back by ``DateTime.from_iso_string``
-    and ``.to_epoch()``, the same route an ISO-8601 column takes.  The
-    constructor and the parser were verified to agree to the last bit of the
-    ``long double`` they carry, so this costs no precision.
 
     ``seconds_of_day`` is allowed to exceed a day, so a source that writes
     ``hour = 24`` (some do, meaning the following midnight) advances the day

@@ -102,12 +102,55 @@ def _factor_weight(weight_matrix: np.ndarray, tol: float | None) -> tuple[np.nda
     return factor, rank, "eigen"
 
 
+def _factor_weight_symmetric(
+    weight_matrix: np.ndarray, tol: float | None
+) -> tuple[np.ndarray, int, str]:
+    """Factor a weight matrix as the symmetric square root ``W^{1/2}``.
+
+    Unlike the Cholesky factor, the symmetric square root ``S = V sqrt(Lambda) V^T``
+    privileges no component: it spreads the correlation evenly over the pair
+    instead of dumping it onto the first component.  It still satisfies
+    ``W = S S`` (so ``S^T = S`` and ``z = S r`` has unit covariance), but the
+    whitened components are symmetric mixtures rather than a triangular one.
+
+    This is the ZCA whitening transform: of all whitening matrices it is the one
+    closest to the identity, so the whitened residuals stay as similar as
+    possible to the originals while still being decorrelated.
+
+    Parameters
+    ----------
+    weight_matrix : np.ndarray
+        A symmetric positive (semi-)definite weight matrix.
+    tol : float | None
+        Relative threshold below which an eigenvalue counts as zero.
+
+    Returns
+    -------
+    tuple[np.ndarray, int, str]
+        The ``(n, n)`` symmetric factor (rank ``r`` when rank-deficient, with the
+        null directions annihilated), its rank, and ``"symmetric"``.
+    """
+    weight_matrix = _symmetrize(weight_matrix)
+    eigenvalues, eigenvectors = np.linalg.eigh(weight_matrix)
+    scale = float(np.max(np.abs(eigenvalues))) if eigenvalues.size else 0.0
+    threshold = (tol if tol is not None else _DEFAULT_RTOL * scale) if scale else 0.0
+    keep = eigenvalues > threshold
+    rank = int(np.count_nonzero(keep))
+    # S = V sqrt(Lambda) V^T, restricted to the informative subspace.  Keeping the
+    # full (n, n) shape means z = S r has the same length as r, so the whitened
+    # vector still lines up with the observations; the null directions map to 0.
+    scaled = eigenvectors[:, keep] * np.sqrt(eigenvalues[keep])
+    factor = scaled @ eigenvectors[:, keep].T
+    return factor, rank, "symmetric"
+
+
 def _block_factors(
     weight_matrix: np.ndarray,
     block_size: int,
     tol: float | None,
+    method: str = "cholesky",
 ) -> tuple[np.ndarray, ...] | None:
-    """Return per-block Cholesky factors if ``weight_matrix`` is block-diagonal.
+    """Return per-block factors if ``weight_matrix`` is block-diagonal.
 
     Parameters
     ----------
@@ -118,6 +161,8 @@ def _block_factors(
         derived frame).
     tol : float | None
         Absolute threshold below which an off-block entry counts as zero.
+    method : str
+        ``"cholesky"`` or ``"symmetric"``; selects the per-block factorisation.
 
     Returns
     -------
@@ -141,10 +186,11 @@ def _block_factors(
     if np.any(np.abs(weight_matrix[~mask]) > threshold):
         return None
 
+    factor_fn = _factor_weight_symmetric if method == "symmetric" else _factor_weight
     factors = []
     for i in range(n_blocks):
         s = slice(i * block_size, (i + 1) * block_size)
-        factor, _, _ = _factor_weight(weight_matrix[s, s], tol)
+        factor, _, _ = factor_fn(weight_matrix[s, s], tol)
         factors.append(factor)
     return tuple(factors)
 
@@ -165,7 +211,8 @@ class Whitening:
     rank : int
         Number of independent directions (constraints).
     kind : str
-        ``"cholesky"`` or ``"eigen"`` (the rank-deficient fallback).
+        ``"cholesky"``, ``"symmetric"``, or ``"eigen"`` (the rank-deficient
+        Cholesky fallback).
     blocks : tuple[np.ndarray, ...] | None
         Per-block factors when the matrix is block-diagonal, else ``None``.
     block_size : int
@@ -190,6 +237,7 @@ class Whitening:
         *,
         tol: float | None = None,
         block_size: int = 2,
+        method: str = "cholesky",
     ) -> Whitening:
         """Build the whitening from a weight matrix ``W`` (``= C^{-1}``).
 
@@ -202,15 +250,33 @@ class Whitening:
             Absolute eigenvalue threshold for the rank-deficient fallback.
         block_size : int
             Per-block size used to detect block-diagonal structure.
+        method : str
+            ``"cholesky"`` (default) for the lower-triangular factor, which
+            concentrates the correlation onto the first component of each block,
+            or ``"symmetric"`` for the symmetric square root ``W^{1/2}``, which
+            spreads the correlation evenly across the components.  Both give
+            ``Cov(z) = I``; they differ only in how the mixing is distributed.
 
         Returns
         -------
         Whitening
             The factor with ``z = L^T r``.
+
+        Raises
+        ------
+        ValueError
+            If ``method`` is not ``"cholesky"`` or ``"symmetric"``.
         """
         weight_matrix = _symmetrize(weight_matrix)
-        factor, rank, kind = _factor_weight(weight_matrix, tol)
-        blocks = _block_factors(weight_matrix, block_size, tol)
+        if method == "cholesky":
+            factor, rank, kind = _factor_weight(weight_matrix, tol)
+        elif method == "symmetric":
+            factor, rank, kind = _factor_weight_symmetric(weight_matrix, tol)
+        else:
+            raise ValueError(
+                f"Unknown whitening method '{method}'; expected 'cholesky' or 'symmetric'."
+            )
+        blocks = _block_factors(weight_matrix, block_size, tol, method=method)
         return cls(factor, rank, kind, blocks=blocks, block_size=block_size)
 
     @classmethod

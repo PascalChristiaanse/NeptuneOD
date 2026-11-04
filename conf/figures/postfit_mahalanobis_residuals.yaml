@@ -1,0 +1,21 @@
+output_file: "postfit_mahalanobis_residuals.pdf"
+# Standard-frame column(s) the scatter series are grouped by.
+group_by: "observatory_code"
+figure:
+  width: 16.54
+  height: 8.27
+titles:
+  suptitle: "Mahalanobis Residuals for {target_name}"
+axes:
+  x_label: "Epoch [Date TDB]"
+  y_label: "Mahalanobis distance [$\\sigma$]"
+  hover_x_label: "Epoch [Date TDB]"
+  hover_y_label: "Mahalanobis distance"
+styling:
+  cmap: "tab10"
+  marker_size: 30
+legend:
+  ncols: 2
+  bbox_to_anchor:
+    x: 0.5
+    y: -0.15

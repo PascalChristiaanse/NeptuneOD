@@ -260,22 +260,20 @@ class TestWeightMatrices:
         with pytest.raises(KeyError):
             access.weight_matrix("nope")
 
-    def test_covariance_and_weight_in_scan_basis(self, monkeypatch):
-        """basis='scan' applies T C T^T and its dual, using the registered angles."""
-        import orbitdet.data.gaia as gaia
-
+    def test_covariance_and_weight_in_scan_basis(self):
+        """basis='scan' applies T C T^T and its dual, using the scan_angle column."""
         psi = np.array([0.7, -0.3])
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: psi[: len(epochs)])
 
         weights = np.array([[4.0, 9.0], [16.0, 25.0]])
         single_set = make_set([1.0, 2.0], reference_point="Gaia", weights=weights)
         access = make_access([single_set], [[1.0, 2.0]])
+        access.frame["scan_angle"] = psi
 
         # Canonical is unchanged.
         W_canonical = access.weight_matrix("Gaia")
         np.testing.assert_allclose(np.diag(W_canonical), weights.ravel())
 
-        # The scan basis is block-diagonal with the registered psi per observation.
+        # The scan basis is block-diagonal with the frame's psi per observation.
         basis = access.basis_transform("Gaia")
         assert basis.transform.shape == (4, 4)
         np.testing.assert_allclose(
@@ -286,25 +284,20 @@ class TestWeightMatrices:
             basis.covariance(access.covariance_matrix("Gaia")),
         )
 
-    def test_scan_basis_without_angles_raises(self, monkeypatch):
-        import orbitdet.data.gaia as gaia
-
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: None)
+    def test_scan_basis_without_angles_raises(self):
         single_set = make_set([1.0], weights=np.array([[1.0, 1.0]]))
         access = make_access([single_set], [[1.0]])
-
-        with pytest.raises(ValueError, match="no registered scan angles"):
+        # scan_angle defaults to NaN when the source did not record one.
+        with pytest.raises(ValueError, match="no scan_angle"):
             access.basis_transform(0, kind="scan")
 
-    def test_scan_basis_defaults_to_raw_ra(self, monkeypatch):
+    def test_scan_basis_defaults_to_raw_ra(self):
         """The default basis applies cos(dec): the pipeline's RA is raw (α, not α cos δ)."""
-        import orbitdet.data.gaia as gaia
-
         psi = np.array([0.7])
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: psi[: len(epochs)])
         # make_set uses observed [[0.5],[0.25]] -> dec = 0.25 rad.
         single_set = make_set([1.0], reference_point="Gaia", weights=np.array([[1.0, 1.0]]))
         access = make_access([single_set], [[1.0]])
+        access.frame["scan_angle"] = psi
 
         default = access.basis_transform("Gaia")  # de_projected defaults to False
         assert not default.de_projected
@@ -472,13 +465,10 @@ class TestWhiteningComposition:
         covariance = access.covariance_matrix(0)
         np.testing.assert_allclose(whitening.z_covariance(covariance), np.eye(4), atol=1e-8)
 
-    def test_whitening_is_basis_invariant(self, monkeypatch):
+    def test_whitening_is_basis_invariant(self):
         from orbitdet.analysis import Whitening, chi2_from_matrix
 
         psi = np.array([0.4, -0.9])
-        import orbitdet.data.gaia as gaia
-
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: psi)
 
         block = np.array([[2.0, 0.5], [0.5, 1.0]])
         full = np.zeros((4, 4))
@@ -490,6 +480,7 @@ class TestWhiteningComposition:
         single_set.set_full_weight_matrix(full)
         single_set.set_residuals(residuals)
         access = make_access([single_set], [[1.0, 2.0]])
+        access.frame["scan_angle"] = psi
 
         # The quadratic form is basis-invariant: factor the scan-basis weight
         # matrix and feed it the rotated residuals -> the same chi-squared.

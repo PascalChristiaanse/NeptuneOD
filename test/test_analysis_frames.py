@@ -83,18 +83,14 @@ class TestAnalysisFrame:
             arcsec["residual_first_rad_arcsec"].to_numpy() * 1e3,
         )
 
-    def test_scan_skipped_without_registered_angles(self):
-        # No scan angles registered -> scan request is advisory, no columns added.
+    def test_scan_skipped_without_scan_angle(self):
+        # All scan_angle NaN (not a scanning instrument) -> no scan columns added.
         frame = analysis_frame(_access(), scan=True)
         assert "residual_along_scan_rad" not in frame.columns
 
-    def test_scan_columns_added_when_angles_registered(self, monkeypatch):
-        import orbitdet.data.gaia as gaia
-
-        monkeypatch.setattr(
-            gaia, "get_scan_angles_for_epochs", lambda epochs: np.full(len(epochs), 0.3)
-        )
+    def test_scan_columns_added_when_angle_present(self):
         access = _access()
+        access.frame["scan_angle"] = 0.3
         frame = analysis_frame(access, scan=True)
         assert "scan_angle" in frame.columns
         assert "residual_along_scan_rad" in frame.columns

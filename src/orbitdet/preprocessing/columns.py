@@ -6,8 +6,6 @@ while a Voyager table calls the same quantity ``RA_h``; a Gaia scan column may b
 ``scanAngle``.  Before any astrometry can happen, the column holding a given
 quantity has to be *found*, and this module is the only place that search lives.
 
-Two jobs, both pure - no files, no config, no Tudat:
-
 Finding columns
     :func:`normalize_column_name` reduces a header to a comparable token
     sequence, and :func:`find_column` / :func:`find_column_substring` search for
@@ -23,12 +21,6 @@ Applying the source's own column map
     datasets declare a different number of entries than the whitespace split
     produces - because the file is fixed-width and blank fields collapse - so the
     overlay is bounds-checked and partial rather than positional and total.
-
-Why this is a separate module
-    These functions were previously private to ``observations/nsdb_helpers.py``
-    and duplicated verbatim in three factories, even though a non-NSDB modality
-    (Voyager) depends on them.  Column inference is a source-agnostic
-    preprocessing concern, so it lives here and the factories import it.
 """
 
 from __future__ import annotations

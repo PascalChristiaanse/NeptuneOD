@@ -16,6 +16,7 @@ from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
 from tudatpy.util import redirect_std
 
+from orbitdet.analysis import ObservationAccess
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
 from orbitdet.observations import OutlierEngine, WeightEngine, create_observation_collection
@@ -35,6 +36,8 @@ from orbitdet.simulation import (
 from orbitdet.utility import save_tudat_object, select_observation_collection_by_tag
 from orbitdet.visualization import (
     CovarianceEllipses,
+    GaiaTransitErrorComponents,
+    MahalanobisResiduals,
     NormalizedResiduals,
     NormalizedResidualScan,
     ParameterCorrelationHeatmap,
@@ -50,6 +53,8 @@ from orbitdet.visualization import (
     RSWDistance,
     RSWDistanceWithUncertainty,
     StateHistory3D,
+    SymmetricWhitenedResiduals,
+    WhitenedResidualScatter,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +81,29 @@ def _log_peak_rss(label: str) -> float:
     peak_mb = _peak_rss_mb()
     logger.info("Peak RAM usage [%s]: %.1f MiB", label, peak_mb)
     return peak_mb
+
+
+def _log_access_summary(access: ObservationAccess, stage: str) -> None:
+    """Log how many frame rows carry a residual and how many were rejected.
+
+    Reads the derived access frame directly: a row with a set index but no
+    residual was either rejected by outlier rejection or had a non-finite
+    residual, and a row flagged in the ``rejected`` column was removed by
+    outlier rejection.  The counts come from the joined frame, so they can never
+    disagree with the residuals it holds.
+    """
+    frame = access.frame
+    n_no_set = int(frame["observation_set_index"].isna().sum())
+    n_rejected = int(frame["rejected"].sum())
+    n_no_residual = int(frame["residual_first_rad"].isna().sum())
+    logger.info(
+        "[%s] Access frame: %d row(s), %d without a set index, %d rejected, %d without a residual.",
+        stage,
+        len(frame),
+        n_no_set,
+        n_rejected,
+        n_no_residual,
+    )
 
 
 @hydra.main(
@@ -124,6 +152,10 @@ def main(cfg: DictConfig):
     observations, observation_models, dataset_metadata, standard_frame = (
         create_observation_collection(cfg, bodies)
     )
+    # Derived analysis frame: the standard frame plus the residual, weight and
+    # rejection columns, joined to the collection through ``observation_set_index``.
+    # Built once here and refreshed (never rebuilt) as the residuals change.
+    access = ObservationAccess.build(observations, standard_frame)
     # Create observation simulators for pre-fit residuals
     ephemeris_observation_simulators = obs_sim_setup.create_observation_simulators(
         observation_models, bodies
@@ -141,18 +173,29 @@ def main(cfg: DictConfig):
     obs.compute_residuals_and_dependent_variables(
         observations, ephemeris_observation_simulators, bodies
     )
+    # Refresh the derived frame before any outlier rejection: at this point every
+    # observation still carries a residual, so a NaN here means the residual itself
+    # is non-finite rather than that a row was rejected later.
+    access.refresh()
+    _log_access_summary(access, "prefit_spice")
     # Wrt spice
-    Residuals(cfg, "prefit_residuals_spice", observations).plot()
+    Residuals(cfg, access, "prefit_residuals_spice", group_by="source_set_id").plot()
+    ResidualScatter(cfg, access, group_by="observatory_code").plot()
+    ResidualHistogram(cfg, access, group_by="observable_type").plot()
+
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
     gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
     if gaia_observations is not None:
-        ResidualsScan(cfg, gaia_observations, use_figure_name="prefit_residuals_spice_scan").plot()
-        NormalizedResidualScan(
-            cfg, gaia_observations, use_figure_name="prefit_normalized_residuals_scan"
-        ).plot()
+        ResidualsScan(cfg, access, use_figure_name="prefit_residuals_spice_scan").plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
+    # NB: the normalized-residual figures are produced later, after weighting has
+    # set the weights: their z = r / sigma normalization is only meaningful once
+    # the applied sigmas exist (see the pre-fit-propagation and post-fit stages).
+
+    # plt.show()
+    
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -239,6 +282,19 @@ def main(cfg: DictConfig):
             grp_table.to_excel(writer, sheet_name="Per group", index=False)
         logger.info("Excel weight summary tables saved to %s", output_dir)
 
+    # Refresh the derived frame now that outlier rejection (and weighting) have run:
+    # the sets are narrower, so rejected rows fall out of the join and the
+    # ``rejected`` column is set from the accepted sets, so the two can never
+    # disagree.  Outlier rejection returns a new collection, so point the access
+    # layer at it before refreshing.
+    access.collection = observations
+    access.refresh()
+    _log_access_summary(access, "post_rejection")
+
+    # import matplotlib.pyplot as plt
+    # plt.show()
+    # return
+
     logger.info("Computing pre-fit residuals wrt propagation...")
     import time
 
@@ -256,24 +312,31 @@ def main(cfg: DictConfig):
     )
     _log_peak_rss("after pre-fit propagation")
 
-    Residuals(cfg, "prefit_residuals_prop", observations).plot()
+    # Refresh the derived frame with the propagation-based pre-fit residuals.
+    access.collection = observations
+    access.refresh()
+    _log_access_summary(access, "prefit_prop")
+
+    Residuals(cfg, access, "prefit_residuals_prop").plot()
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
     gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
-    # Normalized RA/Dec residuals for all non-Gaia observation types (no scan
-    # rotation).  Gaia is excluded because its residuals are not meaningful
-    # without the scan-frame rotation (see NormalizedResidualScan).
+    # Normalized RA/Dec residuals for all rows without a scan angle (no scan
+    # rotation).  Scanning rows (Gaia) are excluded because their RA/Dec
+    # normalization ignores the intra-scan correlation; NormalizedResidualScan
+    # whitens them instead.  The plot itself filters to the non-scan rows.
     non_gaia_observations = select_observation_collection_by_tag(
         observations, dataset_metadata, "gaia", exclude=True
     )
     if non_gaia_observations is not None:
-        NormalizedResiduals(
-            cfg, non_gaia_observations, use_figure_name="prefit_normalized_residuals"
-        ).plot()
+        NormalizedResiduals(cfg, access, use_figure_name="prefit_normalized_residuals").plot()
     else:
         logger.info("No non-Gaia observations found; skipping pre-fit normalized residual plot.")
     if gaia_observations is not None:
-        ResidualsScan(cfg, gaia_observations, use_figure_name="prefit_residuals_spice_scan").plot()
+        ResidualsScan(cfg, access, use_figure_name="prefit_residuals_spice_scan").plot()
+        NormalizedResidualScan(
+            cfg, access, use_figure_name="prefit_normalized_residuals_scan"
+        ).plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
     # Plot orbit on 3d plot
@@ -288,8 +351,7 @@ def main(cfg: DictConfig):
     ).plot()
 
     logger.info("Pre-fit residuals computed and plotted successfully.")
-
-
+    # plt.show()
     ################################################################
     ######################### ESTIMATION ###########################
     ################################################################
@@ -434,27 +496,50 @@ def main(cfg: DictConfig):
     except TypeError as e:
         logger.warning("Failed to save final propagation result: %s", e)
 
-    Residuals(cfg, "postfit_residuals", observations).plot()
+    # Refresh the derived frame with the post-fit residuals from the final
+    # propagation (the estimated state).  Weights are read, never recomputed.
+    access.collection = observations
+    access.refresh()
+    _log_access_summary(access, "postfit")
+
+    Residuals(cfg, access, "postfit_residuals").plot()
+    # plt.show()
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
     gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
-    # Normalized RA/Dec residuals for all non-Gaia observation types (no scan
-    # rotation).  Gaia is excluded because its residuals are not meaningful
-    # without the scan-frame rotation (see NormalizedResidualScan).
+    # Normalized RA/Dec residuals for all rows without a scan angle (no scan
+    # rotation).  Scanning rows (Gaia) are excluded because their RA/Dec
+    # normalization ignores the intra-scan correlation; NormalizedResidualScan
+    # whitens them instead.  The plot itself filters to the non-scan rows.
     non_gaia_observations = select_observation_collection_by_tag(
         observations, dataset_metadata, "gaia", exclude=True
     )
     if non_gaia_observations is not None:
-        NormalizedResiduals(
-            cfg, non_gaia_observations, use_figure_name="postfit_normalized_residuals"
-        ).plot()
+        NormalizedResiduals(cfg, access, use_figure_name="postfit_normalized_residuals").plot()
     else:
         logger.info("No non-Gaia observations found; skipping post-fit normalized residual plot.")
     if gaia_observations is not None:
-        ResidualsScan(cfg, gaia_observations, use_figure_name="postfit_residuals_scan").plot()
+        ResidualsScan(cfg, access, use_figure_name="postfit_residuals_scan").plot()
         NormalizedResidualScan(
-            cfg, gaia_observations, use_figure_name="postfit_normalized_residuals_scan"
+            cfg, access, use_figure_name="postfit_normalized_residuals_scan"
         ).plot()
+        # Whitened-residual diagnostics.  Whitening is only unique up to an
+        # orthogonal rotation, so these three plots make the choice explicit:
+        # the 2-D scatter of the whitened pair, the symmetric (ZCA) whitening
+        # that spreads the correlation evenly, and the per-observation
+        # Mahalanobis distance, which is invariant to the choice of factor.
+        WhitenedResidualScatter(
+            cfg, access, use_figure_name="postfit_whitened_residual_scatter"
+        ).plot()
+        SymmetricWhitenedResiduals(
+            cfg, access, use_figure_name="postfit_symmetric_whitened_residuals"
+        ).plot()
+        MahalanobisResiduals(
+            cfg, access, use_figure_name="postfit_mahalanobis_residuals"
+        ).plot()
+        # Gaia random/systematic error split from the transit structure.  Gaia
+        # only: the metric needs the scan frame and the intra-transit sampling.
+        GaiaTransitErrorComponents(cfg, access).plot()
     else:
         logger.info("No Gaia observations found; skipping post-fit scan residual plot.")
 
@@ -481,9 +566,9 @@ def main(cfg: DictConfig):
     #############################################################################
     logger.info("Plotting figures...")
 
-    ResidualQQ(cfg, observations).plot()
-    ResidualScatter(cfg, observations).plot()
-    ResidualHistogram(cfg, observations).plot()
+    ResidualQQ(cfg, access).plot()
+    ResidualScatter(cfg, access).plot()
+    ResidualHistogram(cfg, access).plot()
     ResidualRMSPerIteration(cfg, estimation_output).plot()
     ParameterCorrelationHeatmap(cfg, estimation_output).plot()
     ParameterHistoryPerIteration(cfg, estimation_output).plot()

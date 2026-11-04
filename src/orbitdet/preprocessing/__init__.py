@@ -108,7 +108,6 @@ from .time_scales import (
     MeridianTime,
     TimescaleResolution,
     delta_t_seconds,
-    describe_timescale,
     resolve_timescale,
     to_tdb_seconds_since_j2000,
 )
@@ -172,5 +171,4 @@ __all__ = [
     "resolve_timescale",
     "to_tdb_seconds_since_j2000",
     "delta_t_seconds",
-    "describe_timescale",
 ]

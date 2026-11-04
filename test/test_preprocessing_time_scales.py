@@ -12,7 +12,6 @@ from orbitdet.preprocessing.time_scales import (
     InputTimeScale,
     MeridianTime,
     delta_t_seconds,
-    describe_timescale,
     longitude_to_time_offset,
     meridian_label_offset,
     resolve_timescale,
@@ -387,20 +386,6 @@ class TestInputHandling:
         out = to_tdb_seconds_since_j2000([np.nan, np.nan], "UTC")
 
         assert np.isnan(out).all()
-
-
-class TestDescribeTimescale:
-    def test_mentions_the_astronomical_day(self):
-        assert "astronomical day" in describe_timescale("Washington Mean Time")
-
-    def test_mentions_the_meridian_for_local_mean_time(self):
-        assert "washington" in describe_timescale("WMT").lower()
-
-    def test_mentions_the_zone_offset(self):
-        assert "-8.0 h" in describe_timescale("Pacific Standard Time")
-
-    def test_handles_a_plain_scale(self):
-        assert "utc" in describe_timescale("UTC").lower()
 
 
 class TestDeltaT:

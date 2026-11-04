@@ -1,11 +1,8 @@
 """Timescale conversion to TDB seconds since the J2000 epoch.
 
-Observation sources record epochs in whatever timescale the observer used, and
-for historical data that is rarely a modern standard.  NSDB alone contains
-Washington mean time, Greenwich mean time, Paris/Pulkovo/Strasbourg/Nice mean
-time, US Pacific and Central standard time, "90 degree time", GMT, UTC, TCB and
-a handful of free-text variants.  This module maps all of them onto **TDB
-seconds since the J2000 epoch**, which is what TudatPy expects.
+Observation sources record epochs in whatever timescale the observer used.
+This module maps all of them onto **TDB seconds since the J2000 epoch**, 
+which is what TudatPy expects.
 
 Two corrections matter for historical data, and neither is applied by a naive
 timescale conversion:
@@ -23,13 +20,11 @@ The astronomical day
     than the same digits do in the civil convention.  Every pre-1925 epoch needs
     a ``+12 h`` shift, regardless of which timescale was used.
 
-Both corrections are additive offsets applied before the timescale conversion,
-which keeps the logic auditable and testable in isolation.
 
 References
 ----------
 * Explanatory Supplement to the Astronomical Almanac, 3rd ed., ch. 2 (time
-  scales) and ch. 6 (the astronomical day and its 1925 changeover).
+  scales) and ch. 6 (the astronomical day and its 1925 changeover). 
 * IAU 2006 resolutions on TCG/TCB, for the ``TCB_to_TDB`` relation.
 """
 
@@ -57,7 +52,6 @@ __all__ = [
     "resolve_timescale",
     "meridian_offset_for_station",
     "to_tdb_seconds_since_j2000",
-    "describe_timescale",
 ]
 
 
@@ -778,6 +772,11 @@ def delta_t_seconds(epochs: np.ndarray) -> np.ndarray:
     in 1961, and SPICE's ``DELTET`` clamps every epoch before 1972 to a constant
     ``+41.184 s``, which is wrong by over 40 seconds at 1900.
 
+    TODO: This was fixed in a later version of TudatPy, but was released together with
+    a few other new functionalities that would require porting significant parts of OrbitDet.
+    For the thesis, we will keep this implementation, but it should be removed once the TudatPy
+    version is updated.
+    
     Args:
         epochs: Epochs as seconds since J2000 (nominally UT1).
 
@@ -842,45 +841,3 @@ def _as_float_array(epochs: pd.Series | np.ndarray | list[float]) -> np.ndarray:
         return epochs.to_numpy(dtype=float)
     return np.asarray(epochs, dtype=float)
 
-
-# ---------------------------------------------------------------------------
-# Introspection
-# ---------------------------------------------------------------------------
-
-
-def describe_timescale(label: str) -> str:
-    """Return a human-readable summary of how a label will be interpreted.
-
-    Useful for auditing a config file's timescale vocabulary without running an
-    ingest.
-
-    Args:
-        label: The raw timescale string.
-
-    Returns:
-        A one-line description of the resolved scale and any offset applied.
-
-    Examples:
-        >>> "astronomical day" in describe_timescale("Washington Mean Time")
-        True
-    """
-    resolution = resolve_timescale(label)
-    parts = [f"{label!r} -> {resolution.scale.value}"]
-
-    if resolution.meridian is not None:
-        offset_hours = meridian_label_offset(resolution.meridian) / 3600.0
-        parts.append(f"meridian={resolution.meridian.value} ({offset_hours:+.4f} h vs UT1)")
-    elif resolution.scale in (InputTimeScale.LOCAL_MEAN_TIME, InputTimeScale.LOCAL_SIDEREAL_TIME):
-        parts.append("meridian=<station longitude>")
-
-    if resolution.zone_offset_seconds:
-        parts.append(f"zone offset={resolution.zone_offset_seconds / 3600.0:+.1f} h vs UT1")
-
-    parts.append(f"plus +12 h astronomical day before {_format_switch_epoch()}")
-
-    return "; ".join(parts)
-
-
-def _format_switch_epoch() -> str:
-    """Render the astronomical-day switchover instant as an ISO date."""
-    return time_rep.date_time_from_epoch(ASTRONOMICAL_DAY_SWITCH_EPOCH).iso_string()

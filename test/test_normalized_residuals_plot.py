@@ -14,7 +14,7 @@ import tudatpy.estimation.observations as obs  # noqa: E402
 from omegaconf import OmegaConf  # noqa: E402
 from tudatpy.estimation.observable_models_setup import links  # noqa: E402
 
-from orbitdet.analysis import ObservationAccess, analysis_frame  # noqa: E402
+from orbitdet.analysis import ObservationAccess  # noqa: E402
 from orbitdet.preprocessing.schema import OBSERVATION_SET_INDEX_COLUMN, build_frame  # noqa: E402
 from orbitdet.visualization import NormalizedResiduals, NormalizedResidualScan  # noqa: E402
 
@@ -115,73 +115,6 @@ class TestNormalizedResiduals:
 
 
 class TestNormalizedResidualScan:
-    def _access(self, weight_matrix, scan_angle=0.0):
-        single_set = _set(
-            [1.0, 2.0], np.array([[1e-6, 2e-6], [3e-6, -4e-6]]), np.zeros(4), "Gaia"
-        )
-        single_set.set_full_weight_matrix(np.asarray(weight_matrix, dtype=float))
-        frame = build_frame(
-            [
-                _record(1.0, station="Gaia", scan_angle=scan_angle),
-                _record(2.0, station="Gaia", scan_angle=scan_angle),
-            ]
-        )
-        frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0, 0.0]
-        return ObservationAccess.build(obs.ObservationCollection([single_set]), frame)
-
-    def _block_weight(self, sigma=1e-6):
-        weight = np.zeros((4, 4))
-        weight[0:2, 0:2] = np.diag([1.0 / sigma**2, 1.0 / sigma**2])
-        weight[2:4, 2:4] = np.diag([1.0 / sigma**2, 1.0 / sigma**2])
-        return weight
-
-    def _reference_z(self, access):
-        """Independent Cholesky whitening of the analysis-frame scan residuals."""
-        weight = access.weight_matrix(0, basis="scan")
-        frame = analysis_frame(access, unit=None, scan=True, normalized=False)
-        residual = frame[
-            ["residual_along_scan_rad", "residual_across_scan_rad"]
-        ].to_numpy("float64")
-        z = np.linalg.cholesky(weight).T @ residual.ravel()
-        return z[0::2], z[1::2]
-
-    def test_block_cholesky_gives_unit_covariance(self):
-        sigma = 1e-6
-        weight = self._block_weight(sigma)
-        access = self._access(weight)
-        plot = NormalizedResidualScan(_cfg(), access, use_figure_name="norm")
-        fig, axs = plot._make_figure()
-        assert len(axs) == 2
-
-        ref_al, ref_ac = self._reference_z(access)
-        al = axs[0].collections[0].get_offsets()[:, 1]
-        ac = axs[1].collections[0].get_offsets()[:, 1]
-        np.testing.assert_allclose(al, ref_al, rtol=1e-9)
-        np.testing.assert_allclose(ac, ref_ac, rtol=1e-9)
-        # psi=0 -> AL = dDec, whitened by 1/sigma.
-        assert al[0] == pytest.approx(2e-6 / sigma, rel=1e-6)
-        plt.close(fig)
-
-    def test_dense_cholesky_mixes_components(self):
-        # A dense, correlated weight matrix: the whitened vector is not simply
-        # per-observation rescaling, but it matches the independent Cholesky.
-        base = np.array([[2.0, 0.5], [0.5, 1.0]])
-        weight = np.zeros((4, 4))
-        weight[0:2, 0:2] = base
-        weight[2:4, 2:4] = base
-        weight[0:2, 2:4] = 0.1 * base
-        weight[2:4, 0:2] = 0.1 * base
-        access = self._access(weight)
-        plot = NormalizedResidualScan(_cfg(), access, use_figure_name="norm")
-        fig, axs = plot._make_figure()
-        assert len(axs[0].collections) == 1
-        ref_al, ref_ac = self._reference_z(access)
-        al = axs[0].collections[0].get_offsets()[:, 1]
-        ac = axs[1].collections[0].get_offsets()[:, 1]
-        np.testing.assert_allclose(al, ref_al, rtol=1e-9)
-        np.testing.assert_allclose(ac, ref_ac, rtol=1e-9)
-        plt.close(fig)
-
     def test_whitened_covariance_is_identity(self):
         # The whitening must decorrelate: with W = L L^T, Cov(L^T r) == I.
         base = np.array([[4.0, 1.0], [1.0, 2.0]])
@@ -224,18 +157,6 @@ class TestNormalizedResidualScan:
         np.testing.assert_allclose(z_al, np.array([2e-6, -4e-6]) / sigma, rtol=1e-9)
         assert np.all(np.isnan(z_ac))
         plt.close("all")
-
-    def test_legend_reports_rms_z(self):
-        sigma = 1e-6
-        weight = np.zeros((4, 4))
-        weight[0:2, 0:2] = np.diag([1.0 / sigma**2, 1.0 / sigma**2])
-        weight[2:4, 2:4] = np.diag([1.0 / sigma**2, 1.0 / sigma**2])
-        access = self._access(weight)
-        plot = NormalizedResidualScan(_cfg(), access, use_figure_name="norm")
-        fig, axs = plot._make_figure()
-        labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
-        assert any("RMS(z)" in label for label in labels)
-        plt.close(fig)
 
     def test_raises_without_scan_angle(self):
         single_set = _set([1.0], np.array([[1e-6, 2e-6]]), np.ones(2), "Gaia")

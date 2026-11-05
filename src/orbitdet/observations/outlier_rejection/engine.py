@@ -52,11 +52,6 @@ class _ScopedStrategy:
     ----------
     strategy : OutlierStrategy
         The strategy instance.
-    set_filter : set[str] | None
-        If not None, the strategy is only applied to observation sets whose
-        :func:`get_set_identifier` is in this set.  If None, the strategy
-        applies to all sets.  Kept for backwards compatibility; prefer
-        *selection*, which can express the same thing and more.
     cluster_filter : set[str] | None
         If not None, the strategy is only applied to observations that fall in
         one of the named clusters (matched on the cluster's short ``name``, i.e.
@@ -65,33 +60,27 @@ class _ScopedStrategy:
         weighting clustering.
     selection : Selection | None
         If not None, the strategy is only applied to sets that have at least one
-        row matching this selection.  This is the general form of *set_filter*:
-        it can match on any standard-frame column, e.g.
+        row matching this selection.  This is a query over the standard frame,
+        so it can match on any column, e.g.
         ``"data_source == 'nsdb' and observatory_code != '689'"``.
     """
 
     def __init__(
         self,
         strategy: OutlierStrategy,
-        set_filter: set[str] | None,
         cluster_filter: set[str] | None = None,
         selection=None,
     ):
         self.strategy = strategy
-        self.set_filter = set_filter
         self.cluster_filter = cluster_filter
         self.selection = selection
-
-    def applies_to(self, set_id: str) -> bool:
-        """Check whether this strategy applies to the given set identifier."""
-        return self.set_filter is None or set_id in self.set_filter
 
     def applies_to_frame(self, frame) -> bool:
         """Check whether this strategy applies to a set, given its frame rows.
 
         A set is scoped as a whole, so the selection matches when any of its
-        rows does.  Without a selection (or without a frame) this falls back to
-        the set-identifier filter.
+        rows does.  Without a selection (or without a frame) the strategy
+        applies to every set.
         """
         if self.selection is None:
             return True
@@ -143,7 +132,7 @@ class OutlierEngine:
         -------
         OutlierEngine
         """
-        return cls([_ScopedStrategy(s, None) for s in strategies])
+        return cls([_ScopedStrategy(s) for s in strategies])
 
     @property
     def strategies(self) -> list[OutlierStrategy]:
@@ -269,13 +258,9 @@ class OutlierEngine:
                 clusters = build_cluster_list(times, set_id, self._clustering, view=view)
 
             for scoped in self._strategies:
-                # Scope the strategy to this set.  A `select:` query is the
-                # general form and can match any frame column; the legacy
-                # `sets:` filter matches the raw observatory code (e.g. "689",
-                # "Voyager 2"), not the composite key.
-                if not scoped.applies_to(obs_code) or not scoped.applies_to_frame(
-                    view.frame if view is not None else None
-                ):
+                # Scope the strategy to this set.  A `select:` query can match
+                # any frame column, so it replaces the old set-identifier filter.
+                if not scoped.applies_to_frame(view.frame if view is not None else None):
                     logger.debug(
                         "Skipping strategy '%s' for set '%s' (selection did not match)",
                         scoped.strategy.__class__.__name__,
@@ -491,18 +476,13 @@ class OutlierEngine:
 
             # Build kwargs from the config entry (excluding the filter keys)
             kwargs = {}
-            set_filter: set[str] | None = None
             cluster_filter: set[str] | None = None
             selection = None
             for key, value in entry.items():
                 if key == "type":
                     continue
-                if key == "sets":
-                    # Convert to a set of strings for fast lookup
-                    set_filter = {str(s) for s in value}
-                    continue
                 if key == "select":
-                    # General form of `sets`: a query over the standard frame.
+                    # A query over the standard frame; scopes the strategy.
                     selection = compile_selection(value)
                     continue
                 if key == "clusters":
@@ -517,7 +497,7 @@ class OutlierEngine:
 
             strategy_instance = cls_strategy(**kwargs)
             scoped_strategies.append(
-                _ScopedStrategy(strategy_instance, set_filter, cluster_filter, selection)
+                _ScopedStrategy(strategy_instance, cluster_filter, selection)
             )
 
         return cls(scoped_strategies, clustering=clustering)

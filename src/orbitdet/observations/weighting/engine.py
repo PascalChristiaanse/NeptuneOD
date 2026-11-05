@@ -8,7 +8,6 @@ and assigns the resulting weights via ``set_tabulated_weights``.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -242,17 +241,10 @@ class WeightEngine:
                 logger.warning("WeightEngine: no weights computed for set '%s'", set_id)
                 continue
 
-            # A router may preserve the full matrix only for certain routes
-            # (e.g. Gaia).  Prefer the per-set answer when the strategy offers
-            # one, falling back to the top-level property.
+            # Whether this strategy's weights *are* the full archive matrix (e.g.
+            # the Gaia transit covariance), in which case the engine must leave
+            # the matrix alone rather than stacking tabulated weights on top.
             preserve = getattr(strategy, "preserve_full_weight_matrix", False)
-            route_source = getattr(strategy, "route_source", None)
-            if callable(route_source):
-                try:
-                    sub = route_source(set_id)
-                    preserve = getattr(sub, "preserve_full_weight_matrix", preserve)
-                except Exception:  # pragma: no cover - diagnostics only
-                    pass
 
             if getattr(obs_set, "has_full_weight_matrix_contribution", False) and preserve:
                 # The set carries a full (off-diagonal) archive weight matrix (e.g. the Gaia
@@ -334,26 +326,19 @@ class WeightEngine:
     ) -> WeightEngine:
         """Build an engine from a Hydra configuration node.
 
-        Two configuration forms are supported.
-
-        **Legacy (named strategy):**::
+        The config is a plan: a ``default`` entry plus optional ``overrides``::
 
             weighting:
-              strategy: id_v2
-              min_sigma_arcsec: 0.01
-              clustering:
-                levels: [...]
+              min_sigma_arcsec: 0.005
+              clustering:                 # plan-wide default
+                levels: [{type: timeframe, gap_threshold_hours: 8.0}]
+              default:
+                strategy: {type: id_v2}
+              overrides:
+                - select: "data_source == 'gaia_archive'"
+                  strategy: {type: gaia_archive, covariance_mode: full_matrix}
 
-        **Descriptor (recommended)** — strategy options are given inline,
-        which removes the need to edit the factory for every strategy::
-
-            weighting:
-              strategy:
-                type: layered
-                combine: geometric
-                layers:
-                  - {level: section, mode: fixed, sigmas: {...}}
-                  - {level: timeframe, mode: rmse_descaled}
+        A plan with only a ``default`` is the single-strategy case.
 
         Parameters
         ----------
@@ -365,44 +350,20 @@ class WeightEngine:
         Returns
         -------
         WeightEngine
-            An engine with the configured strategy and clustering, or with a
-            plan when the config carries ``default``/``overrides``.
+            An engine driven by the configured plan.
+
+        Raises
+        ------
+        ValueError
+            If the config has no ``default`` entry.
         """
         min_sigma = float(OmegaConf.select(cfg, "min_sigma_arcsec", default=0.01))
-
-        # Plan form: `default:` plus optional `overrides:`.  Each entry carries
-        # its own strategy and clustering, so a rule reads as one thought.
-        if OmegaConf.select(cfg, "default") is not None or OmegaConf.select(cfg, "overrides"):
-            plan = compile_plan(cfg, default_clustering=default_clustering)
-            logger.info(
-                "WeightEngine: built a plan with %d override(s) from configuration.",
-                len(plan.overrides),
-            )
-            return cls(plan=plan, min_sigma_arcsec=min_sigma)
-
-        # Single-strategy form (legacy and still supported).
-        strategy_node = OmegaConf.select(cfg, "strategy", default="id_v2")
-        clustering = OmegaConf.select(cfg, "clustering") or default_clustering
-
-        # Descriptor form: {type: <name>, ...kwargs}
-        if isinstance(strategy_node, Mapping) and "type" in strategy_node:
-            strategy_instance = build_strategy(strategy_node, clustering=clustering)
-        else:
-            # Bare strategy name (e.g. `strategy: id_v2`).  Strategy-specific
-            # options, if any, live under a sibling node named after the
-            # strategy (e.g. ``weighting.gaia_archive``).
-            strategy_name = str(strategy_node)
-            node = OmegaConf.select(cfg, strategy_name)
-            params = (
-                {k: v for k, v in node.items()}
-                if node is not None and hasattr(node, "items")
-                else {}
-            )
-            strategy_instance = build_strategy(
-                {"type": strategy_name, **params}, clustering=clustering
-            )
-
-        return cls(strategy_instance, clustering=clustering, min_sigma_arcsec=min_sigma)
+        plan = compile_plan(cfg, default_clustering=default_clustering)
+        logger.info(
+            "WeightEngine: built a plan with %d override(s) from configuration.",
+            len(plan.overrides),
+        )
+        return cls(plan=plan, min_sigma_arcsec=min_sigma)
 
 
 # ---------------------------------------------------------------------------

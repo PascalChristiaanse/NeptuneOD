@@ -7,9 +7,9 @@ A *descriptor* is either:
 
       {type: layered, combine: geometric, layers: [...]}
 
-Descriptors may nest: a ``router`` route's ``source`` is itself a descriptor.
-Keeping this logic in one place lets both :class:`WeightEngine` and the
-``router`` strategy build sub-strategies identically.
+Descriptors may nest: a ``layered`` strategy's ``layers`` entries are themselves
+descriptors.  Keeping this logic in one place lets both :class:`WeightEngine`
+and the plan builder construct strategies identically.
 """
 
 from __future__ import annotations

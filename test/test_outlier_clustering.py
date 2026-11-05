@@ -136,12 +136,12 @@ def _reject_above_strategy(threshold: float):
 
 class TestScopedStrategyGroupFilter:
     def test_no_group_filter_applies_to_all(self):
-        scoped = _ScopedStrategy(MagicMock(spec=OutlierStrategy), set_filter=None)
+        scoped = _ScopedStrategy(MagicMock(spec=OutlierStrategy))
         assert scoped.applies_to_cluster("anything") is True
 
     def test_group_filter_matches(self):
         scoped = _ScopedStrategy(
-            MagicMock(spec=OutlierStrategy), set_filter=None, cluster_filter={"night_1", "night_2"}
+            MagicMock(spec=OutlierStrategy), cluster_filter={"night_1", "night_2"}
         )
         assert scoped.applies_to_cluster("night_1") is True
         assert scoped.applies_to_cluster("night_3") is False
@@ -178,16 +178,16 @@ class TestOutlierEngineFromConfigGrouping:
         engine = OutlierEngine.from_config(cfg)
         scoped = engine._strategies[0]
         assert scoped.cluster_filter == {"pre_encounter"}
-        assert scoped.set_filter is None
+        assert scoped.selection is None
 
-    def test_group_and_set_filters_together(self):
+    def test_cluster_and_select_filters_together(self):
         cfg = OmegaConf.create(
             {
                 "strategies": [
                     {
                         "type": "residual_threshold",
                         "threshold_arcsec": 0.5,
-                        "sets": ["Voyager 2"],
+                        "select": "observatory_code == 'Voyager 2'",
                         "clusters": ["pre_encounter"],
                     }
                 ],
@@ -196,7 +196,7 @@ class TestOutlierEngineFromConfigGrouping:
         engine = OutlierEngine.from_config(cfg)
         scoped = engine._strategies[0]
         assert scoped.cluster_filter == {"pre_encounter"}
-        assert scoped.set_filter == {"Voyager 2"}
+        assert scoped.selection is not None
 
 
 # ===========================================================================
@@ -218,8 +218,7 @@ class TestGroupScopedApplication:
         # Cluster ids are "<set>_tf_0000"/"<set>_tf_0001"; match the first night.
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-            set_filter=None,
-            cluster_filter={"689_tf_0000"},
+                        cluster_filter={"689_tf_0000"},
         )
         engine = OutlierEngine([scoped], clustering=clustering)
 
@@ -244,8 +243,7 @@ class TestGroupScopedApplication:
             "gap_threshold_hours": 4.0}]})
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-            set_filter=None,
-            cluster_filter={"689_tf_0099"},  # does not exist
+                        cluster_filter={"689_tf_0099"},  # does not exist
         )
         engine = OutlierEngine([scoped], clustering=clustering)
 
@@ -262,7 +260,7 @@ class TestGroupScopedApplication:
         collection = _make_collection([obs_set])
 
         scoped = _ScopedStrategy(
-            _reject_above_strategy(1e-6), set_filter=None, cluster_filter={"whatever"}
+            _reject_above_strategy(1e-6), cluster_filter={"whatever"}
         )
         engine = OutlierEngine([scoped], clustering=None)
 
@@ -304,8 +302,7 @@ class TestSectionScopedApplication:
         )
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-            set_filter=None,
-            cluster_filter={"pre_encounter"},
+                        cluster_filter={"pre_encounter"},
         )
         engine = OutlierEngine([scoped], clustering=clustering)
 

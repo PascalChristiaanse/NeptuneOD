@@ -32,7 +32,6 @@ from .dataframe import (
 from .gaia_cache import get_gaia_weights
 from .layered import LayeredWeight  # noqa: F401  (registers the "layered" strategy)
 from .registry import register_weight_strategy
-from .router import RouterWeight  # noqa: F401  (registers the "router" strategy)
 
 logger = logging.getLogger(__name__)
 

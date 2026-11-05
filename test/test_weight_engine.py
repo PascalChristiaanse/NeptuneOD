@@ -30,6 +30,19 @@ def _patch_links_receiver(monkeypatch):
     )
 
 
+
+def _default_strategy(engine):
+    """The strategy a plan-driven engine applies to unmatched sets.
+
+    ``engine.strategy`` is only set for a single-strategy engine; a plan-driven
+    one builds its strategies lazily, so the default entry's strategy is what a
+    test should inspect.
+    """
+    if engine.strategy is not None:
+        return engine.strategy
+    return engine._strategy_for_entry(engine.plan.default)
+
+
 # ===========================================================================
 # _get_set_id helper
 # ===========================================================================
@@ -75,7 +88,7 @@ class TestWeightEngineFromConfig:
     def test_id_v2_strategy(self):
         cfg = OmegaConf.create(
             {
-                "strategy": "id_v2",
+                "default": {"strategy": {"type": "id_v2"}},
                 "min_sigma_arcsec": 0.01,
                 "clustering": {
                     "levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}],
@@ -83,24 +96,25 @@ class TestWeightEngineFromConfig:
             }
         )
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "IDv2Weight"
+        assert _default_strategy(engine).__class__.__name__ == "IDv2Weight"
 
     def test_hybrid_geometric_strategy(self):
         cfg = OmegaConf.create(
             {
-                "strategy": "hybrid_geometric",
+                "default": {"strategy": {"type": "hybrid_geometric"}},
             }
         )
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "HybridGeometricWeight"
+        assert _default_strategy(engine).__class__.__name__ == "HybridGeometricWeight"
 
     def test_default_strategy(self):
-        cfg = OmegaConf.create({})
-        engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "IDv2Weight"
+        # There is no implicit default any more: a plan must say what happens to
+        # unmatched observations.
+        with pytest.raises(ValueError, match="no 'default' entry"):
+            WeightEngine.from_config(OmegaConf.create({}))
 
     def test_default_min_sigma(self):
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         # Can't easily inspect private attr, but we can verify it doesn't crash
         assert engine is not None
@@ -108,7 +122,7 @@ class TestWeightEngineFromConfig:
     def test_clustering_passed_through(self):
         cfg = OmegaConf.create(
             {
-                "strategy": "id_v2",
+                "default": {"strategy": {"type": "id_v2"}},
                 "clustering": {"levels": [{"type": "section", "sections": []}]},
             }
         )
@@ -116,26 +130,28 @@ class TestWeightEngineFromConfig:
         assert engine is not None
 
     def test_no_clustering(self):
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         assert engine is not None
 
     def test_unknown_strategy_raises(self):
-        cfg = OmegaConf.create({"strategy": "nonexistent"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "nonexistent"}}})
+        engine = WeightEngine.from_config(cfg)
+        # Strategies are built lazily, so the failure surfaces on first use.
         with pytest.raises(ValueError, match="No weight strategy registered"):
-            WeightEngine.from_config(cfg)
+            _default_strategy(engine)
 
     def test_descriptor_strategy_id_v2(self):
         """Descriptor form: strategy: {type: id_v2}."""
-        cfg = OmegaConf.create({"strategy": {"type": "id_v2"}})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "IDv2Weight"
+        assert _default_strategy(engine).__class__.__name__ == "IDv2Weight"
 
     def test_descriptor_strategy_layered(self):
         """Descriptor form with inline strategy kwargs (no engine edit needed)."""
         cfg = OmegaConf.create(
             {
-                "strategy": {
+                "default": {"strategy": {
                     "type": "layered",
                     "combine": "geometric",
                     "layers": [
@@ -146,7 +162,7 @@ class TestWeightEngineFromConfig:
                         },
                         {"level": "timeframe", "mode": "rmse_descaled"},
                     ],
-                },
+                }},
                 "clustering": {
                     "levels": [
                         {
@@ -170,24 +186,32 @@ class TestWeightEngineFromConfig:
             }
         )
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "LayeredWeight"
+        assert _default_strategy(engine).__class__.__name__ == "LayeredWeight"
 
     def test_descriptor_gaia_archive(self):
         cfg = OmegaConf.create(
-            {"strategy": {"type": "gaia_archive", "covariance_mode": "diagonal", "scale": 2.0}}
+            {
+                "default": {
+                    "strategy": {
+                        "type": "gaia_archive",
+                        "covariance_mode": "diagonal",
+                        "scale": 2.0,
+                    }
+                }
+            }
         )
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.covariance_mode == "diagonal"
-        assert engine.strategy.scale == 2.0
+        assert _default_strategy(engine).covariance_mode == "diagonal"
+        assert _default_strategy(engine).scale == 2.0
 
     def test_default_clustering_fallback(self):
         """A top-level default clustering is used when the node has none."""
         default_clustering = OmegaConf.create(
             {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
         )
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg, default_clustering=default_clustering)
-        assert engine._clustering is default_clustering
+        assert engine.plan.default.clustering is default_clustering
 
     def test_own_clustering_overrides_default(self):
         """A node-level clustering takes precedence over the default."""
@@ -196,13 +220,14 @@ class TestWeightEngineFromConfig:
         )
         cfg = OmegaConf.create(
             {
-                "strategy": "id_v2",
+                "default": {"strategy": {"type": "id_v2"}},
                 "clustering": {"levels": [{"type": "timeframe", "gap_threshold_hours": 12.0}]},
             }
         )
         engine = WeightEngine.from_config(cfg, default_clustering=default_clustering)
-        assert engine._clustering is not default_clustering
-        assert engine._clustering.levels[0].gap_threshold_hours == 12.0
+        assert engine.plan.default.clustering is not default_clustering
+        # compile_plan normalises config nodes to plain containers.
+        assert engine.plan.default.clustering["levels"][0]["gap_threshold_hours"] == 12.0
 
 
 # ===========================================================================
@@ -259,7 +284,7 @@ class TestWeightEngineApply:
 
         cfg = OmegaConf.create(
             {
-                "strategy": "id_v2",
+                "default": {"strategy": {"type": "id_v2"}},
                 "clustering": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
             }
         )
@@ -287,7 +312,7 @@ class TestWeightEngineApply:
         )
         collection = _make_mock_collection([set1, set2])
 
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -307,7 +332,7 @@ class TestWeightEngineApply:
         obs_set.observation_times = []  # empty
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -323,7 +348,7 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times)
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -341,7 +366,7 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times)
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -357,7 +382,7 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times)
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -373,7 +398,7 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times)
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({"strategy": "hybrid_geometric"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "hybrid_geometric"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
@@ -394,20 +419,21 @@ class TestWeightEngineApply:
         obs_set = _make_mock_single_obs_set("689", residuals, times)
         collection = _make_mock_collection([obs_set])
 
-        cfg = OmegaConf.create({"strategy": "id_v2"})
+        cfg = OmegaConf.create({"default": {"strategy": {"type": "id_v2"}}})
         engine = WeightEngine.from_config(cfg)
         bodies = MagicMock()
 
         engine.apply(collection, bodies)
 
         assert "WeightEngine" in caplog.text
-        assert "IDv2Weight" in caplog.text or "id_v2" in caplog.text
+        # A plan-driven engine logs the plan it built rather than a strategy name.
+        assert "plan" in caplog.text.lower()
 
     def test_layered_fixed_strategy_from_config(self):
         """Fixed sigmas via the layered strategy (descriptor form)."""
         cfg = OmegaConf.create(
             {
-                "strategy": {
+                "default": {"strategy": {
                     "type": "layered",
                     "layers": [
                         {
@@ -416,12 +442,12 @@ class TestWeightEngineApply:
                             "sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
                         },
                     ],
-                },
+                }},
                 "clustering": {"levels": [{"type": "set"}]},
             }
         )
         engine = WeightEngine.from_config(cfg)
-        assert engine.strategy.__class__.__name__ == "LayeredWeight"
+        assert _default_strategy(engine).__class__.__name__ == "LayeredWeight"
 
     def test_layered_fixed_sigma_applies_weights(self):
         """A layered fixed-sigma layer should set tabulated weights via the engine."""
@@ -432,7 +458,7 @@ class TestWeightEngineApply:
 
         cfg = OmegaConf.create(
             {
-                "strategy": {
+                "default": {"strategy": {
                     "type": "layered",
                     "layers": [
                         {
@@ -441,7 +467,7 @@ class TestWeightEngineApply:
                             "sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
                         },
                     ],
-                },
+                }},
                 "clustering": {"levels": [{"type": "set"}]},
             }
         )
@@ -476,11 +502,11 @@ class TestWeightEngineBlockWeights:
 
         cfg = OmegaConf.create(
             {
-                "strategy": {
+                "default": {"strategy": {
                     "type": "fixed_scan",
                     "along_scan_sigma_mas": 5.0,
                     "across_scan_sigma_mas": 200.0,
-                },
+                }},
                 "clustering": {"levels": [{"type": "set"}]},
             }
         )
@@ -490,7 +516,8 @@ class TestWeightEngineBlockWeights:
         # The scan angles reach the strategy through the set's SetView.
         fake_view = SimpleNamespace(
             scan_angles=np.zeros(2),
-            column=lambda name: np.array(["stub"]),
+            frame=pd.DataFrame({"data_source": ["gaia_archive"] * 2}),
+            column=lambda name: np.array(["stub"] * 2),
         )
         monkeypatch.setattr(
             "orbitdet.analysis.set_view.SetView.build",

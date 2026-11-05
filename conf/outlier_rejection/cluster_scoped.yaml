@@ -1,16 +1,16 @@
 # @package _global_
 
-# Outlier rejection: group-scoped strategies.
+# Outlier rejection: cluster-scoped strategies.
 #
-# Different strategies are applied to different observation groups -- not just
-# different sets.  The `groups` filter matches a group's short name (a section
-# name or a timeframe id) using this subsystem's OWN clustering config, which is
-# independent of the weighting clustering.
+# Different strategies are applied to different observation clusters -- not just
+# different sets.  The `clusters` filter matches a cluster's short name (a
+# section name or a timeframe id) using this subsystem's OWN clustering config,
+# which is independent of the weighting clustering.
 #
 # Here:
 #   - Voyager 2 pre-encounter: a tight maximum residual threshold
 #   - Voyager 2 post-encounter: a looser maximum threshold
-#   - ground-based observatories: a standard threshold (no `sets`/`groups`
+#   - ground-based observatories: a standard threshold (no `select`/`clusters`
 #     filter => applies to every set that reaches it)
 #
 # NOTE: an `isolation_forest` strategy is planned for NSDB data but is NOT yet
@@ -22,18 +22,18 @@ outlier_rejection:
     levels:
       - type: section
         sections:
-          - {name: "pre_encounter",  start: -1e30,       end: -326688543.8172541}
+          - {name: "pre_encounter",  start: -1e30,             end: -326688543.8172541}
           - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
   strategies:
     # Voyager 2, split by encounter section.
     - type: residual_threshold
       threshold_arcsec: 0.5
-      sets: ["Voyager 2"]
-      groups: ["pre_encounter"]
+      select: "observatory_code == 'Voyager 2'"
+      clusters: ["pre_encounter"]
     - type: residual_threshold
       threshold_arcsec: 2.0
-      sets: ["Voyager 2"]
-      groups: ["post_encounter"]
+      select: "observatory_code == 'Voyager 2'"
+      clusters: ["post_encounter"]
 
     # NSDB / ground-based: standard maximum threshold.
     - type: residual_threshold
@@ -41,4 +41,4 @@ outlier_rejection:
 
     # Planned (not implemented yet):
     # - type: isolation_forest
-    #   sets: ["689", "675", "675"]
+    #   select: "data_source == 'nsdb'"

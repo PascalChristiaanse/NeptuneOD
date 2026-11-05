@@ -175,13 +175,13 @@ class TestWeightEnginePlan:
         # No frame to match on -> default (id_v2) -> tabulated weights.
         sets[0].set_tabulated_weights.assert_called_once()
 
-    def test_legacy_single_strategy_config_still_works(self):
+    def test_config_without_a_default_is_rejected(self):
+        # The pre-plan `strategy:` shape is gone.
         cfg = OmegaConf.create(
             {"strategy": {"type": "id_v2"}, "clustering": {"levels": [{"type": "set"}]}}
         )
-        engine = WeightEngine.from_config(cfg)
-        assert engine.plan is None
-        assert engine.strategy.__class__.__name__ == "IDv2Weight"
+        with pytest.raises(ValueError, match="no 'default' entry"):
+            WeightEngine.from_config(cfg)
 
     def test_engine_requires_a_strategy_or_a_plan(self):
         with pytest.raises(ValueError, match="either a strategy or a plan"):
@@ -238,7 +238,9 @@ class TestOutlierEngineSelect:
         )
         assert summary["per_set"][0]["strategies"] == []
 
-    def test_legacy_sets_filter_still_works(self):
+    def test_sets_key_is_no_longer_accepted(self):
+        # `sets:` was replaced by `select:`; an unknown key must not be silently
+        # swallowed into the strategy's constructor kwargs.
         cfg = OmegaConf.create(
             {
                 "strategies": [
@@ -246,28 +248,27 @@ class TestOutlierEngineSelect:
                 ]
             }
         )
-        engine = OutlierEngine.from_config(cfg)
-        assert engine._strategies[0].set_filter == {"689"}
-        assert engine._strategies[0].selection is None
+        with pytest.raises(TypeError):
+            OutlierEngine.from_config(cfg)
 
     def test_invalid_select_is_rejected_at_load_time(self):
         with pytest.raises(ValueError, match="unknown column"):
             OutlierEngine.from_config(self._cfg("nope == 1"))
 
-    def test_select_and_sets_combine(self):
+    def test_select_and_clusters_combine(self):
         cfg = OmegaConf.create(
             {
                 "strategies": [
                     {
                         "type": "residual_threshold",
                         "threshold_arcsec": 1.5,
-                        "sets": ["689"],
                         "select": "data_source == 'nsdb'",
+                        "clusters": ["night_1"],
                     }
                 ]
             }
         )
         engine = OutlierEngine.from_config(cfg)
         scoped = engine._strategies[0]
-        assert scoped.set_filter == {"689"}
+        assert scoped.cluster_filter == {"night_1"}
         assert scoped.selection is not None

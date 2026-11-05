@@ -27,9 +27,6 @@ top-level ``clustering`` (or a per-route ``clustering``) chose the partition.
 That meant a rule was assembled from two places, and the match could only look
 at the set identifier.  Here the match is any frame column, and the strategy and
 clustering sit together.
-
-The router is still supported — it is a strategy, and a plan's ``strategy`` may
-be ``{type: router, ...}`` — but a plan does not need it.
 """
 
 from __future__ import annotations
@@ -136,7 +133,6 @@ class Plan:
 def compile_plan(
     cfg: Any,
     *,
-    default_strategy: Any = None,
     default_clustering: Any = None,
 ) -> Plan:
     """Build a :class:`Plan` from a config node.
@@ -145,12 +141,8 @@ def compile_plan(
     ----------
     cfg : DictConfig | Mapping
         The engine's config node (``weighting`` or ``outlier_rejection``).  It
-        may carry ``default`` and ``overrides`` keys.  For backwards
-        compatibility a bare ``strategy`` key is accepted as the default entry,
-        and a bare ``clustering`` key as the default clustering.
-    default_strategy : Any, optional
-        Strategy descriptor to use when the config names none.  Required if the
-        config has neither ``default`` nor ``strategy``.
+        must carry a ``default`` entry, and may carry ``overrides`` and a
+        plan-wide ``clustering``.
     default_clustering : Any, optional
         Clustering to use for entries that name none.
 
@@ -162,28 +154,21 @@ def compile_plan(
     Raises
     ------
     ValueError
-        If no default strategy can be determined, or an override is malformed.
+        If the config has no ``default`` entry, or an entry is malformed.
     """
     plain = _to_plain(cfg)
 
-    # A bare `clustering:` at the top level is the plan-wide default.
+    # A top-level `clustering:` is the plan-wide default.
     plan_clustering = plain.get("clustering", default_clustering)
 
-    default_node = plain.get("default")
-    if default_node is None:
-        # Legacy shape: `strategy:` at the top level is the default entry.
-        if "strategy" in plain:
-            default_node = {"strategy": plain["strategy"]}
-        elif default_strategy is not None:
-            default_node = {"strategy": default_strategy}
-        else:
-            raise ValueError(
-                "The config has no 'default' entry and no top-level 'strategy'; "
-                "one of them is required to say what happens to unmatched observations."
-            )
+    if "default" not in plain:
+        raise ValueError(
+            "The config has no 'default' entry.  Every plan needs one to say what "
+            "happens to observations no override matches."
+        )
 
     default_entry = _compile_entry(
-        default_node,
+        plain["default"],
         label="default",
         fallback_clustering=plan_clustering,
         require_selection=False,

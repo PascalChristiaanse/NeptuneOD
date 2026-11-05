@@ -49,23 +49,16 @@ class TestCompilePlan:
         assert len(plan) == 2
         assert plan.overrides[0].selection.query == "data_source == 'gaia_archive'"
 
-    def test_legacy_top_level_strategy_is_the_default(self):
-        # The pre-plan shape: `strategy:` at the top level.
-        plan = compile_plan({"strategy": {"type": "id_v2"}})
-        assert plan.default.strategy == {"type": "id_v2"}
-        assert plan.overrides == []
-
-    def test_legacy_bare_strategy_name(self):
-        plan = compile_plan({"strategy": "id_v2"})
-        assert plan.default.strategy == "id_v2"
-
-    def test_default_strategy_argument_is_the_fallback(self):
-        plan = compile_plan({}, default_strategy={"type": "id_v2"})
-        assert plan.default.strategy == {"type": "id_v2"}
-
-    def test_no_default_and_no_strategy_raises(self):
-        with pytest.raises(ValueError, match="no 'default' entry and no top-level 'strategy'"):
+    def test_missing_default_raises(self):
+        # There is no implicit default: a plan must say what happens to
+        # observations no override matches.
+        with pytest.raises(ValueError, match="no 'default' entry"):
             compile_plan({})
+
+    def test_top_level_strategy_is_not_a_default(self):
+        # The pre-plan shape is gone; `strategy:` alone is not a plan.
+        with pytest.raises(ValueError, match="no 'default' entry"):
+            compile_plan({"strategy": {"type": "id_v2"}})
 
     def test_omegaconf_input(self):
         cfg = OmegaConf.create(

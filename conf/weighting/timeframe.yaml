@@ -2,15 +2,13 @@
 
 # Weighting: per-timeframe (TF) with sqrt(n_t) descalement.
 #
-# Router-shaped: single-strategy via a router `default`.  Thesis label
-# "per timeframe".
+# Thesis label "per timeframe".
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.01
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: timeframe
   clustering:
     levels:

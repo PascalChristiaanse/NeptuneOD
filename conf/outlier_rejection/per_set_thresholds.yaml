@@ -1,22 +1,22 @@
 # @package _global_
 
 # Outlier rejection: per-set residual thresholds.
-# Uses a tighter threshold for Voyager 2 spacecraft data (0.5 arcsec)
+# Uses a tighter threshold for Voyager 2 spacecraft data (5 arcsec)
 # and a standard threshold for ground-based observatories (1.5 arcsec).
 #
-# Set identifiers are:
-#   - Observatory codes (e.g. "689") for ground stations
-#   - Body names (e.g. "Voyager 2") for spacecraft
+# `select` is a pandas query over the standard observation frame, so a strategy
+# can be scoped by any column.  `observatory_code` holds the MPC code for ground
+# stations and the body name for spacecraft.
 
 outlier_rejection:
   enabled: true
   strategies:
     - type: residual_threshold
       threshold_arcsec: 5
-      sets: ["Voyager 2"]
+      select: "observatory_code == 'Voyager 2'"
     - type: residual_threshold
       threshold_arcsec: 1.5
     - type: epoch_filter
       epochs_to_remove:
         - -1162202738.851083
-      sets: ["083"]
+      select: "observatory_code == '083'"

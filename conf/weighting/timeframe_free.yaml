@@ -2,15 +2,14 @@
 
 # Weighting: per-timeframe free (no sigma floor).
 #
-# Router-shaped: single-strategy via a router `default`.  Thesis label
-# "per timeframe free".  min_sigma_arcsec is ignored by this strategy.
+# Thesis label "per timeframe free".  min_sigma_arcsec is ignored by this
+# strategy.
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.0
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: timeframe_free
   clustering:
     levels:

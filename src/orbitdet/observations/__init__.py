@@ -51,8 +51,10 @@ from .weighting import (
     WeightEngine,
     WeightStrategy,
     clear_gaia_weights,
+    get_gaia_covariance_components,
     get_gaia_weights,
     register_weight_strategy,
+    store_gaia_covariance_components,
     store_gaia_weights,
 )
 from .weighting import (
@@ -117,5 +119,7 @@ __all__ = [
     "list_registered_weight_strategies",
     "store_gaia_weights",
     "get_gaia_weights",
+    "store_gaia_covariance_components",
+    "get_gaia_covariance_components",
     "clear_gaia_weights",
 ]

@@ -83,6 +83,10 @@ class GaiaSource:
         #: retrieved.  Exposed so the factory can attach the full transit matrix,
         #: which has no representation in a wide dataframe.
         self.covariance_blocks: dict[int, list] = {}
+        #: Random and systematic covariance blocks per object key, kept apart so
+        #: a strategy can re-weight the two components independently.  The blocks
+        #: in :attr:`covariance_blocks` are their sum.
+        self.covariance_components: dict[int, tuple[list, list]] = {}
 
     def observation_table(self, dataset_cfg) -> pd.DataFrame:
         """Retrieve (or reuse) Gaia's observation table for a dataset.
@@ -143,6 +147,9 @@ class GaiaSource:
         for object_key in self.query.astrometry.object_keys_in_table:
             self.covariance_blocks[int(object_key)] = (
                 self.query.astrometry._get_observation_covariance(object_key)
+            )
+            self.covariance_components[int(object_key)] = (
+                self.query.astrometry.get_observation_covariance_components(object_key)
             )
 
         self._apply_corrections(dataset_cfg)

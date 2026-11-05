@@ -4,8 +4,8 @@
 # (others -> hybrid geom v2).
 #
 # Voyager 2 -> `layered` (fixed section sigma x timeframe), Gaia -> fixed
-# along/across-scan sigmas (5 mas AL / 150 mas AC), everything else -> hybrid
-# geometric v2.
+# along/across-scan sigmas split into random (within-transit) and systematic
+# (transit-to-transit) components, everything else -> hybrid geometric v2.
 
 weighting:
   enabled: true
@@ -14,12 +14,17 @@ weighting:
     strategy:
       type: hybrid_geometric_v2
   overrides:
-    # Gaia: fixed along/across-scan sigmas.
+    # Gaia: fixed along/across-scan sigmas from the measured random +
+    # systematic error components (combined in quadrature by the strategy).
     - select: "data_source == 'gaia_archive'"
       strategy:
-        type: fixed_scan
-        along_scan_sigma_mas: 5.0
-        across_scan_sigma_mas: 150.0
+        type: fixed_scan_components
+        # Measured with GaiaTransitErrorComponents (within-transit = random,
+        # spread of transit means = systematic).  All values in mas.
+        random_along_scan_mas: 0.382
+        random_across_scan_mas: 114.0
+        systematic_along_scan_mas: 10.4
+        systematic_across_scan_mas: 103.0
 
     # Voyager 2: fixed 1" pre / 4" post encounter, clustered by timeframe.
     - select: "observatory_code == 'Voyager 2'"

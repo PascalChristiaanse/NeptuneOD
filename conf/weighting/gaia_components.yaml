@@ -1,0 +1,35 @@
+# @package _global_
+
+# Weighting: Gaia archive random/systematic components (others -> ID v2).
+#
+# The Gaia set is routed to the `gaia_components` strategy, which rebuilds the
+# archive transit matrix as
+#
+#   C = random_scale * C_random + systematic_scale * C_systematic
+#
+# and inverts it.  This lets the intra-transit systematic correlation be tuned
+# independently of the random noise level: `systematic_scale < 1` down-weights
+# the transit-wide correlation, `> 1` emphasises it, and `random_scale` does the
+# same for the per-crossing noise.
+#
+# The covariance components are cached by the Gaia observation factory; if they
+# are missing the strategy falls back to ID v2 residual-driven weighting and
+# logs a warning.
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+  default:
+    strategy:
+      type: id_v2
+  overrides:
+    - select: "data_source == 'gaia_archive'"
+      strategy:
+        type: gaia_components
+        random_scale: 1.0
+        systematic_scale: 1.0
+  clustering:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1

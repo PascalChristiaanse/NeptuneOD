@@ -25,6 +25,7 @@ class OutlierStrategy(ABC):
         self,
         observation_set: obs.SingleObservationSet,
         bodies: env.SystemOfBodies,
+        view=None,
     ) -> tuple[obs.SingleObservationSet, dict]:
         """Apply the rejection strategy to a single observation set.
 
@@ -35,6 +36,17 @@ class OutlierStrategy(ABC):
         bodies : SystemOfBodies
             The system of bodies (may be needed by some strategies for
             context, e.g. to compute residuals).
+        view : SetView | None
+            The set's window onto the access layer, carrying the standard-frame
+            columns (``observatory_code``, ``data_source``, ``scan_angle``, ...).
+            ``None`` when a strategy is called directly rather than through the
+            engine; strategies that need frame columns must then fall back to a
+            frame-free path.
+
+            Note that the view describes the set **as it entered the engine**.
+            Strategies filter observations, so after the first strategy the
+            view's rows no longer line up with ``observation_set``; read it for
+            per-observation *attributes*, not for index alignment.
 
         Returns
         -------

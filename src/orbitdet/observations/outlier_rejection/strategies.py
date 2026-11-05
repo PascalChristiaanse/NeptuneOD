@@ -61,6 +61,7 @@ class ResidualThresholdOutlier(OutlierStrategy):
         self,
         observation_set: obs.SingleObservationSet,
         bodies: env.SystemOfBodies,
+        view=None,
     ) -> tuple[obs.SingleObservationSet, dict]:
         # Build the "keep" filter: observations with residual <= threshold are kept.
         keep_filter = obs_proc.observation_filter(
@@ -137,6 +138,7 @@ class EpochFilterOutlier(OutlierStrategy):
         self,
         observation_set: obs.SingleObservationSet,
         bodies: env.SystemOfBodies,
+        view=None,
     ) -> tuple[obs.SingleObservationSet, dict]:
         if not self._epochs_to_remove:
             # Nothing to remove — return the set unchanged.

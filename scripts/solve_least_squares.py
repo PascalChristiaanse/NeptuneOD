@@ -209,7 +209,7 @@ def main(cfg: DictConfig):
         logger.info("Applying outlier rejection...")
         outlier_engine = OutlierEngine.from_config(outlier_cfg)
         observations, rejection_metadata = outlier_engine.apply(
-            observations, bodies, dataset_metadata=dataset_metadata
+            observations, bodies, dataset_metadata=dataset_metadata, access=access
         )
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
@@ -244,7 +244,11 @@ def main(cfg: DictConfig):
 
         output_dir = Path(HydraConfig.get().runtime.output_dir)
         observations, weights_df = weight_engine.apply(
-            observations, bodies, output_dir=output_dir, dataset_metadata=dataset_metadata
+            observations,
+            bodies,
+            output_dir=output_dir,
+            dataset_metadata=dataset_metadata,
+            access=access,
         )
         logger.info(
             "Weighting complete: %s strategy applied, %d observations weighted",

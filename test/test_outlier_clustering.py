@@ -101,7 +101,7 @@ def _reject_above_strategy(threshold: float):
     """Strategy that rejects observations whose first residual exceeds *threshold*."""
     strategy = MagicMock(spec=OutlierStrategy)
 
-    def apply_side_effect(obs_set, bodies):
+    def apply_side_effect(obs_set, bodies, view=None):
         residuals = np.asarray(obs_set.residuals, dtype=float)
         epochs = [t.to_float() for t in obs_set.observation_times]
         keep_epochs, reject_epochs = [], []

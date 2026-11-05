@@ -120,6 +120,7 @@ class OutlierEngine:
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
         dataset_metadata: dict[str, list[dict]] | None = None,
+        access=None,
     ) -> tuple[obs.ObservationCollection, dict[str, Any]]:
         """Apply all strategies in sequence to every observation set.
 
@@ -135,6 +136,12 @@ class OutlierEngine:
             observatory).  Each dict has a ``dataset_id`` key (e.g. ``nm0083``).
             When provided, the per-set report uses ``{dataset_id}_{obs_code}``
             as the set identifier, giving unique and meaningful keys.
+        access : ObservationAccess, optional
+            The access layer for this collection.  When provided, each set is
+            wrapped in a :class:`~orbitdet.analysis.set_view.SetView` so
+            strategies can read standard-frame columns instead of the retired
+            epoch-keyed registries.  When omitted, the strategies run without a
+            view and must use their frame-free paths.
 
         Returns
         -------
@@ -145,7 +152,7 @@ class OutlierEngine:
               with per-strategy metadata as values.
         """
         filtered_collection, rejected_collection, summary = self.apply_with_rejected(
-            collection, bodies, dataset_metadata=dataset_metadata
+            collection, bodies, dataset_metadata=dataset_metadata, access=access
         )
         return filtered_collection, summary
 
@@ -154,6 +161,7 @@ class OutlierEngine:
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
         dataset_metadata: dict[str, list[dict]] | None = None,
+        access=None,
     ) -> tuple[obs.ObservationCollection, obs.ObservationCollection, dict[str, Any]]:
         """Apply all strategies and also return the rejected observations.
 
@@ -173,6 +181,11 @@ class OutlierEngine:
             observatory).  Each dict has a ``dataset_id`` key (e.g. ``nm0083``).
             When provided, the per-set report uses ``{dataset_id}_{obs_code}``
             as the set identifier, giving unique and meaningful keys.
+        access : ObservationAccess, optional
+            The access layer for this collection.  When provided, each set is
+            wrapped in a :class:`~orbitdet.analysis.set_view.SetView` so
+            strategies can read standard-frame columns.  When omitted, the
+            strategies run without a view and must use their frame-free paths.
 
         Returns
         -------
@@ -199,9 +212,22 @@ class OutlierEngine:
         rejected_sets: list[obs.SingleObservationSet] = []
         per_set_metadata: list[dict[str, Any]] = []
 
-        for obs_set in all_sets:
+        for set_index, obs_set in enumerate(all_sets):
             obs_code = get_set_identifier(obs_set)
             current_set = obs_set
+
+            # The set's window onto the access layer, so strategies can read
+            # standard-frame columns (observatory_code, data_source, ...).
+            # Built once per set, from the set as it entered the engine: the
+            # strategies filter observations, so the view's rows stop lining up
+            # with ``current_set`` after the first one.  It is a source of
+            # per-observation *attributes*, not an index into the filtered set.
+            view = None
+            if access is not None:
+                # Imported here: ``orbitdet.analysis`` imports this package.
+                from ...analysis.set_view import SetView
+
+                view = SetView.build(access, set_index)
 
             # Resolve a unique, meaningful set_id using dataset_metadata
             meta_queue = meta_queues.get(obs_code, [])
@@ -240,11 +266,13 @@ class OutlierEngine:
                         scoped.cluster_filter,
                     )
                     current_set, strategy_meta = self._apply_cluster_scoped(
-                        scoped, current_set, bodies, clusters
+                        scoped, current_set, bodies, clusters, view=view
                     )
                 else:
                     logger.debug("Applying strategy '%s' to set '%s'", strategy_name, set_id)
-                    current_set, strategy_meta = scoped.strategy.apply(current_set, bodies)
+                    current_set, strategy_meta = scoped.strategy.apply(
+                        current_set, bodies, view=view
+                    )
 
                 set_metadata["strategies"].append(strategy_meta)
 
@@ -316,6 +344,7 @@ class OutlierEngine:
         observation_set: obs.SingleObservationSet,
         bodies: env.SystemOfBodies,
         clusters,
+        view=None,
     ) -> tuple[obs.SingleObservationSet, dict[str, Any]]:
         """Apply a strategy to only the observations in matching clusters.
 
@@ -355,7 +384,7 @@ class OutlierEngine:
             subset = obs.create_filtered_observation_set(
                 current_set, _time_bounds_filter(t_start, t_end, filter_out=False)
             )
-            kept_subset, _meta = scoped.strategy.apply(subset, bodies)
+            kept_subset, _meta = scoped.strategy.apply(subset, bodies, view=view)
 
             kept_epochs = {float(t.to_float()) for t in kept_subset.observation_times}
             in_window = {float(e) for e in epochs_before if t_start <= e <= t_end}

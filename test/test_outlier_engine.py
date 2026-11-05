@@ -98,7 +98,7 @@ def _make_mock_strategy(name: str = "MockStrategy") -> MagicMock:
     """Create a mock OutlierStrategy that accepts all observations."""
     strategy = MagicMock(spec=OutlierStrategy)
 
-    def apply_side_effect(obs_set, bodies):
+    def apply_side_effect(obs_set, bodies, view=None):
         n = len(obs_set.observation_times)
         return obs_set, {
             "strategy": name,
@@ -121,7 +121,7 @@ def _make_mock_rejecting_strategy(
         reject_indices = [0]
     strategy = MagicMock(spec=OutlierStrategy)
 
-    def apply_side_effect(obs_set, bodies):
+    def apply_side_effect(obs_set, bodies, view=None):
         times = [t.to_float() for t in obs_set.observation_times]
         n = len(times)
         keep_times = [t for i, t in enumerate(times) if i not in reject_indices]

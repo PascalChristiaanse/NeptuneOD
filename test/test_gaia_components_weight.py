@@ -62,6 +62,9 @@ def _make_obs_set(n_obs, set_id=SET_ID):
         residuals=np.zeros((n_obs, 2)),
         observation_times=mock_times,
         observable_type=1,
+        # Declinations are only read when scan angles are available; a small
+        # non-zero value keeps the cos(dec) factor in play.
+        concatenated_observations=np.tile(np.array([0.0, 0.2]), n_obs),
         has_full_weight_matrix_contribution=True,
         set_full_weight_matrix=_set_full_weight_matrix,
     )
@@ -96,13 +99,34 @@ def _synthetic_components(n_obs=2):
 class TestConstruction:
     def test_defaults(self):
         s = GaiaComponentsWeight()
-        assert s.random_scale == 1.0
-        assert s.systematic_scale == 1.0
+        assert s.random_scale_al == 1.0
+        assert s.random_scale_ac == 1.0
+        assert s.systematic_scale_al == 1.0
+        assert s.systematic_scale_ac == 1.0
 
-    def test_custom_values(self):
+    def test_custom_per_axis_values(self):
+        s = GaiaComponentsWeight(
+            random_scale_al=2.0,
+            random_scale_ac=3.0,
+            systematic_scale_al=0.5,
+            systematic_scale_ac=0.25,
+        )
+        assert s.random_scale_al == 2.0
+        assert s.random_scale_ac == 3.0
+        assert s.systematic_scale_al == 0.5
+        assert s.systematic_scale_ac == 0.25
+
+    def test_shorthand_sets_both_axes(self):
         s = GaiaComponentsWeight(random_scale=2.0, systematic_scale=0.5)
-        assert s.random_scale == 2.0
-        assert s.systematic_scale == 0.5
+        assert s.random_scale_al == 2.0
+        assert s.random_scale_ac == 2.0
+        assert s.systematic_scale_al == 0.5
+        assert s.systematic_scale_ac == 0.5
+
+    def test_explicit_axis_overrides_shorthand(self):
+        s = GaiaComponentsWeight(random_scale=2.0, random_scale_ac=7.0)
+        assert s.random_scale_al == 2.0
+        assert s.random_scale_ac == 7.0
 
     @pytest.mark.parametrize(
         "kwargs",
@@ -114,6 +138,10 @@ class TestConstruction:
             {"systematic_scale": 0.0},
             {"systematic_scale": -1.0},
             {"systematic_scale": np.nan},
+            {"random_scale_al": 0.0},
+            {"random_scale_ac": -2.0},
+            {"systematic_scale_al": np.nan},
+            {"systematic_scale_ac": np.inf},
         ],
     )
     def test_rejects_bad_scales(self, kwargs):
@@ -243,6 +271,124 @@ class TestComputeWeights:
         )
         assert weights.shape == (4,)
         assert np.all(np.isfinite(weights))
+
+
+# ===========================================================================
+# Per-axis (scan-frame) scaling
+# ===========================================================================
+
+
+def _view(scan_angles):
+    """Minimal SetView stand-in exposing only ``scan_angles``."""
+    return SimpleNamespace(scan_angles=np.asarray(scan_angles, dtype=float))
+
+
+class TestPerAxisScaling:
+    def test_isotropic_factors_match_shorthand(self):
+        """Equal AL/AC factors reproduce the single-factor result exactly."""
+        random_blocks, systematic_blocks = _synthetic_components()
+        store_gaia_covariance_components(SET_ID, random_blocks, systematic_blocks)
+
+        shorthand, _ = GaiaComponentsWeight(random_scale=2.0, systematic_scale=0.5).compute_weights(
+            _make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001
+        )
+        per_axis, _ = GaiaComponentsWeight(
+            random_scale_al=2.0,
+            random_scale_ac=2.0,
+            systematic_scale_al=0.5,
+            systematic_scale_ac=0.5,
+        ).compute_weights(_make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001)
+        np.testing.assert_allclose(per_axis, shorthand, rtol=1e-12)
+
+    def test_axes_are_independent(self):
+        """Scaling only AL differs from scaling only AC."""
+        random_blocks, systematic_blocks = _synthetic_components()
+        store_gaia_covariance_components(SET_ID, random_blocks, systematic_blocks)
+
+        al_only, _ = GaiaComponentsWeight(random_scale_al=4.0).compute_weights(
+            _make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001
+        )
+        ac_only, _ = GaiaComponentsWeight(random_scale_ac=4.0).compute_weights(
+            _make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001
+        )
+        assert not np.allclose(al_only, ac_only)
+
+    def test_scan_frame_rotation_preserves_isotropic_scaling(self):
+        """With equal factors the scan-frame path equals the RA/Dec path."""
+        random_blocks, systematic_blocks = _synthetic_components()
+        store_gaia_covariance_components(SET_ID, random_blocks, systematic_blocks)
+
+        obs_set = _make_obs_set(2)
+        no_view, _ = GaiaComponentsWeight(random_scale_al=3.0, random_scale_ac=3.0).compute_weights(
+            obs_set, _clusters(SET_ID, 2), SET_ID, 0.001
+        )
+        with_view, _ = GaiaComponentsWeight(
+            random_scale_al=3.0, random_scale_ac=3.0
+        ).compute_weights(
+            _make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001, view=_view([0.3, 1.1])
+        )
+        np.testing.assert_allclose(with_view, no_view, rtol=1e-10)
+
+    def test_scan_frame_rotation_matches_documented_convention(self):
+        """T maps a (RA, Dec) offset to (AL, AC) as the docstring states."""
+        from orbitdet.observations.weighting.strategies import _scan_frame_rotation
+
+        psi = 0.7
+        dec = 0.4
+        rotation = _scan_frame_rotation(np.array([psi]), np.array([dec]))[0]
+
+        dra, ddec = 1e-6, 2e-6
+        east = dra * np.cos(dec)
+        north = ddec
+        expected_al = east * np.sin(psi) + north * np.cos(psi)
+        expected_ac = east * np.cos(psi) - north * np.sin(psi)
+
+        np.testing.assert_allclose(rotation @ np.array([dra, ddec]), [expected_al, expected_ac])
+
+    def test_scan_frame_rotation_determinant_carries_cos_dec(self):
+        """T is a Jacobian, not a pure rotation: |det T| == cos(dec)."""
+        from orbitdet.observations.weighting.strategies import _scan_frame_rotation
+
+        psi = np.array([0.0, 0.7, 2.1])
+        dec = np.array([0.0, 0.4, -0.9])
+        rotation = _scan_frame_rotation(psi, dec)
+        for k in range(len(psi)):
+            assert np.isclose(abs(np.linalg.det(rotation[k])), np.cos(dec[k]))
+
+    def test_scan_frame_rotation_matches_fixed_scan_convention(self):
+        """psi=0 puts AL along Dec and AC along RA, as FixedScanWeight assumes."""
+        from orbitdet.observations.weighting.strategies import _scan_frame_rotation
+
+        rotation = _scan_frame_rotation(np.array([0.0]), np.array([0.0]))[0]
+        # AL = north = dDec, AC = east = dRA.
+        np.testing.assert_allclose(rotation, np.array([[0.0, 1.0], [1.0, 0.0]]))
+
+    def test_scale_in_scan_frame_is_symmetric_positive(self):
+        """The scaled covariance stays symmetric and positive definite."""
+        from orbitdet.observations.weighting.strategies import (
+            _scale_in_scan_frame,
+            _scan_frame_rotation,
+        )
+
+        random_blocks, systematic_blocks = _synthetic_components()
+        total = random_blocks[0] + systematic_blocks[0]
+        rotation = _scan_frame_rotation(np.array([0.4, 1.9]), np.array([0.1, -0.3]))
+        scaled = _scale_in_scan_frame(total, rotation, 2.0, 0.5)
+
+        np.testing.assert_allclose(scaled, scaled.T, atol=1e-18)
+        assert np.all(np.linalg.eigvalsh(scaled) > 0.0)
+
+    def test_missing_scan_angles_falls_back_to_radec(self):
+        """No view -> factors applied directly in RA/Dec, still finite."""
+        random_blocks, systematic_blocks = _synthetic_components()
+        store_gaia_covariance_components(SET_ID, random_blocks, systematic_blocks)
+
+        weights, _ = GaiaComponentsWeight(
+            random_scale_al=2.0, random_scale_ac=5.0
+        ).compute_weights(_make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001)
+        assert weights.shape == (4,)
+        assert np.all(np.isfinite(weights))
+        assert np.all(weights > 0.0)
 
 
 # ===========================================================================

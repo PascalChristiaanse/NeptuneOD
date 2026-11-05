@@ -1,5 +1,7 @@
 residual_histogram:
   output_file: "residual_histogram.pdf"
+  # Standard-frame column(s) the histograms are grouped by.
+  group_by: "observatory_code"
   figure:
     width: 16.54
     height: 8.27
@@ -10,6 +12,7 @@ residual_histogram:
   axes:
     x_label: "Residual [arcsec]"
     y_label: "Probability Density"
+    unit: "arcsec"   # Display unit for residuals: "arcsec" or "mas"
     hover_x_label: "Residual [arcsec]"
     hover_y_label: "Probability Density"
   styling:

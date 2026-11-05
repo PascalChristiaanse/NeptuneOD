@@ -18,7 +18,7 @@ import pandas as pd
 
 from .access import ObservationAccess
 from .statistics import normalized_residuals
-from .views import to_arcsec, to_mas, with_scan_frame
+from .views import canonical_angle_columns, to_arcsec, to_mas, with_scan_frame
 
 __all__ = ["analysis_frame"]
 
@@ -77,34 +77,44 @@ def analysis_frame(
 
     if scan:
         angles = _scan_angles_for_frame(frame)
-        if angles is not None:
+        # Only rotate when at least one row carries a finite scan angle; a frame
+        # with an all-NaN scan_angle (non-scanning instrument) gets no scan view.
+        if angles is not None and np.any(np.isfinite(angles)):
             frame["scan_angle"] = angles
             if {"residual_first_rad", "residual_second_rad"} <= set(frame.columns):
                 frame = with_scan_frame(frame)
 
     if unit == "arcsec":
-        frame = to_arcsec(frame)
+        frame = to_arcsec(frame, columns=_angle_columns(frame))
     elif unit == "mas":
-        frame = to_mas(frame)
+        frame = to_mas(frame, columns=_angle_columns(frame))
 
     return frame
 
 
+def _angle_columns(frame: pd.DataFrame) -> list[str]:
+    """Canonical *and* scan-frame angle columns present in ``frame``."""
+    columns = list(canonical_angle_columns(frame))
+    for name in (
+        "residual_along_scan_rad",
+        "residual_across_scan_rad",
+        "sigma_along_scan_rad",
+        "sigma_across_scan_rad",
+    ):
+        if name in frame.columns:
+            columns.append(name)
+    return columns
+
+
 def _scan_angles_for_frame(frame: pd.DataFrame) -> np.ndarray | None:
-    """Return the scan angle (radians) for every frame row, or ``None``.
+    """Return the ``scan_angle`` column as a float array, or ``None`` if absent.
 
-    The angles live in an epoch-keyed registry, so one lookup covers the whole
-    frame.  ``None`` means the frame's epochs are not registered (a non-Gaia
-    collection), so no scan view is possible.
+    The scan angle is a standard-frame column, populated on ingest (from the
+    Gaia archive's ``position_angle_scan``); it is read straight from the frame
+    rather than looked up in an epoch-keyed registry.  Rows without a finite
+    angle (a non-scanning instrument) are left as ``NaN`` by the caller's
+    ``with_scan_frame`` mask; ``None`` here means the column is missing entirely.
     """
-    from orbitdet.data.gaia import get_scan_angles_for_epochs
-
-    if "epoch_tdb" not in frame.columns:
+    if "scan_angle" not in frame.columns:
         return None
-    epochs = pd.to_numeric(frame["epoch_tdb"], errors="coerce").to_numpy("float64")
-    if epochs.size == 0:
-        return None
-    angles = get_scan_angles_for_epochs(epochs)
-    if angles is None or len(angles) != epochs.size:
-        return None
-    return np.asarray(angles, dtype="float64")
+    return pd.to_numeric(frame["scan_angle"], errors="coerce").to_numpy("float64")

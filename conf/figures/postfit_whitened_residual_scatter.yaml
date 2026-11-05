@@ -1,0 +1,21 @@
+output_file: "postfit_whitened_residual_scatter.pdf"
+# Standard-frame column(s) the scatter series are grouped by.
+group_by: "observatory_code"
+figure:
+  width: 8.27
+  height: 8.27
+titles:
+  suptitle: "Whitened Residuals for {target_name}"
+axes:
+  x_label: "Whitened component 1 [$\\sigma$]"
+  y_label: "Whitened component 2 [$\\sigma$]"
+  hover_x_label: "z1"
+  hover_y_label: "z2"
+styling:
+  cmap: "tab10"
+  marker_size: 30
+legend:
+  ncols: 2
+  bbox_to_anchor:
+    x: 0.5
+    y: -0.15

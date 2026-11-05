@@ -192,19 +192,17 @@ class TestWeightMatrices:
         monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: None)
         single_set = make_set([1.0], weights=np.array([[1.0, 1.0]]))
         access = make_access([single_set], [[1.0]])
-
-        with pytest.raises(ValueError, match="no registered scan angles"):
+        # scan_angle defaults to NaN when the source did not record one.
+        with pytest.raises(ValueError, match="no scan_angle"):
             access.basis_transform(0, kind="scan")
 
-    def test_scan_basis_defaults_to_raw_ra(self, monkeypatch):
+    def test_scan_basis_defaults_to_raw_ra(self):
         """The default basis applies cos(dec): the pipeline's RA is raw (α, not α cos δ)."""
-        import orbitdet.data.gaia as gaia
-
         psi = np.array([0.7])
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: psi[: len(epochs)])
         # make_set uses observed [[0.5],[0.25]] -> dec = 0.25 rad.
         single_set = make_set([1.0], reference_point="Gaia", weights=np.array([[1.0, 1.0]]))
         access = make_access([single_set], [[1.0]])
+        access.frame["scan_angle"] = psi
 
         default = access.basis_transform("Gaia")  # de_projected defaults to False
         assert not default.de_projected

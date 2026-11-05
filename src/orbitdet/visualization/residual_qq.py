@@ -1,204 +1,157 @@
-import functools
+"""Normal Q-Q plots of the RA and Dec residuals.
+
+Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the standard
+observation frame joined to the live observation sets - so the residuals and the
+grouping column come from one tidy frame instead of a per-set walk over the
+collection's link ends.
+"""
+
+from __future__ import annotations
+
+import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
 from omegaconf import DictConfig
-from scipy import stats
-from tudatpy.estimation import observations as obs
-from tudatpy.estimation.observable_models_setup import links
-from tudatpy.estimation.observations import observations_processing as obs_proc
 
-from orbitdet.observations import get_observatory_info
-from orbitdet.visualization.base import Plot, _plain_hover_formatter
+from orbitdet.analysis import ObservationAccess, analysis_frame
+from orbitdet.analysis.distribution import qq_points
+from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
+from orbitdet.visualization.residuals import _cfg_get
 
+logger = logging.getLogger(__name__)
 
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            # DictConfig supports get
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
-
-
-def _rad_to_arcsec(angle_rad: np.ndarray) -> np.ndarray:
-    return np.rad2deg(angle_rad) * 3600.0
-
-
-def _principal_angle_rad(angle_rad: np.ndarray) -> np.ndarray:
-    return np.remainder(angle_rad + np.pi, 2.0 * np.pi) - np.pi
-
-
-def _compute_qq_data(values_arcsec: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Compute theoretical and sample quantiles for a Q-Q plot against a normal distribution."""
-    finite_values = values_arcsec[np.isfinite(values_arcsec)]
-    if finite_values.size < 2:
-        return np.array([]), np.array([])
-
-    standardized = (finite_values - np.mean(finite_values)) / np.std(finite_values, ddof=1)
-    standardized = np.sort(standardized)
-    n = standardized.size
-    theoretical_quantiles = stats.norm.ppf((np.arange(1, n + 1) - 0.5) / n)
-    return theoretical_quantiles, standardized
-
-
-def _make_hover_formatter(hover_x_label: str, hover_y_label: str):
-    return functools.partial(
-        _plain_hover_formatter, hover_x_label=hover_x_label, hover_y_label=hover_y_label
-    )
+__all__ = ["ResidualQQ"]
 
 
 class ResidualQQ(Plot):
-    """Plot Q-Q plots of pre-fit and post-fit residuals against a normal distribution."""
+    """Q-Q plots of the RA and Dec residuals against a normal distribution.
+
+    Each group (by default ``observatory_code``) contributes one series per
+    component.  The sample is standardized before plotting, so the axes are in
+    units of standard deviations and the residual unit does not matter - a
+    normally distributed sample lies on the ``y = x`` reference line.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The Hydra experiment configuration.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.
+    use_figure_name : str | None
+        Name of the figure configuration block under ``cfg.figures``.  Defaults
+        to ``"residual_qq"``.
+    group_by : str | list[str] | None
+        Standard-frame column(s) to group the series by.  ``None`` (default)
+        falls back to the figure config's ``group_by`` and then to
+        ``"observatory_code"``.
+    fig, ax : optional
+        A pre-existing figure and a length-2 axes sequence (RA then Dec).
+    include_rejected : bool
+        Whether to include rows that outlier rejection removed.
+    """
 
     def __init__(
         self,
         cfg: DictConfig,
-        observation_collection: obs.ObservationCollection,
-        observation_parsers: list[obs_proc.ObservationParserType] | None = None,
+        access: ObservationAccess,
+        use_figure_name: str | None = "residual_qq",
+        group_by: str | list[str] | None = None,
+        fig: plt.Figure | None = None,
+        ax: plt.Axes | None = None,
+        include_rejected: bool = False,
     ):
         super().__init__(cfg)
-        self.observation_collection = observation_collection
-        self.observation_parsers = observation_parsers
+        self.use_figure_name = use_figure_name or "residual_qq"
+        self.access = access
+        self.group_by = group_by
+        self.include_rejected = include_rejected
+        if (fig is not None and ax is None) or (fig is None and ax is not None):
+            raise ValueError("Both fig and ax must be provided together.")
+        self.fig = fig
+        self.ax = ax
+        self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
+
+    def _grouping(self, plot_cfg) -> list[str]:
+        """Resolve the grouping columns: argument, then config, then default."""
+        group_by = self.group_by
+        if group_by is None:
+            group_by = _cfg_get(plot_cfg, "group_by", default=None)
+        if group_by is None:
+            group_by = "observatory_code"
+        return [group_by] if isinstance(group_by, str) else list(group_by)
+
+    @staticmethod
+    def _group_label(key, columns: list[str]) -> str:
+        """Render a groupby key as a legend label."""
+        values = key if isinstance(key, tuple) else (key,)
+        if len(columns) == 1:
+            return str(values[0])
+        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
 
     def _make_figure(self):
-        cfg = self.cfg
-        observation_collection = self.observation_collection
-        observation_parsers = self.observation_parsers
-
-        """Plot Q-Q plots of pre-fit and post-fit residuals against a normal distribution."""
-        if observation_parsers is None:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets()
-            )
-        else:
-            observation_sets: list[obs.SingleObservationSet] = (
-                observation_collection.get_single_observation_sets(observation_parsers)
-            )
-
-        # Load plotting configuration
-        plot_cfg = _cfg_get(cfg, "residual_qq", default=None)
+        plot_cfg = _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
+        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
         fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
         fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
 
-        fig, axs = plt.subplots(
-            2,
-            1,
-            figsize=(fig_w, fig_h),
-            sharex=True,
-        )
+        if self.fig is None and self.ax is None:
+            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
+        else:
+            if len(self.ax) != 2:
+                raise ValueError("Expected two subplots for RA and Dec residuals.")
+            fig, axs = self.fig, self.ax
+
+        # The Q-Q sample is standardized, so no unit conversion is needed.
+        frame = analysis_frame(self.access, unit=None, scan=False, normalized=False)
+        if not self.include_rejected and "rejected" in frame.columns:
+            frame = frame.loc[~frame["rejected"].astype(bool)]
+
+        group_cols = self._grouping(plot_cfg)
+        missing = [column for column in group_cols if column not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"Grouping column(s) {missing} are not in the standard frame. "
+                f"Available columns: {sorted(frame.columns)}."
+            )
+
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = [
-            "o",
-            "s",
-            "D",
-            "^",
-            "v",
-            "<",
-            ">",
-            "P",
-            "X",
-        ]  # cycle through marker types if more sets than colors
+        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for set_index, obs_set in enumerate(observation_sets):
-            if len(obs_set.observation_times) == 0:
-                continue
+        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+            color = colors(index % colors.N)
+            marker = marker_types[index % len(marker_types)]
+            label = self._group_label(key, group_cols)
 
-            link_ends = obs_set.link_definition.link_ends
-
-            # Resolve a display label for this observation set.
-            if links.receiver in link_ends:
-                ref_point = link_ends[links.receiver].reference_point
-                if ref_point == "":
-                    body = link_ends[links.receiver].body_name
-                    info = {"code": "", "name": body, "region": "Spacecraft"}
-                else:
-                    info = get_observatory_info(cfg, ref_point)
-            elif links.observer in link_ends:
-                body = link_ends[links.observer].body_name
-                info = {"code": "", "name": body, "region": body}
-            else:
-                first_key = next(iter(link_ends.keys()))
-                body = link_ends[first_key].body_name
-                info = {"code": "", "name": body, "region": body}
-
-            # Determine target (observed body)
-            if links.transmitter in link_ends:
-                target_name = link_ends[links.transmitter].body_name
-            elif links.observed_body in link_ends:
-                target_name = link_ends[links.observed_body].body_name
-            else:
-                target_name = list(link_ends.values())[-1].body_name
-            color = colors(set_index % colors.N)
-            marker = marker_types[set_index % len(marker_types)]
-
-            residuals = np.array(obs_set.residuals)
-            # n x 2 array of RA and DEC residuals in radians
-
-            # RA residuals are circular; fold them to the principal interval before converting.
-            ra_residuals_arcsec = _rad_to_arcsec(_principal_angle_rad(residuals[:, 0]))
-            dec_residuals_arcsec = _rad_to_arcsec(residuals[:, 1])
-
-            ra_theoretical, ra_sample = _compute_qq_data(ra_residuals_arcsec)
-            dec_theoretical, dec_sample = _compute_qq_data(dec_residuals_arcsec)
-
-            # RA Q-Q
-            if ra_theoretical.size > 0:
-                axs[0].scatter(
-                    ra_theoretical,
-                    ra_sample,
+            for component, ax in enumerate(axs):
+                column = "residual_first_rad" if component == 0 else "residual_second_rad"
+                theoretical, sample = qq_points(group[column].to_numpy("float64"))
+                if theoretical.size == 0:
+                    continue
+                ax.scatter(
+                    theoretical,
+                    sample,
                     marker=marker,
                     s=marker_size,
-                    label=f"{info['name']} - {info['region']}",
+                    label=label,
                     color=color,
                     alpha=0.5,
                 )
 
-            # DEC Q-Q
-            if dec_theoretical.size > 0:
-                axs[1].scatter(
-                    dec_theoretical,
-                    dec_sample,
-                    marker=marker,
-                    s=marker_size,
-                    label=f"{info['name']} - {info['region']}",
-                    color=color,
-                    alpha=0.5,
-                )
-
-        # Titles and labels (configurable)
         title_ra = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension Q-Q")
         title_dec = _cfg_get(plot_cfg, "titles", "dec", default="Declination Q-Q")
-        suptitle = _cfg_get(
-            plot_cfg, "titles", "suptitle", default=f"Residual Q-Q Plot for {target_name}"
-        )
-        # Allow templates like "Residual Q-Q Plot for {target_name}" in config
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=target_name)
-        except Exception:
-            # leave suptitle unchanged if formatting fails
-            pass
-
         axs[0].set_title(title_ra)
         axs[1].set_title(title_dec)
-        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Sample Quantiles [std]")
-        axs[0].set_ylabel(y_label)
-        axs[1].set_ylabel(y_label)
-        x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Theoretical Quantiles [std]")
-        axs[0].set_xlabel(x_label)
-        axs[1].set_xlabel(x_label)
 
-        # Reference line y=x
+        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Sample Quantiles [std]")
+        x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Theoretical Quantiles [std]")
+        for ax in axs:
+            ax.set_ylabel(y_label)
+            ax.set_xlabel(x_label)
+
+        # Reference line y = x.
         ref_line_style = _cfg_get(
             plot_cfg, "styling", "ref_line", default={"ls": "--", "color": "k", "lw": 1.0}
         )
@@ -213,42 +166,45 @@ class ResidualQQ(Plot):
             ]
             ax.plot(lims, lims, ls=ref_ls, color=ref_color, lw=ref_lw, label="Normal reference")
 
-        # Hover formatter
         hover_x_label = _cfg_get(
             plot_cfg, "axes", "hover_x_label", default="Theoretical Quantiles [std]"
         )
         hover_y_label = _cfg_get(
             plot_cfg, "axes", "hover_y_label", default="Sample Quantiles [std]"
         )
-        fmt = _make_hover_formatter(hover_x_label, hover_y_label)
+        fmt = _make_hover_formatter(hover_x_label, hover_y_label, datetime_x=False)
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        # Legend placement (configurable)
-        # Ensure legend params have correct types
-        # try:
-        #     legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        # except Exception:
-        #     legend_ncols = 2
+        try:
+            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
+        except Exception:
+            legend_ncols = 2
 
-        # bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        # try:
-        #     if isinstance(bbox, dict):
-        #         bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-        #     else:
-        #         # coerce sequence values to floats
-        #         bbox_tuple = tuple(float(x) for x in bbox)
-        # except Exception:
-        #     # bbox_tuple = (0.5, -0.15)
+        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
+        try:
+            if isinstance(bbox, dict):
+                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
+            else:
+                bbox_tuple = tuple(float(x) for x in bbox)
+        except Exception:
+            bbox_tuple = (0.5, -0.15)
 
-        # axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        # axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+
+        target_name = "target"
+        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
+            target_name = str(frame["observed_object"].dropna().iloc[0])
+        suptitle = _cfg_get(
+            plot_cfg, "titles", "suptitle", default="Residual Q-Q Plot for {target_name}"
+        )
+        try:
+            if isinstance(suptitle, str):
+                suptitle = suptitle.format(target_name=target_name)
+        except Exception:
+            pass
+
         fig.suptitle(suptitle)
         fig.set_tight_layout(True)
-
-        # Optionally save to file
-        out = _cfg_get(plot_cfg, "output_file", default=None)
-        if out:
-            fig.savefig(out)
-
         return fig, axs

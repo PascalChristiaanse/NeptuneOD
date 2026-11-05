@@ -597,34 +597,6 @@ class ObservationAccess:
                 return index
         raise ValueError("Set is not part of this access layer's collection.")
 
-    def scan_angles(self, key: SetKey) -> np.ndarray | None:
-        """Return the per-observation scan angles (radians) of one set, or None.
-
-        The angles are looked up in the registry populated by
-        :meth:`GaiaQuery.to_tudat` (see
-        :func:`orbitdet.data.gaia.get_scan_angles_for_epochs`); a set whose
-        epochs are not registered has none.
-
-        Parameters
-        ----------
-        key : SetKey
-            The integer set index, the set identifier, or the set object itself.
-
-        Returns
-        -------
-        np.ndarray | None
-            ``(n,)`` scan angles, or ``None`` when unavailable.
-        """
-        from orbitdet.data.gaia import get_scan_angles_for_epochs
-
-        observation_set = self.observation_set(key)
-        epochs = np.array(
-            [t.to_float() for t in observation_set.observation_times], dtype="float64"
-        )
-        if epochs.size == 0:
-            return None
-        return get_scan_angles_for_epochs(epochs)
-
     def basis_transform(
         self,
         key: SetKey,
@@ -640,8 +612,8 @@ class ObservationAccess:
             The integer set index, the set identifier, or the set object itself.
         kind : str
             The target basis.  ``"scan"`` builds the along/across-scan rotation
-            from the set's registered scan angles; ``"canonical"`` returns the
-            identity.  Other kinds raise :class:`ValueError`.
+            from the set's ``scan_angle`` frame column; ``"canonical"`` returns
+            the identity.  Other kinds raise :class:`ValueError`.
         de_projected : bool
             Whether the first component already carries the ``cos(δ)`` factor
             (i.e. it holds ``α·cosδ`` rather than ``α``).  Defaults to ``False``
@@ -662,8 +634,8 @@ class ObservationAccess:
         Raises
         ------
         ValueError
-            If ``kind`` is unknown, or if ``"scan"`` is requested for a set with
-            no registered scan angles (there is no basis to build).
+            If ``kind`` is unknown, or if ``"scan"`` is requested for a set whose
+            rows carry no ``scan_angle`` (there is no basis to build).
         """
         observation_set = self.observation_set(key)
         n_obs = observation_set.number_of_observables
@@ -673,11 +645,11 @@ class ObservationAccess:
         if kind != "scan":
             raise ValueError(f"Unknown basis kind '{kind}'; expected 'canonical' or 'scan'.")
 
-        psi = self.scan_angles(key)
+        psi = self._scan_angles_in_set_order(key)
         if psi is None or len(psi) != n_obs:
             raise ValueError(
-                f"Set '{get_set_identifier(observation_set)}' has no registered scan "
-                "angles, so no scan basis can be built."
+                f"Set '{get_set_identifier(observation_set)}' has no scan_angle in its "
+                "frame rows, so no scan basis can be built."
             )
         dec = None
         if not de_projected:
@@ -686,6 +658,35 @@ class ObservationAccess:
             ).reshape(-1, 2)
             dec = observed[:, 1]
         return BasisTransform.scan(psi, dec=dec)
+
+    def _scan_angles_in_set_order(self, key: SetKey) -> np.ndarray | None:
+        """Return the set's ``scan_angle`` values in observation order, or ``None``.
+
+        The scan angle lives on the standard frame (``scan_angle``), joined here
+        through ``observation_set_index``.  Rows are matched to the set's
+        observations by epoch - the same rule :meth:`refresh` uses - so the angles
+        line up with ``concatenated_residuals``.  ``None`` means the set has no
+        rows, or they carry no finite angle.
+        """
+        observation_set = self.observation_set(key)
+        n_obs = observation_set.number_of_observables
+        if n_obs == 0:
+            return None
+        rows = self.set_frame(self._resolve_set_index(key))
+        if rows.empty or "scan_angle" not in rows.columns:
+            return None
+
+        frame_epochs = pd.to_numeric(rows["epoch_tdb"], errors="coerce").to_numpy("float64")
+        positions = np.arange(len(rows))
+        set_epochs = [float(t) for t in observation_set.observation_times]
+        matched = _match_rows_by_epoch(frame_epochs, positions, set_epochs)
+        if matched is None or matched.size != n_obs:
+            return None
+
+        angles = rows["scan_angle"].to_numpy("float64")[matched]
+        if not np.all(np.isfinite(angles)):
+            return None
+        return angles
 
     def weight_matrix(
         self, key: SetKey, *, basis: str | BasisTransform = "canonical"

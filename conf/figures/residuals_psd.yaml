@@ -2,6 +2,8 @@
 residuals_psd:
   method: "lombscargle"
   window_length_days: 30.0
+  # Standard-frame column(s) the spectra are grouped by.
+  group_by: "observatory_code"
   window:
     type: "hamming"
   output_file: "residual_psd.pdf"

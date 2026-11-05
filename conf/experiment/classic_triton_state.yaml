@@ -21,6 +21,7 @@ defaults:
   - /figures/postfit_normalized_residuals@figures.postfit_normalized_residuals
   - /figures/prefit_normalized_residuals_scan@figures.prefit_normalized_residuals_scan
   - /figures/postfit_normalized_residuals_scan@figures.postfit_normalized_residuals_scan
+  - /figures/gaia_transit_error_components@figures.gaia_transit_error_components
   - /figures/residual_histogram
   - /figures/residual_qq
   - /figures/residual_scatter

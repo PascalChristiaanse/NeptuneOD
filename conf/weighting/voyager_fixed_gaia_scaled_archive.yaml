@@ -1,0 +1,54 @@
+# @package _global_
+
+# Weighting: Voyager 2 fixed pre/post encounter + Gaia fixed scan sigmas
+# (others -> hybrid geom v2).
+#
+# Voyager 2 -> `layered` (fixed section sigma x timeframe), Gaia -> fixed
+# along/across-scan sigmas split into random (within-transit) and systematic
+# (transit-to-transit) components, everything else -> hybrid geometric v2.
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+  default:
+    strategy:
+      type: hybrid_geometric_v2
+  overrides:
+    # Gaia: scale the archive's random and systematic covariance components
+    # independently, per scan axis.  The factors are applied in the scan frame
+    # (along/across scan), so they match Gaia's own error decomposition.
+    - select: "data_source == 'gaia_archive'"
+      strategy:
+        type: gaia_components
+        random_scale_al: 2.0
+        random_scale_ac: 2.0
+        systematic_scale_al: 1000.0
+        systematic_scale_ac: 100.0
+
+    # Voyager 2: fixed 1" pre / 4" post encounter, clustered by timeframe.
+    - select: "observatory_code == 'Voyager 2'"
+      strategy:
+        type: layered
+        combine: geometric
+        layers:
+          - level: section
+            mode: fixed
+            sigmas:
+              pre_encounter:  {ra: 1.0, dec: 1.0} # 0.5 sigma
+              post_encounter: {ra: 4.0, dec: 4.0} # 2 sigma
+          # - level: timeframe
+          #   mode: rmse_descaled
+      clustering:
+        levels:
+          - type: section
+            sections:
+              - {name: "pre_encounter",  start: -1e30,             end: -326688543.8172541}
+              - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
+          - type: timeframe
+            gap_threshold_hours: 8.0
+            min_obs_per_frame: 1
+  clustering:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1

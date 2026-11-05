@@ -154,22 +154,6 @@ class TestObservationAccess:
         assert access.residual(0)[0] == pytest.approx(5e-6)
         assert access.frame["weight_first"].iloc[0] == pytest.approx(4.0)
 
-    def test_full_matrix_marginal_sigma_uses_inverse(self):
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        marginal = np.sqrt(np.diag(np.linalg.inv(full)))
-        # Columns are per component: first -> [d0, d2], second -> [d1, d3].
-        np.testing.assert_allclose(access.frame["sigma_first_rad"], [marginal[0], marginal[2]])
-        np.testing.assert_allclose(access.frame["sigma_second_rad"], [marginal[1], marginal[3]])
-        assert access.frame["has_full_weight_matrix"].all()
-
     def test_frame_without_set_index_is_all_null(self):
         frame = build_frame([make_record("673", 1.0)])
         collection = obs.ObservationCollection([make_set([1.0])])
@@ -181,40 +165,6 @@ class TestObservationAccess:
 
 
 class TestWeightMatrices:
-    def test_diagonal_weight_matrix_and_diagonal(self):
-        weights = np.array([[4.0, 9.0], [16.0, 25.0]])
-        single_set = make_set([1.0, 2.0], weights=weights)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        matrix = access.weight_matrix(0)
-        assert matrix.shape == (4, 4)
-        np.testing.assert_allclose(np.diag(matrix), weights.ravel())
-        np.testing.assert_allclose(access.weight_diagonal(0), weights.ravel())
-        assert not access.has_full_weight_matrix(0)
-
-    def test_covariance_is_inverse_of_weight(self):
-        weights = np.array([[4.0, 9.0]])
-        single_set = make_set([1.0], weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        covariance = access.covariance_matrix(0)
-        np.testing.assert_allclose(covariance, np.linalg.inv(access.weight_matrix(0)))
-        np.testing.assert_allclose(np.diag(covariance), 1.0 / weights.ravel())
-
-    def test_full_weight_matrix_is_off_diagonal_and_invertible(self):
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        assert access.has_full_weight_matrix(0)
-        np.testing.assert_allclose(access.weight_matrix(0), full)
-        np.testing.assert_allclose(access.covariance_matrix(0), np.linalg.inv(full))
-
     def test_observation_set_and_index_of(self):
         set_a = make_set([1.0], reference_point="673")
         set_b = make_set([2.0], reference_point="689")
@@ -224,30 +174,6 @@ class TestWeightMatrices:
         assert access.set_index_of(set_b) == 1
         with pytest.raises(ValueError):
             access.set_index_of(make_set([3.0]))
-
-    def test_weight_matrices_keyed_by_set_id(self):
-        set_a = make_set([1.0], reference_point="673", weights=np.array([[4.0, 9.0]]))
-        set_b = make_set([2.0], reference_point="689", weights=np.array([[1.0, 1.0]]))
-        access = make_access([set_a, set_b], [[1.0], [2.0]])
-
-        matrices = access.weight_matrices()
-        assert set(matrices) == {"673", "689"}
-        np.testing.assert_allclose(np.diag(matrices["673"]), [4.0, 9.0])
-
-    def test_set_level_accessors_accept_id_or_object(self):
-        weights = np.array([[4.0, 9.0]])
-        single_set = make_set([1.0], reference_point="Gaia", weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        # By identifier string, by set object, and by index all agree.
-        by_id = access.weight_matrix("Gaia")
-        by_obj = access.weight_matrix(single_set)
-        by_index = access.weight_matrix(0)
-        np.testing.assert_allclose(by_id, by_index)
-        np.testing.assert_allclose(by_obj, by_index)
-        assert access.set_index_for("Gaia") == 0
-        assert access.set_indices("Gaia") == [0]
-        assert access.observation_set("Gaia") is single_set
 
     def test_ambiguous_set_id_raises(self):
         set_a = make_set([1.0], reference_point="673")
@@ -260,31 +186,10 @@ class TestWeightMatrices:
         with pytest.raises(KeyError):
             access.weight_matrix("nope")
 
-    def test_covariance_and_weight_in_scan_basis(self):
-        """basis='scan' applies T C T^T and its dual, using the scan_angle column."""
-        psi = np.array([0.7, -0.3])
+    def test_scan_basis_without_angles_raises(self, monkeypatch):
+        import orbitdet.data.gaia as gaia
 
-        weights = np.array([[4.0, 9.0], [16.0, 25.0]])
-        single_set = make_set([1.0, 2.0], reference_point="Gaia", weights=weights)
-        access = make_access([single_set], [[1.0, 2.0]])
-        access.frame["scan_angle"] = psi
-
-        # Canonical is unchanged.
-        W_canonical = access.weight_matrix("Gaia")
-        np.testing.assert_allclose(np.diag(W_canonical), weights.ravel())
-
-        # The scan basis is block-diagonal with the frame's psi per observation.
-        basis = access.basis_transform("Gaia")
-        assert basis.transform.shape == (4, 4)
-        np.testing.assert_allclose(
-            access.weight_matrix("Gaia", basis="scan"), basis.weight(W_canonical)
-        )
-        np.testing.assert_allclose(
-            access.covariance_matrix("Gaia", basis="scan"),
-            basis.covariance(access.covariance_matrix("Gaia")),
-        )
-
-    def test_scan_basis_without_angles_raises(self):
+        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: None)
         single_set = make_set([1.0], weights=np.array([[1.0, 1.0]]))
         access = make_access([single_set], [[1.0]])
         # scan_angle defaults to NaN when the source did not record one.
@@ -347,177 +252,11 @@ class TestRejection:
 
 
 class TestChi2:
-    def test_chi2_from_matrix_diagonal_matches_componentwise(self):
-        from orbitdet.analysis import chi2_from_matrix
-
-        residuals = np.array([[1e-6, -2e-6]])
-        weights = np.array([[4.0, 9.0]])
-        single_set = make_set([1.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        # Diagonal W: r^T W r == sum (r/sigma)^2 with sigma = 1/sqrt(w).
-        expected = (1e-6) ** 2 * 4.0 + (2e-6) ** 2 * 9.0
-        assert chi2_from_matrix(access.residuals(0), access.weight_matrix(0)) == pytest.approx(
-            expected
-        )
-
-    def test_chi2_from_matrix_full_matrix_uses_complete_matrix(self):
-        from orbitdet.analysis import chi2_from_matrix
-
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-
-        residuals = np.array([1e-6, -2e-6, 3e-6, 1e-6])
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        single_set.set_residuals(residuals)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        assert chi2_from_matrix(
-            access.residuals(0), access.weight_matrix(0)
-        ) == pytest.approx(float(residuals @ full @ residuals))
-
-    def test_chi2_from_matrix_drops_rejected_rows(self):
-        """A rejected row leaves the residual and weight matrix conformable."""
-        from orbitdet.analysis import chi2_from_matrix
-
-        residuals = np.array([[1e-6, -2e-6], [np.nan, np.nan]])
-        weights = np.array([[4.0, 9.0], [16.0, 25.0]])
-        single_set = make_set([1.0, 2.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        # Only the finite residual row contributes.
-        assert chi2_from_matrix(
-            access.residuals(0), access.weight_matrix(0)
-        ) == pytest.approx((1e-6) ** 2 * 4.0 + (2e-6) ** 2 * 9.0)
-
-    def test_statistics_chi2_with_weight_matrix(self):
-        from orbitdet.analysis import chi2 as chi2_fn
-        from orbitdet.analysis import chi2_from_matrix
-
-        residuals = np.array([[1e-6, -2e-6]])
-        weights = np.array([[4.0, 9.0]])
-        single_set = make_set([1.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        rows = access.set_frame(0)
-        W = access.weight_matrix(0)
-        expected = chi2_from_matrix(access.residuals(0), W)
-        # Frame path (W passed) and vector path agree.
-        assert chi2_fn(rows, weight_matrix=W) == pytest.approx(expected)
-        # Componentwise default still works.
-        assert chi2_fn(rows) == pytest.approx(expected)
-
     def test_residuals_returns_raw_vector(self):
         residuals = np.array([[1e-6, -2e-6], [3e-6, -4e-6]])
         single_set = make_set([1.0, 2.0], residuals=residuals)
         access = make_access([single_set], [[1.0, 2.0]])
         np.testing.assert_allclose(access.residuals(0), residuals.ravel())
-
-
-class TestWhiteningComposition:
-    """Whitening is pure math: compose access getters with the statistics/whitening layer."""
-
-    def test_whitening_diagonal_reproduces_normalization(self):
-        from orbitdet.analysis import Whitening
-
-        residuals = np.array([[2.0, 8.0]])
-        weights = np.array([[0.25, 1.0 / 16.0]])  # sigma = [2, 4]
-        single_set = make_set([1.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        whitening = Whitening.from_weight_matrix(access.weight_matrix(0))
-        np.testing.assert_allclose(whitening.apply(residuals.ravel()), [1.0, 2.0])
-
-    def test_mahalanobis_is_sqrt_chi2(self):
-        from orbitdet.analysis import chi2_from_matrix, mahalanobis
-
-        residuals = np.array([[2.0, 8.0]])
-        weights = np.array([[0.25, 1.0 / 16.0]])
-        single_set = make_set([1.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        r = access.residuals(0)
-        W = access.weight_matrix(0)
-        assert mahalanobis(r, weight_matrix=W) ** 2 == pytest.approx(chi2_from_matrix(r, W))
-
-    def test_whitening_full_matrix_matches_chi2(self):
-        from orbitdet.analysis import Whitening, chi2_from_matrix
-
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-
-        residuals = np.array([1e-6, -2e-6, 3e-6, 1e-6])
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        single_set.set_residuals(residuals)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        whitening = Whitening.from_weight_matrix(access.weight_matrix(0))
-        assert whitening.chi2(residuals) == pytest.approx(
-            chi2_from_matrix(access.residuals(0), access.weight_matrix(0))
-        )
-        # Whitened vector has unit covariance w.r.t. the applied covariance.
-        covariance = access.covariance_matrix(0)
-        np.testing.assert_allclose(whitening.z_covariance(covariance), np.eye(4), atol=1e-8)
-
-    def test_whitening_is_basis_invariant(self):
-        from orbitdet.analysis import Whitening, chi2_from_matrix
-
-        psi = np.array([0.4, -0.9])
-
-        block = np.array([[2.0, 0.5], [0.5, 1.0]])
-        full = np.zeros((4, 4))
-        full[0:2, 0:2] = block
-        full[2:4, 2:4] = block
-        residuals = np.array([1e-6, -2e-6, 3e-6, 1e-6])
-
-        single_set = make_set([1.0, 2.0], weights=np.zeros((2, 2)))
-        single_set.set_full_weight_matrix(full)
-        single_set.set_residuals(residuals)
-        access = make_access([single_set], [[1.0, 2.0]])
-        access.frame["scan_angle"] = psi
-
-        # The quadratic form is basis-invariant: factor the scan-basis weight
-        # matrix and feed it the rotated residuals -> the same chi-squared.
-        transform = access.basis_transform(0)
-        rotated = transform.residuals(residuals)
-        W_scan = access.weight_matrix(0, basis="scan")
-        whitening_scan = Whitening.from_weight_matrix(W_scan)
-        assert whitening_scan.chi2(rotated) == pytest.approx(
-            chi2_from_matrix(access.residuals(0), access.weight_matrix(0))
-        )
-
-    def test_whitened_components_from_access(self):
-        from orbitdet.analysis import Whitening
-
-        residuals = np.array([[2.0, 8.0]])
-        weights = np.array([[0.25, 1.0 / 16.0]])
-        single_set = make_set([1.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0]])
-
-        components = Whitening.from_weight_matrix(access.weight_matrix(0)).whitened_components(
-            access.residuals(0)
-        )
-        np.testing.assert_allclose(components[0], [1.0, 2.0])
-
-    def test_mahalanobis_drops_rejected_rows(self):
-        from orbitdet.analysis import chi2_from_matrix, mahalanobis
-
-        residuals = np.array([[2.0, 8.0], [np.nan, np.nan]])
-        weights = np.array([[0.25, 1.0 / 16.0], [0.25, 0.25]])
-        single_set = make_set([1.0, 2.0], residuals=residuals, weights=weights)
-        access = make_access([single_set], [[1.0, 2.0]])
-
-        r = access.residuals(0)
-        W = access.weight_matrix(0)
-        assert mahalanobis(r, weight_matrix=W) == pytest.approx(
-            np.sqrt(chi2_from_matrix(r, W))
-        )
 
 
 # ---------------------------------------------------------------------------

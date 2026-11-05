@@ -21,44 +21,52 @@ use_default_body_settings: false
 
 bodies_to_propagate:
   Triton:
-    initial_state: null
     central_body: "Neptune"
 
 bodies_to_create:
   Neptune:
     ephemeris:
       type: "direct_spice"
-    gravity: "Jacobson2009"
+    gravity: 
+      type: "Jacobson2009"
     rotation_model:
       type: "Pole_Model_Jacobson2009"     # Appears to have incorrect values for pole orientation
   Triton:
-    gravity: "central"
+    gravity: 
+      type: "central"
     ephemeris:
       type: "interpolated_spice"
       interpolator_cadance: 7200
       coverage_buffer: 8640000
   Sun:
-    gravity: "central"
+    gravity: 
+      type: "central"
     ephemeris:
       type: "direct_spice"
   Jupiter Barycenter:
-    gravity: "central"
+    gravity: 
+      type: "central"
     ephemeris:
       type: "direct_spice"
   Saturn Barycenter:
-    gravity: "central"
+    gravity: 
+      type: "central"
     ephemeris:
       type: "direct_spice"
   Uranus Barycenter:
-    gravity: "central"
+    gravity: 
+      type: "central"
     ephemeris:
       type: "direct_spice"
   Mercury Barycenter:                # Augment Solar mass with mercury mass. This affects tritons orbit by 3m over 200 years (R. Jacobson, 2009).
-    gravity: "augmented_solar"
+    gravity: 
+      type: "augmented_solar"
   Venus Barycenter:                  # Augment Solar mass with mercury mass
-    gravity: "augmented_solar"
+    gravity:
+      type: "augmented_solar"
   Earth Barycenter:
-    gravity: "augmented_solar"    # Augment Solar mass with mercury mass
+    gravity: 
+      type: "augmented_solar"    # Augment Solar mass with mercury mass
   Earth:
     ephemeris:
       type: "direct_spice"
@@ -68,7 +76,8 @@ bodies_to_create:
       type: "GCRS_to_ITRS"
       nutation_model: "iau_2006"
   Mars Barycenter:               # Augment Solar mass with mercury mass
-    gravity: "augmented_solar"
+    gravity:
+      type: "augmented_solar"
   Triton Spice:
     ephemeris:
       type: "direct_spice"

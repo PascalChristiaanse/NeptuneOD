@@ -8,7 +8,6 @@ global_frame_orientation: "J2000"
 
 bodies_to_propagate:
   Triton:
-    initial_state: null
     central_body: "Neptune"
 
 propagation:

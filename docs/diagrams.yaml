@@ -1,0 +1,39 @@
+# Sequence-diagram manifest for the OrbitDet docs.
+#
+# Consumed by scripts/gen_sequence_diagrams.py (run automatically by
+# scripts/build_docs.sh) and by the docs/_ext/sequence_diagrams.py Sphinx
+# extension, which injects each diagram into the docstring of the object it
+# documents.  The diagram therefore appears on the module's API page, right
+# where the method itself is documented.
+#
+#   name    (required)  scenario key from scripts/gen_sequence_diagrams.py.
+#                       Run `python scripts/gen_sequence_diagrams.py --list`
+#                       to see the available names.
+#   target  (required)  fully-qualified dotted path of the documented object,
+#                       e.g. orbitdet.simulation.integration.get_integrator_settings.
+#                       This is the autodoc name the extension matches against.
+#   title   (optional)  heading override for the diagram's note.  Default: the
+#                       scenario's own title.
+#
+# The generator writes one .mmd per entry into docs/diagrams/ (gitignored); the
+# extension renders it inline.  Nothing else needs editing to add a diagram.
+
+diagrams:
+  - name: grouping
+    target: orbitdet.observations.grouping.spec.build_group_list
+  - name: weighting
+    target: orbitdet.observations.weighting.engine.WeightEngine.from_config
+  - name: outlier_rejection
+    target: orbitdet.observations.outlier_rejection.engine.OutlierEngine.from_config
+  - name: apriori
+    target: orbitdet.estimation.apriori.get_apriori_covariance_matrix
+
+  # --- simulation module ---------------------------------------------------
+  - name: sim_environment
+    target: orbitdet.simulation.environment.get_environment
+  - name: sim_dynamical_model
+    target: orbitdet.simulation.dynamics.get_dynamical_model
+  - name: sim_integrator_settings
+    target: orbitdet.simulation.integration.get_integrator_settings
+  - name: sim_propagator_settings
+    target: orbitdet.simulation.propagation.get_propagator_settings

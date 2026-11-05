@@ -6,6 +6,8 @@ mechanism-only: they know nothing about weighting or outlier rejection.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from .models import Cluster
@@ -144,6 +146,87 @@ def partition_by_sections(
             )
 
     return clusters
+
+
+def partition_by_column(
+    values: np.ndarray,
+    set_id: str = "",
+    layer: int = 0,
+    column: str = "",
+) -> list[Cluster]:
+    """Split observations into one cluster per distinct value of a frame column.
+
+    This is the "cluster by whatever the frame already knows" level: observing
+    night, instrument, data source, reduction type, or any other categorical
+    column.  Unlike the time-based partitioners it needs no thresholds, so it is
+    the natural way to group observations that a source already labelled.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        One value per observation, in set order (e.g. ``view.column("data_source")``).
+        Missing values (``None``/``NaN``) form their own cluster.
+    set_id : str
+        Identifier for the set, used in cluster ids.
+    layer : int
+        Partitioning layer index for the produced clusters.
+    column : str
+        Name of the column the values came from, recorded in the metadata and
+        used in the cluster ids.
+
+    Returns
+    -------
+    list[Cluster]
+        One cluster per distinct value, ordered by first appearance so the
+        result is stable and readable.
+    """
+    n = len(values)
+    if n == 0:
+        return []
+
+    # Group positions by value, preserving first-appearance order.  ``repr`` is
+    # used as the dict key so unhashable/NaN values still group correctly.
+    order: list[str] = []
+    buckets: dict[str, list[int]] = {}
+    labels: dict[str, Any] = {}
+    for i, value in enumerate(values):
+        missing = value is None or (isinstance(value, float) and np.isnan(value))
+        key = "<missing>" if missing else repr(value)
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+            labels[key] = None if missing else value
+        buckets[key].append(i)
+
+    clusters: list[Cluster] = []
+    for position, key in enumerate(order):
+        indices = np.asarray(buckets[key], dtype=int)
+        label = labels[key]
+        slug = "missing" if label is None else _slugify(label)
+        clusters.append(
+            Cluster(
+                indices=indices,
+                cluster_id=f"{set_id}_{column}_{slug}" if set_id else f"{column}_{slug}",
+                level="column",
+                layer=layer,
+                layer_name="column",
+                metadata={
+                    "n_obs": len(indices),
+                    "column": column,
+                    "value": label,
+                    "column_value": label,
+                    "position": position,
+                },
+            )
+        )
+    return clusters
+
+
+def _slugify(value: Any) -> str:
+    """Turn a column value into a filesystem- and log-friendly identifier."""
+    text = str(value).strip().lower()
+    slug = "".join(ch if ch.isalnum() else "_" for ch in text)
+    return "_".join(part for part in slug.split("_") if part) or "empty"
 
 
 def _split_by_gap(

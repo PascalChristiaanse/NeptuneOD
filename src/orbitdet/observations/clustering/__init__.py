@@ -11,11 +11,12 @@ Public API
 - :class:`Cluster`, :class:`ClusterList` - the data models.
 - :func:`build_cluster_list` - turn a clustering config into a :class:`ClusterList`.
 - partitioners - :func:`partition_by_set`, :func:`partition_by_timeframes`,
-  :func:`partition_by_sections`.
+  :func:`partition_by_sections`, :func:`partition_by_column`.
 """
 
 from .models import Cluster, ClusterList, SectionInfo, TimeframeInfo
 from .partitioners import (
+    partition_by_column,
     partition_by_sections,
     partition_by_set,
     partition_by_timeframes,
@@ -28,6 +29,7 @@ __all__ = [
     "SectionInfo",
     "TimeframeInfo",
     "build_cluster_list",
+    "partition_by_column",
     "partition_by_set",
     "partition_by_timeframes",
     "partition_by_sections",

@@ -31,6 +31,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from .models import Cluster, ClusterList
 from .partitioners import (
+    partition_by_column,
     partition_by_sections,
     partition_by_set,
     partition_by_timeframes,
@@ -56,6 +57,7 @@ def build_cluster_list(
     times: np.ndarray,
     set_id: str,
     config: DictConfig | Mapping | None,
+    view=None,
 ) -> ClusterList:
     """Build a :class:`ClusterList` from a clustering configuration.
 
@@ -66,8 +68,12 @@ def build_cluster_list(
     set_id : str
         Set identifier.
     config : DictConfig | Mapping | None
-        Grouping configuration with a ``levels`` list.  Plain mappings are
+        Clustering configuration with a ``levels`` list.  Plain mappings are
         accepted and coerced to an OmegaConf node.
+    view : SetView | None
+        The set's window onto the access layer.  Required by the ``column``
+        level, which partitions on a standard-frame column; the time-based
+        levels ignore it.
 
     Returns
     -------
@@ -106,6 +112,8 @@ def build_cluster_list(
             level_clusters = _build_section_level(level_entry, times, set_id, layer, n_obs)
         elif level_type == "timeframe":
             level_clusters = _build_timeframe_level(level_entry, times, set_id, layer)
+        elif level_type == "column":
+            level_clusters = _build_column_level(level_entry, set_id, layer, view)
         else:
             raise ValueError(f"Unknown clustering level type: '{level_type}'")
 
@@ -205,6 +213,41 @@ def _build_timeframe_level(
     gap_hours = float(OmegaConf.select(level_entry, "gap_threshold_hours", default=4.0))
     min_obs = int(OmegaConf.select(level_entry, "min_obs_per_frame", default=1))
     return partition_by_timeframes(times, gap_hours, min_obs, set_id, layer=layer)
+
+
+def _build_column_level(
+    level_entry: Any,
+    set_id: str,
+    layer: int,
+    view,
+) -> list[Cluster]:
+    """Partition on a standard-frame column (``type: column``).
+
+    This is the level that lets a clustering config name a column directly::
+
+        - type: column
+          column: data_source
+
+    It needs the set's :class:`~orbitdet.analysis.set_view.SetView`, because the
+    values live in the frame rather than in the observation times.
+    """
+    column = OmegaConf.select(level_entry, "column")
+    if not column:
+        raise ValueError("A 'column' clustering level requires a 'column' name.")
+    if view is None:
+        raise ValueError(
+            f"The 'column' clustering level needs the set's frame to read '{column}', "
+            f"but no view was supplied.  Pass access=... to the engine, or use a "
+            f"time-based level instead."
+        )
+    try:
+        values = view.column(str(column))
+    except KeyError as exc:
+        raise ValueError(
+            f"The 'column' clustering level names '{column}', which is not a "
+            f"standard-frame column."
+        ) from exc
+    return partition_by_column(values, set_id, layer=layer, column=str(column))
 
 
 def _link_parents(children: list[Cluster], parents: list[Cluster]) -> None:

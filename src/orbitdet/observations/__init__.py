@@ -18,6 +18,7 @@ from .clustering import (
     Cluster,
     ClusterList,
     build_cluster_list,
+    partition_by_column,
     partition_by_sections,
     partition_by_set,
     partition_by_timeframes,
@@ -43,7 +44,9 @@ from .outlier_rejection import (
 from .outlier_rejection import (
     list_registered_strategies as list_registered_outlier_strategies,
 )
+from .plan import Plan, PlanEntry, compile_plan
 from .registry import get_factory, list_registered_types, register_dataset_factory
+from .selection import Selection, compile_selection
 from .weighting import (
     WeightEngine,
     WeightStrategy,
@@ -76,6 +79,20 @@ __all__ = [
     "gaia",
     # Helper functions
     "get_observatory_info",
+    # Selection and plans
+    "Selection",
+    "compile_selection",
+    "Plan",
+    "PlanEntry",
+    "compile_plan",
+    # Clustering
+    "Cluster",
+    "ClusterList",
+    "build_cluster_list",
+    "partition_by_column",
+    "partition_by_sections",
+    "partition_by_set",
+    "partition_by_timeframes",
     # Outlier rejection
     "OutlierStrategy",
     "OutlierEngine",

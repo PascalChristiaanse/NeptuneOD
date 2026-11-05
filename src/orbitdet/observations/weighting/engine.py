@@ -18,6 +18,7 @@ import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
 from ..clustering import build_cluster_list
+from ..plan import compile_plan
 from ..utils import get_set_identifier
 from .base import WeightStrategy
 from .builder import build_strategy
@@ -76,28 +77,52 @@ class WeightEngine:
     Parameters
     ----------
     strategy : WeightStrategy
-        The weighting strategy to apply.
+        The weighting strategy to apply.  Ignored when *plan* is given.
     clustering : DictConfig | None
-        Grouping configuration (defines levels like sections, timeframes).
+        Clustering configuration (defines levels like sections, timeframes).
         If None, each set is treated as a single cluster.
     min_sigma_arcsec : float
         Floor on sigma in arcseconds.
+    plan : Plan | None
+        A default-plus-overrides plan.  When given, each set is routed to the
+        first entry whose selection matches its rows, and that entry supplies
+        both the strategy and the clustering.  *strategy* and *clustering* are
+        then unused.
     """
 
     def __init__(
         self,
-        strategy: WeightStrategy,
+        strategy: WeightStrategy | None = None,
         clustering: DictConfig | None = None,
         min_sigma_arcsec: float = 0.01,
+        plan=None,
     ):
+        if plan is None and strategy is None:
+            raise ValueError("WeightEngine needs either a strategy or a plan.")
         self._strategy = strategy
         self._clustering = clustering
         self._min_sigma_arcsec = min_sigma_arcsec
+        self._plan = plan
+        # Strategies built from plan entries, keyed by entry label.
+        self._plan_strategies: dict[str, WeightStrategy] = {}
 
     @property
-    def strategy(self) -> WeightStrategy:
-        """The weighting strategy (read-only)."""
+    def strategy(self) -> WeightStrategy | None:
+        """The single weighting strategy, or ``None`` when driven by a plan."""
         return self._strategy
+
+    @property
+    def plan(self):
+        """The default-plus-overrides plan, or ``None`` for a single strategy."""
+        return self._plan
+
+    def _strategy_for_entry(self, entry) -> WeightStrategy:
+        """Build (once) and return the strategy a plan entry names."""
+        if entry.label not in self._plan_strategies:
+            self._plan_strategies[entry.label] = build_strategy(
+                entry.strategy, clustering=entry.clustering
+            )
+        return self._plan_strategies[entry.label]
 
     # ------------------------------------------------------------------
     # Public API
@@ -137,11 +162,18 @@ class WeightEngine:
             - A DataFrame with per-observation weight metadata.
         """
         all_sets = collection.get_single_observation_sets()
-        logger.info(
-            "WeightEngine: applying '%s' strategy to %d observation set(s)",
-            self._strategy.__class__.__name__,
-            len(all_sets),
-        )
+        if self._plan is not None:
+            logger.info(
+                "WeightEngine: applying a plan with %d override(s) to %d observation set(s)",
+                len(self._plan.overrides),
+                len(all_sets),
+            )
+        else:
+            logger.info(
+                "WeightEngine: applying '%s' strategy to %d observation set(s)",
+                self._strategy.__class__.__name__,
+                len(all_sets),
+            )
 
         all_dfs: list[pd.DataFrame] = []
 
@@ -163,8 +195,20 @@ class WeightEngine:
 
                 view = SetView.build(access, set_index)
 
+            # Resolve the strategy and clustering for this set.  A plan routes
+            # on the set's own frame rows, so the match can use any column, not
+            # just the set identifier.
+            if self._plan is not None:
+                entry = self._plan.entry_for(view.frame if view is not None else None)
+                strategy = self._strategy_for_entry(entry)
+                clustering = entry.clustering
+                logger.debug("WeightEngine [%s]: plan entry %s", set_id, entry.label)
+            else:
+                strategy = self._strategy
+                clustering = self._clustering
+
             # Build clusters from the clustering config
-            clusters = build_cluster_list(times, set_id, self._clustering)
+            clusters = build_cluster_list(times, set_id, clustering, view=view)
             logger.debug(
                 "WeightEngine [%s]: %d clusters across levels: %s",
                 set_id,
@@ -173,7 +217,7 @@ class WeightEngine:
             )
 
             # Compute weights
-            weights_array, weights_df = self._strategy.compute_weights(
+            weights_array, weights_df = strategy.compute_weights(
                 obs_set,
                 clusters,
                 set_id,
@@ -184,7 +228,7 @@ class WeightEngine:
             # Strategies whose weights are not diagonal in (RA, Dec) (e.g. fixed
             # along/across-scan weights) return per-observation 2x2 blocks.
             block_weights = None
-            compute_blocks = getattr(self._strategy, "compute_block_weights", None)
+            compute_blocks = getattr(strategy, "compute_block_weights", None)
             if callable(compute_blocks):
                 block_weights = compute_blocks(
                     obs_set,
@@ -201,8 +245,8 @@ class WeightEngine:
             # A router may preserve the full matrix only for certain routes
             # (e.g. Gaia).  Prefer the per-set answer when the strategy offers
             # one, falling back to the top-level property.
-            preserve = getattr(self._strategy, "preserve_full_weight_matrix", False)
-            route_source = getattr(self._strategy, "route_source", None)
+            preserve = getattr(strategy, "preserve_full_weight_matrix", False)
+            route_source = getattr(strategy, "route_source", None)
             if callable(route_source):
                 try:
                     sub = route_source(set_id)
@@ -219,7 +263,7 @@ class WeightEngine:
                     "WeightEngine [%s]: full archive weight matrix present; leaving weights "
                     "untouched (strategy '%s' recorded for reporting only).",
                     set_id,
-                    self._strategy.__class__.__name__,
+                    strategy.__class__.__name__,
                 )
             else:
                 # Clear any pre-existing full weight-matrix contribution so it does not stack
@@ -315,14 +359,29 @@ class WeightEngine:
         ----------
         cfg : DictConfig
             The configuration node (typically ``cfg.weighting``).
+        default_clustering : DictConfig | None
+            Clustering used by entries that name none.
 
         Returns
         -------
         WeightEngine
-            An engine with the configured strategy and clustering.
+            An engine with the configured strategy and clustering, or with a
+            plan when the config carries ``default``/``overrides``.
         """
-        strategy_node = OmegaConf.select(cfg, "strategy", default="id_v2")
         min_sigma = float(OmegaConf.select(cfg, "min_sigma_arcsec", default=0.01))
+
+        # Plan form: `default:` plus optional `overrides:`.  Each entry carries
+        # its own strategy and clustering, so a rule reads as one thought.
+        if OmegaConf.select(cfg, "default") is not None or OmegaConf.select(cfg, "overrides"):
+            plan = compile_plan(cfg, default_clustering=default_clustering)
+            logger.info(
+                "WeightEngine: built a plan with %d override(s) from configuration.",
+                len(plan.overrides),
+            )
+            return cls(plan=plan, min_sigma_arcsec=min_sigma)
+
+        # Single-strategy form (legacy and still supported).
+        strategy_node = OmegaConf.select(cfg, "strategy", default="id_v2")
         clustering = OmegaConf.select(cfg, "clustering") or default_clustering
 
         # Descriptor form: {type: <name>, ...kwargs}
@@ -339,8 +398,9 @@ class WeightEngine:
                 if node is not None and hasattr(node, "items")
                 else {}
             )
-            strategy_instance = build_strategy({"type": strategy_name, **params}, 
-                clustering=clustering)
+            strategy_instance = build_strategy(
+                {"type": strategy_name, **params}, clustering=clustering
+            )
 
         return cls(strategy_instance, clustering=clustering, min_sigma_arcsec=min_sigma)
 

@@ -174,9 +174,7 @@ def main(cfg: DictConfig):
 
     # Create observation collection
     logger.info("Creating observation collection...")
-    observations, observation_models, standard_frame = create_observation_collection(
-        cfg, bodies
-    )
+    observations, observation_models, standard_frame = create_observation_collection(cfg, bodies)
     # Derived analysis frame: the standard frame plus the residual, weight and
     # rejection columns, joined to the collection through ``observation_set_index``.
     # Built once here and refreshed (never rebuilt) as the residuals change.
@@ -219,7 +217,7 @@ def main(cfg: DictConfig):
     # the applied sigmas exist (see the pre-fit-propagation and post-fit stages).
 
     # plt.show()
-    
+
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -232,9 +230,7 @@ def main(cfg: DictConfig):
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
         outlier_engine = OutlierEngine.from_config(outlier_cfg)
-        observations, rejection_metadata = outlier_engine.apply(
-            observations, bodies, access=access
-        )
+        observations, rejection_metadata = outlier_engine.apply(observations, bodies, access=access)
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
             rejection_metadata["n_accepted"],
@@ -283,16 +279,6 @@ def main(cfg: DictConfig):
 
     # Plot weight clusters if weighting was applied
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
-        from orbitdet.visualization import WeightGroups
-
-        fig_weight_groups, _ = WeightGroups(cfg, weights_df).plot()
-        logger.info("Weight clusters figure saved.")
-
-        # Summary tables, read from the access layer rather than the weights CSV:
-        # the frame owns the provenance (source, observatory, coordinate kind) and
-        # the residuals, and the weights report is joined only for the cluster
-        # assignment.  Two groupings are published: per source, and per source and
-        # cluster (the old "per-cluster" table).
         from orbitdet.analysis.tables import WeightSummary
 
         summary_cfg = OmegaConf.select(cfg, "weighting.summary", default=None)
@@ -319,11 +305,6 @@ def main(cfg: DictConfig):
             (output_dir / f"weight_summary_{suffix}.tex").write_text(summary.to_latex(table))
         logger.info("Weight summary tables saved to %s", output_dir)
 
-    # Refresh the derived frame now that outlier rejection (and weighting) have run:
-    # the sets are narrower, so rejected rows fall out of the join and the
-    # ``rejected`` column is set from the accepted sets, so the two can never
-    # disagree.  Outlier rejection returns a new collection, so point the access
-    # layer at it before refreshing.
     access.collection = observations
     access.refresh()
     _log_access_summary(access, "post_rejection")
@@ -570,9 +551,7 @@ def main(cfg: DictConfig):
         SymmetricWhitenedResiduals(
             cfg, access, use_figure_name="postfit_symmetric_whitened_residuals"
         ).plot()
-        MahalanobisResiduals(
-            cfg, access, use_figure_name="postfit_mahalanobis_residuals"
-        ).plot()
+        MahalanobisResiduals(cfg, access, use_figure_name="postfit_mahalanobis_residuals").plot()
         # Gaia random/systematic error split from the transit structure.  Gaia
         # only: the metric needs the scan frame and the intra-transit sampling.
         GaiaTransitErrorComponents(cfg, access).plot()

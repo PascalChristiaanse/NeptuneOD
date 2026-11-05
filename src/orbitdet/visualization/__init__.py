@@ -25,7 +25,6 @@ from .validation import (
     InterpolatorConvergence,
     InterpolatorFamilyComparison,
 )
-from .weight_groups import WeightGroups
 from .whitened_residuals import (
     MahalanobisResiduals,
     SymmetricWhitenedResiduals,
@@ -65,5 +64,4 @@ __all__ = [
     "RSWDistance",
     "RSWDistanceWithUncertainty",
     "StateHistory3D",
-    "WeightGroups",
 ]

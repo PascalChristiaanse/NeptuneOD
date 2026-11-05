@@ -488,7 +488,10 @@ class TestWeightEngineBlockWeights:
         bodies = MagicMock()
 
         # The scan angles reach the strategy through the set's SetView.
-        fake_view = SimpleNamespace(scan_angles=np.zeros(2))
+        fake_view = SimpleNamespace(
+            scan_angles=np.zeros(2),
+            column=lambda name: np.array(["stub"]),
+        )
         monkeypatch.setattr(
             "orbitdet.analysis.set_view.SetView.build",
             lambda access, set_index: fake_view,

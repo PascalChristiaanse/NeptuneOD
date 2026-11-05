@@ -25,6 +25,51 @@ from .builder import build_strategy
 logger = logging.getLogger(__name__)
 
 
+def _view_value(view, column: str, default):
+    """Return one standard-frame column for a set, or *default* without a view.
+
+    The weights report is descriptive, so a missing view or a column the source
+    did not populate degrades to the set identifier rather than raising.
+    """
+    if view is None:
+        return default
+    try:
+        values = view.column(column)
+    except KeyError:
+        return default
+    if len(values) == 0:
+        return default
+    return values[0]
+
+
+def _coordinate_type_label(coordinate_kind: str) -> tuple[str, str]:
+    """Map a ``coordinate_kind`` value to human-readable RA/DEC axis labels.
+
+    These are presentation strings for the weight summary tables, so they live
+    here rather than in the frame schema: ``coordinate_kind`` already carries the
+    semantic content, and the LaTeX markup is a plotting concern.
+
+    Parameters
+    ----------
+    coordinate_kind : str
+        The standard frame's ``coordinate_kind`` value (``"ra_dec"``,
+        ``"position_angle_separation"``, ``"cartesian_xy"``, ...).
+
+    Returns
+    -------
+    tuple[str, str]
+        ``(first_label, second_label)``, empty strings when the kind is unknown.
+    """
+    kind = str(coordinate_kind).lower()
+    if "position_angle" in kind:
+        return (r"$\rho$", r"$\theta$")
+    if "cartesian" in kind:
+        return ("$x$", "$y$")
+    if "ra_dec" in kind:
+        return (r"$\alpha$", r"$\delta$")
+    return ("", "")
+
+
 class WeightEngine:
     """Orchestrates weighting over an ObservationCollection.
 
@@ -63,7 +108,6 @@ class WeightEngine:
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
         output_dir: str | Path | None = None,
-        dataset_metadata: dict[str, list[dict]] | None = None,
         access=None,
     ) -> tuple[obs.ObservationCollection, pd.DataFrame]:
         """Compute and assign weights to all observation sets.
@@ -77,18 +121,14 @@ class WeightEngine:
         output_dir : str | Path, optional
             If provided, the per-observation weights DataFrame is saved to
             ``<output_dir>/observation_weights.csv``.
-        dataset_metadata : dict[str, list[dict]], optional
-            Mapping from set_id to a list of metadata dicts (one per dataset
-            config that produced observations for this observatory). Each dict
-            has keys ``name`` (source author), ``dataset_id`` (e.g. ``nm0008``),
-            ``observatory_code``, ``ra_type``, and ``dec_type``.
-            Metadata entries are consumed FIFO per set_id.
         access : ObservationAccess, optional
             The access layer for this collection.  When provided, each set is
             wrapped in a :class:`~orbitdet.analysis.set_view.SetView` so
             strategies can read standard-frame columns (notably ``scan_angle``)
-            instead of the retired epoch-keyed registries.  When omitted, the
-            strategies run without a view and must use their frame-free paths.
+            and the weights report can carry the set's provenance
+            (``source_set_id``, ``observatory_code``, ...).  When omitted, the
+            strategies run without a view and must use their frame-free paths,
+            and the report falls back to the set identifier.
 
         Returns
         -------
@@ -104,9 +144,6 @@ class WeightEngine:
         )
 
         all_dfs: list[pd.DataFrame] = []
-        meta_queues: dict[str, list[dict]] = {}
-        if dataset_metadata:
-            meta_queues = {k: list(v) for k, v in dataset_metadata.items()}
 
         for set_index, obs_set in enumerate(all_sets):
             set_id = get_set_identifier(obs_set)
@@ -210,25 +247,19 @@ class WeightEngine:
                     )
                     raise
 
-            # Enrich with dataset metadata — pop FIFO per set_id
-            meta_queue = meta_queues.get(set_id, [])
-            if meta_queue:
-                meta = meta_queue.pop(0)
-            else:
-                meta = None
-
-            if meta:
-                weights_df["source_name"] = meta.get("name", set_id)
-                weights_df["dataset_id"] = meta.get("dataset_id", set_id)
-                weights_df["observatory_code"] = meta.get("observatory_code", set_id)
-                weights_df["ra_type"] = meta.get("ra_type", "")
-                weights_df["dec_type"] = meta.get("dec_type", "")
-            else:
-                weights_df["source_name"] = set_id
-                weights_df["dataset_id"] = set_id
-                weights_df["observatory_code"] = set_id
-                weights_df["ra_type"] = ""
-                weights_df["dec_type"] = ""
+            # Enrich the report with the set's provenance, read from the standard
+            # frame through the view.  Reading by set index (rather than popping a
+            # queue keyed by set_id) keeps the attribution correct when several
+            # datasets observed from the same station: the merge reorders sets, so
+            # a queue would hand a set another dataset's metadata.
+            weights_df["source_name"] = _view_value(view, "reference", set_id)
+            weights_df["dataset_id"] = _view_value(view, "source_set_id", set_id)
+            weights_df["observatory_code"] = _view_value(view, "observatory_code", set_id)
+            ra_type, dec_type = _coordinate_type_label(
+                _view_value(view, "coordinate_kind", "")
+            )
+            weights_df["ra_type"] = ra_type
+            weights_df["dec_type"] = dec_type
 
             all_dfs.append(weights_df)
 

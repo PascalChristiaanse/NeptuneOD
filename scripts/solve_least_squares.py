@@ -20,6 +20,7 @@ from orbitdet.analysis import ObservationAccess
 from orbitdet.data import KernelManager
 from orbitdet.estimation import get_apriori_covariance_matrix, get_estimatable_parameters
 from orbitdet.observations import OutlierEngine, WeightEngine, create_observation_collection
+from orbitdet.preprocessing.schema import DataSource
 from orbitdet.reproducibility import (
     RuntimeContext,
     aim_log_artifact_reference,
@@ -33,7 +34,7 @@ from orbitdet.simulation import (
     get_integrator_settings,
     get_propagator_settings,
 )
-from orbitdet.utility import save_tudat_object, select_observation_collection_by_tag
+from orbitdet.utility import save_tudat_object
 from orbitdet.visualization import (
     CovarianceEllipses,
     GaiaTransitErrorComponents,
@@ -106,6 +107,31 @@ def _log_access_summary(access: ObservationAccess, stage: str) -> None:
     )
 
 
+def _has_gaia_observations(access: ObservationAccess) -> bool:
+    """Whether the collection holds any Gaia-archive observations.
+
+    The scan-frame plots need the archived ``position_angle_scan``, which only
+    Gaia carries, so they are gated on this.  Read from the derived frame's
+    ``data_source`` column rather than from a separate metadata mapping.
+    """
+    frame = access.frame
+    if "data_source" not in frame.columns:
+        return False
+    return bool((frame["data_source"] == DataSource.GAIA_ARCHIVE.value).any())
+
+
+def _has_non_scan_observations(access: ObservationAccess) -> bool:
+    """Whether the collection holds any observation without a scan angle.
+
+    ``NormalizedResiduals`` plots the rows that are *not* scan-whitened; the
+    scanning rows belong to ``NormalizedResidualScan`` instead.
+    """
+    frame = access.frame
+    if "scan_angle" not in frame.columns:
+        return len(frame) > 0
+    return bool(frame["scan_angle"].isna().any())
+
+
 @hydra.main(
     version_base=None,
     config_path="../conf",
@@ -149,8 +175,8 @@ def main(cfg: DictConfig):
 
     # Create observation collection
     logger.info("Creating observation collection...")
-    observations, observation_models, dataset_metadata, standard_frame = (
-        create_observation_collection(cfg, bodies)
+    observations, observation_models, standard_frame = create_observation_collection(
+        cfg, bodies
     )
     # Derived analysis frame: the standard frame plus the residual, weight and
     # rejection columns, joined to the collection through ``observation_set_index``.
@@ -185,8 +211,7 @@ def main(cfg: DictConfig):
 
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
-    gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
-    if gaia_observations is not None:
+    if _has_gaia_observations(access):
         ResidualsScan(cfg, access, use_figure_name="prefit_residuals_spice_scan").plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
@@ -209,7 +234,7 @@ def main(cfg: DictConfig):
         logger.info("Applying outlier rejection...")
         outlier_engine = OutlierEngine.from_config(outlier_cfg)
         observations, rejection_metadata = outlier_engine.apply(
-            observations, bodies, dataset_metadata=dataset_metadata, access=access
+            observations, bodies, access=access
         )
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
@@ -247,7 +272,6 @@ def main(cfg: DictConfig):
             observations,
             bodies,
             output_dir=output_dir,
-            dataset_metadata=dataset_metadata,
             access=access,
         )
         logger.info(
@@ -324,21 +348,17 @@ def main(cfg: DictConfig):
     _log_access_summary(access, "prefit_prop")
 
     Residuals(cfg, access, "prefit_residuals_prop").plot()
-    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
-    # archived position_angle_scan), so restrict the plot to the Gaia set.
-    gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
     # Normalized RA/Dec residuals for all rows without a scan angle (no scan
     # rotation).  Scanning rows (Gaia) are excluded because their RA/Dec
     # normalization ignores the intra-scan correlation; NormalizedResidualScan
     # whitens them instead.  The plot itself filters to the non-scan rows.
-    non_gaia_observations = select_observation_collection_by_tag(
-        observations, dataset_metadata, "gaia", exclude=True
-    )
-    if non_gaia_observations is not None:
+    if _has_non_scan_observations(access):
         NormalizedResiduals(cfg, access, use_figure_name="prefit_normalized_residuals").plot()
     else:
         logger.info("No non-Gaia observations found; skipping pre-fit normalized residual plot.")
-    if gaia_observations is not None:
+    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
+    # archived position_angle_scan), so restrict the plot to the Gaia set.
+    if _has_gaia_observations(access):
         ResidualsScan(cfg, access, use_figure_name="prefit_residuals_spice_scan").plot()
         NormalizedResidualScan(
             cfg, access, use_figure_name="prefit_normalized_residuals_scan"
@@ -517,21 +537,17 @@ def main(cfg: DictConfig):
 
     Residuals(cfg, access, "postfit_residuals").plot()
     # plt.show()
-    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
-    # archived position_angle_scan), so restrict the plot to the Gaia set.
-    gaia_observations = select_observation_collection_by_tag(observations, dataset_metadata, "gaia")
     # Normalized RA/Dec residuals for all rows without a scan angle (no scan
     # rotation).  Scanning rows (Gaia) are excluded because their RA/Dec
     # normalization ignores the intra-scan correlation; NormalizedResidualScan
     # whitens them instead.  The plot itself filters to the non-scan rows.
-    non_gaia_observations = select_observation_collection_by_tag(
-        observations, dataset_metadata, "gaia", exclude=True
-    )
-    if non_gaia_observations is not None:
+    if _has_non_scan_observations(access):
         NormalizedResiduals(cfg, access, use_figure_name="postfit_normalized_residuals").plot()
     else:
         logger.info("No non-Gaia observations found; skipping post-fit normalized residual plot.")
-    if gaia_observations is not None:
+    # Scan-frame residuals are only meaningful for Gaia observations (they carry the
+    # archived position_angle_scan), so restrict the plot to the Gaia set.
+    if _has_gaia_observations(access):
         ResidualsScan(cfg, access, use_figure_name="postfit_residuals_scan").plot()
         NormalizedResidualScan(
             cfg, access, use_figure_name="postfit_normalized_residuals_scan"

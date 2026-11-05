@@ -338,8 +338,7 @@ class TestCollectionBuilder:
 
         assert result[0] is merged_collection
         assert result[1] == ["settings:alpha", "settings:beta"]
-        assert result[2] == {}  # dataset_metadata
-        assert result[3].empty  # standard frame: no NSDB dataset in this config
+        assert result[2].empty  # standard frame: no NSDB dataset in this config
         assert created == [("alpha", system_of_bodies), ("beta", system_of_bodies)]
         merge_mock.assert_called_once()
         merged_collections = merge_mock.call_args.args[0]
@@ -397,8 +396,7 @@ class TestCollectionBuilder:
 
         assert result[0] is merged_collection
         assert result[1] == ["settings:alpha", "settings:beta", None]
-        assert result[2] == {}  # dataset_metadata
-        assert result[3].empty  # standard frame: no NSDB dataset in this config
+        assert result[2].empty  # standard frame: no NSDB dataset in this config
         merge_mock.assert_called_once()
         merged_collections = merge_mock.call_args.args[0]
         assert len(merged_collections) == 1
@@ -453,7 +451,7 @@ class TestCollectionBuilder:
         monkeypatch.setattr(collection_module, "standard_frame_for", lambda *a, **k: frame)
 
         result = create_observation_collection(collection_cfg, system_of_bodies)
-        marked = result[3]
+        marked = result[2]
 
         assert set(marked[OBSERVATION_SET_INDEX_COLUMN].dropna()) == {0.0, 1.0}
         # Row order is preserved, so the frames' own epochs say which index is right.
@@ -461,9 +459,6 @@ class TestCollectionBuilder:
         assert by_epoch[1.0] == 0.0
         assert by_epoch[2.0] == 0.0
         assert by_epoch[3.0] == 1.0
-        # The same walk fills the metadata's own index, so the two agree.
-        indices = {meta["index"] for entries in result[2].values() for meta in entries}
-        assert indices == {0, 1}
 
     def test_collection_leaves_unbuildable_rows_unmarked(self, monkeypatch):
         """A row the factory dropped gets no index rather than a wrong one."""
@@ -493,7 +488,7 @@ class TestCollectionBuilder:
         )
         monkeypatch.setattr(collection_module, "standard_frame_for", lambda *a, **k: frame)
 
-        marked = create_observation_collection(collection_cfg, SimpleNamespace())[3]
+        marked = create_observation_collection(collection_cfg, SimpleNamespace())[2]
 
         assert marked[OBSERVATION_SET_INDEX_COLUMN].tolist()[0] == 0.0
         assert pd.isna(marked[OBSERVATION_SET_INDEX_COLUMN].tolist()[1])

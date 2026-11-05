@@ -27,6 +27,23 @@ from .registry import get_strategy_class
 logger = logging.getLogger(__name__)
 
 
+def _view_value(view, column: str, default):
+    """Return one standard-frame column for a set, or *default* without a view.
+
+    The per-set report is descriptive, so a missing view or a column the source
+    did not populate degrades to the set identifier rather than raising.
+    """
+    if view is None:
+        return default
+    try:
+        values = view.column(column)
+    except KeyError:
+        return default
+    if len(values) == 0:
+        return default
+    return values[0]
+
+
 class _ScopedStrategy:
     """A strategy paired with an optional set and/or cluster filter.
 
@@ -119,7 +136,6 @@ class OutlierEngine:
         self,
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
-        dataset_metadata: dict[str, list[dict]] | None = None,
         access=None,
     ) -> tuple[obs.ObservationCollection, dict[str, Any]]:
         """Apply all strategies in sequence to every observation set.
@@ -130,18 +146,13 @@ class OutlierEngine:
             The observation collection to filter.  Not modified in place.
         bodies : SystemOfBodies
             The system of bodies (passed to each strategy).
-        dataset_metadata : dict[str, list[dict]], optional
-            Mapping from observatory-code set_id to a list of metadata dicts
-            (one per dataset config that produced observations for that
-            observatory).  Each dict has a ``dataset_id`` key (e.g. ``nm0083``).
-            When provided, the per-set report uses ``{dataset_id}_{obs_code}``
-            as the set identifier, giving unique and meaningful keys.
         access : ObservationAccess, optional
             The access layer for this collection.  When provided, each set is
             wrapped in a :class:`~orbitdet.analysis.set_view.SetView` so
-            strategies can read standard-frame columns instead of the retired
-            epoch-keyed registries.  When omitted, the strategies run without a
-            view and must use their frame-free paths.
+            strategies can read standard-frame columns, and the per-set report
+            keys on ``{source_set_id}_{observatory_code}``.  When omitted, the
+            strategies run without a view and the report keys on the set
+            identifier alone.
 
         Returns
         -------
@@ -152,7 +163,7 @@ class OutlierEngine:
               with per-strategy metadata as values.
         """
         filtered_collection, rejected_collection, summary = self.apply_with_rejected(
-            collection, bodies, dataset_metadata=dataset_metadata, access=access
+            collection, bodies, access=access
         )
         return filtered_collection, summary
 
@@ -160,7 +171,6 @@ class OutlierEngine:
         self,
         collection: obs.ObservationCollection,
         bodies: env.SystemOfBodies,
-        dataset_metadata: dict[str, list[dict]] | None = None,
         access=None,
     ) -> tuple[obs.ObservationCollection, obs.ObservationCollection, dict[str, Any]]:
         """Apply all strategies and also return the rejected observations.
@@ -175,17 +185,13 @@ class OutlierEngine:
             The observation collection to filter.  Not modified in place.
         bodies : SystemOfBodies
             The system of bodies (passed to each strategy).
-        dataset_metadata : dict[str, list[dict]], optional
-            Mapping from observatory-code set_id to a list of metadata dicts
-            (one per dataset config that produced observations for that
-            observatory).  Each dict has a ``dataset_id`` key (e.g. ``nm0083``).
-            When provided, the per-set report uses ``{dataset_id}_{obs_code}``
-            as the set identifier, giving unique and meaningful keys.
         access : ObservationAccess, optional
             The access layer for this collection.  When provided, each set is
             wrapped in a :class:`~orbitdet.analysis.set_view.SetView` so
-            strategies can read standard-frame columns.  When omitted, the
-            strategies run without a view and must use their frame-free paths.
+            strategies can read standard-frame columns, and the per-set report
+            keys on ``{source_set_id}_{observatory_code}``.  When omitted, the
+            strategies run without a view and the report keys on the set
+            identifier alone.
 
         Returns
         -------
@@ -202,11 +208,6 @@ class OutlierEngine:
             len(self._strategies),
             len(all_sets),
         )
-
-        # Build a FIFO queue per observatory-code set_id from dataset_metadata
-        meta_queues: dict[str, list[dict]] = {}
-        if dataset_metadata:
-            meta_queues = {k: list(v) for k, v in dataset_metadata.items()}
 
         filtered_sets: list[obs.SingleObservationSet] = []
         rejected_sets: list[obs.SingleObservationSet] = []
@@ -229,14 +230,13 @@ class OutlierEngine:
 
                 view = SetView.build(access, set_index)
 
-            # Resolve a unique, meaningful set_id using dataset_metadata
-            meta_queue = meta_queues.get(obs_code, [])
-            if meta_queue:
-                meta = meta_queue.pop(0)
-                dataset_id = meta.get("dataset_id", obs_code)
-                set_id = f"{dataset_id}_{obs_code}"
-            else:
-                set_id = obs_code
+            # Resolve a unique, meaningful set_id from the set's provenance.  The
+            # source set identifier (e.g. ``nm0083``) disambiguates the several
+            # datasets that can observe from one station.  Read by set index, not
+            # from a queue keyed by set_id: the merge reorders sets, so a queue
+            # would attribute one dataset's rows to another dataset's set.
+            source_set_id = _view_value(view, "source_set_id", "")
+            set_id = f"{source_set_id}_{obs_code}" if source_set_id else obs_code
 
             set_metadata: dict[str, Any] = {"set_id": set_id, "strategies": []}
 

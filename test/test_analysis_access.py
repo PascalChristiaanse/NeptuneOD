@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 import tudatpy.estimation.observable_models_setup as settings
 import tudatpy.estimation.observations as obs
@@ -10,9 +11,17 @@ from tudatpy.estimation.observable_models_setup import links
 
 from orbitdet.analysis import (
     ObservationAccess,
+    ResidualSummary,
+    SourceResidualSummary,
+    aggregate,
+    chi2,
+    normalized_residuals,
+    reduced_chi2,
+    rms,
     rotate,
     to_arcsec,
     to_mas,
+    weighted_rms,
     with_scan_frame,
 )
 from orbitdet.preprocessing.schema import OBSERVATION_SET_INDEX_COLUMN, build_frame
@@ -244,6 +253,19 @@ class TestRejection:
         assert not access.frame["rejected"].any()
 
 
+class TestChi2:
+    def test_residuals_returns_raw_vector(self):
+        residuals = np.array([[1e-6, -2e-6], [3e-6, -4e-6]])
+        single_set = make_set([1.0, 2.0], residuals=residuals)
+        access = make_access([single_set], [[1.0, 2.0]])
+        np.testing.assert_allclose(access.residuals(0), residuals.ravel())
+
+
+# ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
+
+
 class TestViews:
     def test_to_arcsec_adds_columns_without_mutating(self):
         residuals = np.array([[1e-6, -2e-6]])
@@ -306,3 +328,143 @@ class TestViews:
 # ---------------------------------------------------------------------------
 
 
+class TestStatistics:
+    def test_rms_ignores_non_finite(self):
+        assert rms([3.0, 4.0]) == pytest.approx(np.sqrt((9 + 16) / 2))
+        assert rms([]) != rms([])  # NaN
+        assert rms([np.nan, 3.0]) == pytest.approx(3.0)
+
+    def test_weighted_rms(self):
+        # Equal weights reduce to the plain RMS.
+        assert weighted_rms([1.0, 1.0], [2.0, 2.0]) == pytest.approx(1.0)
+
+    def test_normalized_residuals_and_chi2(self):
+        residuals = np.array([[2e-6, 0.0], [0.0, 3e-6]])
+        sigmas = np.array([[1e-6, 1e-6], [1e-6, 1e-6]])
+        single_set = make_set([1.0, 2.0], residuals=residuals)
+        access = make_access([single_set], [[1.0, 2.0]])
+        access.frame["sigma_first_rad"] = sigmas[:, 0]
+        access.frame["sigma_second_rad"] = sigmas[:, 1]
+
+        z = normalized_residuals(access.frame)
+        assert z["z_first"].iloc[0] == pytest.approx(2.0)
+        assert z["z_second"].iloc[1] == pytest.approx(3.0)
+        assert chi2(access.frame) == pytest.approx(4.0 + 9.0)
+
+    def test_reduced_chi2(self):
+        assert reduced_chi2(10, 2, 8.0) == pytest.approx(1.0)
+        assert reduced_chi2(2, 2, 8.0) != reduced_chi2(2, 2, 8.0)  # NaN
+
+    def test_chi2_from_matrix_reduces_to_componentwise(self):
+        from orbitdet.analysis import chi2_from_matrix
+
+        r = np.array([2.0, 3.0])
+        W = np.diag([4.0, 9.0])  # sigma = [0.5, 1/3]
+        # r^T W r == sum (r/sigma)^2 == (2*2)^2 + (3*3)^2
+        assert chi2_from_matrix(r, W) == pytest.approx(16.0 + 81.0)
+
+    def test_chi2_from_matrix_full_matrix_differs_from_componentwise(self):
+        from orbitdet.analysis import chi2_from_matrix
+
+        r = np.array([1.0, 1.0])
+        W = np.array([[2.0, 1.0], [1.0, 2.0]])
+        # Full matrix carries the correlation the componentwise sum ignores.
+        assert chi2_from_matrix(r, W) == pytest.approx(6.0)
+        assert chi2_from_matrix(r, np.diag(np.diag(W))) == pytest.approx(4.0)
+
+    def test_chi2_from_matrix_drops_non_finite(self):
+        from orbitdet.analysis import chi2_from_matrix
+
+        r = np.array([2.0, np.nan])
+        W = np.diag([4.0, 9.0])
+        assert chi2_from_matrix(r, W) == pytest.approx(16.0)
+
+    def test_chi2_from_matrix_empty_is_nan(self):
+        from orbitdet.analysis import chi2_from_matrix
+
+        assert chi2_from_matrix(np.array([np.nan]), np.diag([1.0])) != 0.0  # NaN
+
+    def test_mahalanobis_from_weight_matrix(self):
+        from orbitdet.analysis import mahalanobis
+
+        r = np.array([2.0, 3.0])
+        W = np.diag([4.0, 9.0])
+        assert mahalanobis(r, weight_matrix=W) == pytest.approx(np.sqrt(16.0 + 81.0))
+
+    def test_mahalanobis_from_sigmas_matches_diagonal_matrix(self):
+        from orbitdet.analysis import mahalanobis
+
+        r = np.array([2.0, 3.0])
+        sigmas = np.array([0.5, 1.0 / 3.0])
+        assert mahalanobis(r, sigmas=sigmas) == pytest.approx(np.sqrt(16.0 + 81.0))
+
+    def test_mahalanobis_requires_exactly_one_source(self):
+        from orbitdet.analysis import mahalanobis
+
+        r = np.array([1.0])
+        with pytest.raises(ValueError, match="exactly one"):
+            mahalanobis(r)
+        with pytest.raises(ValueError, match="exactly one"):
+            mahalanobis(r, weight_matrix=np.eye(1), sigmas=np.array([1.0]))
+
+    def test_mahalanobis_sigmas_ignores_zero_and_non_finite(self):
+        from orbitdet.analysis import mahalanobis
+
+        r = np.array([2.0, 3.0, 5.0])
+        sigmas = np.array([0.5, 0.0, np.nan])
+        assert mahalanobis(r, sigmas=sigmas) == pytest.approx(4.0)
+
+    def test_mahalanobis_sigmas_length_mismatch_raises(self):
+        from orbitdet.analysis import mahalanobis
+
+        with pytest.raises(ValueError, match="does not match"):
+            mahalanobis(np.array([1.0, 2.0]), sigmas=np.array([1.0]))
+
+    def test_aggregate_groups_and_units(self):
+        residuals = np.array([[1e-6, 1e-6], [3e-6, -1e-6]])
+        set_a = make_set([1.0, 2.0], reference_point="673", residuals=residuals)
+        set_b = make_set([3.0], reference_point="689", residuals=np.array([[0.0, 0.0]]))
+        access = make_access([set_a, set_b], [[1.0, 2.0], [3.0]])
+
+        table = aggregate(access.frame, by="set_id", to_unit="arcsec")
+        assert set(table["set_id"]) == {"673", "689"}
+        row_673 = table.loc[table["set_id"] == "673"].iloc[0]
+        assert row_673["n_obs"] == 2
+        assert row_673["n_components"] == 4
+
+    def test_aggregate_rejects_unknown_unit(self):
+        frame = build_frame([make_record("673", 1.0)])
+        with pytest.raises(ValueError, match="Unknown unit"):
+            aggregate(frame, by=None, to_unit="furlong")
+
+
+# ---------------------------------------------------------------------------
+# Tables
+# ---------------------------------------------------------------------------
+
+
+class TestTables:
+    def test_source_summary_builds_frame(self):
+        single_set = make_set([1.0, 2.0], residuals=np.ones((2, 2)) * 1e-6)
+        access = make_access([single_set], [[1.0, 2.0]])
+
+        table = SourceResidualSummary(access)._build()
+        assert isinstance(table, pd.DataFrame)
+        assert table["n_obs"].iloc[0] == 2
+
+    def test_residual_summary_produces_multiple_groupings(self):
+        single_set = make_set([1.0, 2.0], residuals=np.ones((2, 2)) * 1e-6)
+        access = make_access([single_set], [[1.0, 2.0]])
+
+        tables = ResidualSummary(access)._build()
+        assert isinstance(tables, dict)
+        # Every grouping key is prefixed with the table name.
+        assert all(name.startswith("residual_summary_") for name in tables)
+
+    def test_markdown_fallback_renders(self):
+        from orbitdet.analysis.tables.base import _to_markdown_fallback
+
+        frame = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
+        text = _to_markdown_fallback(frame)
+        assert "| a | b |" in text
+        assert "| 1 | x |" in text

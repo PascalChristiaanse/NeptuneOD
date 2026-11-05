@@ -1,14 +1,18 @@
 """Observation dataset factory system with registry-based dispatch."""
 
-# Import all factory modules to trigger automatic registration
-
+# Import all factory modules to trigger automatic registration.
+#
+# The NSDB modules that used to live here are superseded by ``standard_frames``:
+# they preprocessed as well as built models, and are kept only while the call
+# sites that still hand them a raw file are migrated.  Their factory names are
+# already registered by ``standard_frames`` as aliases, so importing them here
+# would raise a duplicate-registration error - which is why they are no longer
+# listed.  Voyager is the same story: its factory is now the shared absolute
+# RA/Dec one, aliased under ``voyager``.
 from . import (
-    absolute_ccd_nsdb,
     gaia,
-    relative_ccd_nsdb,
-    relative_xy_nsdb,
     simulated,
-    voyager,
+    standard_frames,
 )
 from .collection import create_observation_collection
 from .configs import (
@@ -68,11 +72,7 @@ __all__ = [
     "create_observation_collection",
     # Factory modules (implicitly imported for registration)
     "simulated",
-    "absolute_ccd_nsdb",
-    "relative_ccd_nsdb",
-    "relative_xy_nsdb",
-    "relative_xy_radec_nsdb",
-    "voyager",
+    "standard_frames",
     "gaia",
     # Helper functions
     "get_observatory_info",

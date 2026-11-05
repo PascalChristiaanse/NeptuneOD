@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 from tudatpy.astro import time_representation as time_repr
 from tudatpy.interface import spice
 
-from orbitdet.transformations import convert_cartesian_frame
+from orbitdet.preprocessing.frames import convert_cartesian_frame
 
 logger = logging.getLogger(__name__)
 

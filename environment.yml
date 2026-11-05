@@ -30,6 +30,8 @@ dependencies:
   - hydra-core
   - hydra-submitit-launcher
   - beautifulsoup4
+  # The NSDB descriptor parser builds its field grammar with pyparsing.
+  - pyparsing
   - aim
   - plotly
   - joblib

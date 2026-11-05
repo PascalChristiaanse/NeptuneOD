@@ -21,43 +21,26 @@ from orbitdet.reproducibility import initialize
 logger = logging.getLogger(__name__)
 
 
-def _read_utf8_with_question_marks(path: Path) -> str:
-    return path.read_bytes().decode("utf-8", errors="replace").replace("\ufffd", "?")
-
-
 @hydra.main(
     version_base=None,
     config_path="../conf/generator",
-    config_name="atanas_triton_2",
+    config_name="triton_nsdb",
 )
 def main(cfg: DictConfig):
     initialize(cfg)
 
     logger.info(f"Generating collection with {len(cfg.datasets)} component datasets")
+    manager = NSDBManager(cfg.data_folder)
+    config_folder = Path(cfg.config_folder).resolve()
+
     for name, source in cfg.datasets.items():
         match source:
             case "nsdb":
                 logger.info(f"Generating dataset {name} from NSDB")
-                folder = Path(f"{cfg.data_folder}/{name}/").resolve()
-                config_folder = Path(cfg.config_folder).resolve()
-
-                manager = NSDBManager()
-                if folder.exists():
-                    logger.warning(f"Data folder {folder} already exists, skipping download")
-                    data = Path(str(folder / name) + ".txt")
-                    content = Path(str(folder / name) + ".html")
-                else:
-                    data, content = manager.download_dataset(name, folder)
-
-                logger.info(f"Parsing content metadata for dataset {name}")
-                parsed_content = manager._parse_contents_metadata(
-                    _read_utf8_with_question_marks(content),
-                    name,
-                )
-                manager.generate_hydra_configs(parsed_content, config_folder, data)
-                # Download content and data files into data/name if not already created
-
-                # Generate config that points to data file
+                # The downloader reuses any dataset already in data_folder, so
+                # this both fetches missing data and skips present data.
+                record = manager.load(name)
+                manager.write_config(record, config_folder)
 
             case _:
                 logger.error(f"Unknown source type {source} for dataset {name}")

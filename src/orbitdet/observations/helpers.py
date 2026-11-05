@@ -46,7 +46,7 @@ def convert_time_to_seconds_since_j2000_TDB(
     ]
     # Get observatory position
     station_name = normalize_observatory_code(observatory_code)
-    observatory = system_of_bodies.get_body("Earth").get_ground_station(station_name)
+    observatory = system_of_bodies.get("Earth").get_ground_station(station_name)
     obs_position = observatory.station_state.cartesian_position_at_reference_epoch
 
     # Reuse TudatPy's default time scale converter instance for each conversion.
@@ -180,7 +180,7 @@ def add_observatory_to_SOB(
 
     # Test if ground station already exists
     try:
-        system_of_bodies.get_body("Earth").get_ground_station(station_name)
+        system_of_bodies.get("Earth").get_ground_station(station_name)
     except RuntimeError:
         pass
     else:
@@ -195,7 +195,7 @@ def add_observatory_to_SOB(
     )
 
     env_setup.add_ground_station(
-        system_of_bodies.get_body("Earth"),
+        system_of_bodies.get("Earth"),
         station_name,
         [observatory_altitude, observatory_latitude, observatory_longitude],
         element_conversion.geodetic_position_type,

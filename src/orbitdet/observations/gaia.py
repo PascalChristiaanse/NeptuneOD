@@ -85,7 +85,6 @@ def create_gaia_dataset(
     )
 
     _attach_transit_weights(observation_set, source, dataset_cfg)
-    _publish_scan_angles(epochs, frame)
 
     observation_model = obs_model_setup.model_settings.angular_position(link_definition)
 
@@ -192,27 +191,3 @@ def _selection_keys(dataset_cfg) -> list[int]:
         except (TypeError, ValueError):
             continue
     return keys
-
-
-def _publish_scan_angles(epochs: np.ndarray, frame) -> None:
-    """Publish the frame's scan angles to the epoch-keyed registry.
-
-    The frame is the source of truth, but the scan-frame residual plots read the
-    registry in :mod:`orbitdet.data.gaia` because they hold only the observation
-    collection and not the frame.  Pushing the frame's values across keeps that
-    registry in step without a second archive read.
-    """
-    if "scan_angle" not in frame.columns:
-        return
-    angles = frame["scan_angle"].to_numpy(dtype="float64")
-    if not np.all(np.isfinite(angles)):
-        logger.warning(
-            "Gaia: %d scan angle(s) are missing; the scan-frame plots will fall back to "
-            "the (RA, Dec) frame for the affected observations.",
-            int((~np.isfinite(angles)).sum()),
-        )
-        return
-
-    from orbitdet.data.gaia import _register_scan_angles
-
-    _register_scan_angles(epochs, angles)

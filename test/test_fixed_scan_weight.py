@@ -11,8 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from orbitdet.data.gaia import _register_scan_angles
-from orbitdet.observations.grouping import Group, GroupList
+from orbitdet.observations.clustering import Cluster, ClusterList
 from orbitdet.observations.weighting.strategies import FixedScanWeight
 
 ARCSEC_TO_RAD = np.pi / (180.0 * 3600.0)
@@ -30,9 +29,14 @@ def _make_obs_set(residuals, times, dec=0.0):
     )
 
 
+def _view(scan_angles):
+    """A stand-in for ``SetView`` exposing only what the strategy reads."""
+    return SimpleNamespace(scan_angles=np.asarray(scan_angles, dtype=float))
+
+
 def _groups(set_id, n):
-    return GroupList(
-        [Group(indices=np.arange(n, dtype=int), group_id=set_id, level="set", layer=-1)]
+    return ClusterList(
+        [Cluster(indices=np.arange(n, dtype=int), cluster_id=set_id, level="set", layer=-1)]
     )
 
 
@@ -73,11 +77,12 @@ class TestFixedScanBlockWeights:
         # psi = 0, dec = 0 -> T = [[0, 1], [1, 0]], so AL = dDec, AC = dRA.
         # W_radec = T^T diag(w_AL, w_AC) T = diag(w_AC, w_AL).
         epochs = [0.0, 1.0]
-        _register_scan_angles(epochs, np.zeros(2))
         obs_set = _make_obs_set(np.zeros((2, 2)), epochs, dec=0.0)
 
         s = FixedScanWeight(along_scan_sigma_mas=5.0, across_scan_sigma_mas=200.0)
-        blocks = s.compute_block_weights(obs_set, _groups("Gaia", 2), "Gaia")
+        blocks = s.compute_block_weights(
+            obs_set, _groups("Gaia", 2), "Gaia", view=_view(np.zeros(2))
+        )
 
         assert blocks is not None and len(blocks) == 2
         w_al = 1.0 / (5.0 * MAS_TO_RAD) ** 2
@@ -91,11 +96,12 @@ class TestFixedScanBlockWeights:
         psi = 0.7
         dec = 0.3
         epochs = [0.0]
-        _register_scan_angles(epochs, np.array([psi]))
         obs_set = _make_obs_set(np.zeros((1, 2)), epochs, dec=dec)
 
         s = FixedScanWeight(along_scan_sigma_mas=5.0, across_scan_sigma_mas=200.0)
-        blocks = s.compute_block_weights(obs_set, _groups("Gaia", 1), "Gaia")
+        blocks = s.compute_block_weights(
+            obs_set, _groups("Gaia", 1), "Gaia", view=_view([psi])
+        )
         w = blocks[0]
 
         sigma_al = 5.0 * MAS_TO_RAD
@@ -118,17 +124,18 @@ class TestFixedScanBlockWeights:
         psi = 1.2
         dec = -0.4
         epochs = [0.0, 1.0, 2.0]
-        _register_scan_angles(epochs, np.full(3, psi))
         obs_set = _make_obs_set(np.zeros((3, 2)), epochs, dec=dec)
 
         s = FixedScanWeight()
-        blocks = s.compute_block_weights(obs_set, _groups("Gaia", 3), "Gaia")
+        blocks = s.compute_block_weights(
+            obs_set, _groups("Gaia", 3), "Gaia", view=_view(np.full(3, psi))
+        )
         for w in blocks:
             np.testing.assert_allclose(w, w.T, rtol=1e-12)
             assert np.all(np.linalg.eigvalsh(w) > 0.0)
 
     def test_returns_none_without_scan_angles(self):
-        # Epochs with no registered scan angles -> None (engine falls back to diagonal).
+        # No view -> no scan angles -> None (engine falls back to diagonal).
         obs_set = _make_obs_set(np.zeros((2, 2)), [12345.0, 12346.0])
         s = FixedScanWeight()
         assert s.compute_block_weights(obs_set, _groups("Gaia", 2), "Gaia") is None
@@ -144,12 +151,12 @@ class TestFixedScanDiagonalWeights:
         psi = 0.5
         dec = 0.1
         epochs = [0.0, 1.0]
-        _register_scan_angles(epochs, np.full(2, psi))
         obs_set = _make_obs_set(np.zeros((2, 2)), epochs, dec=dec)
 
         s = FixedScanWeight()
-        weights_array, df = s.compute_weights(obs_set, _groups("Gaia", 2), "Gaia")
-        blocks = s.compute_block_weights(obs_set, _groups("Gaia", 2), "Gaia")
+        view = _view(np.full(2, psi))
+        weights_array, df = s.compute_weights(obs_set, _groups("Gaia", 2), "Gaia", view=view)
+        blocks = s.compute_block_weights(obs_set, _groups("Gaia", 2), "Gaia", view=view)
 
         # Interleaved [RA, Dec] diagonal must match the block diagonals.
         assert weights_array[0::2] == pytest.approx([b[0, 0] for b in blocks])

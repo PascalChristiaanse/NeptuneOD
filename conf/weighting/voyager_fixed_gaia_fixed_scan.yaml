@@ -37,7 +37,7 @@ weighting:
                 post_encounter: {ra: 4.0, dec: 4.0} # 2 sigma
             # - level: timeframe
             #   mode: rmse_descaled
-        grouping:
+        clustering:
           levels:
             - type: section
               sections:
@@ -46,7 +46,7 @@ weighting:
             - type: timeframe
               gap_threshold_hours: 8.0
               min_obs_per_frame: 1
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

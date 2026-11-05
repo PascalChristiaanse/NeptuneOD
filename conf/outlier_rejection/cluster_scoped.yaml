@@ -4,8 +4,8 @@
 #
 # Different strategies are applied to different observation groups -- not just
 # different sets.  The `groups` filter matches a group's short name (a section
-# name or a timeframe id) using this subsystem's OWN grouping config, which is
-# independent of the weighting grouping.
+# name or a timeframe id) using this subsystem's OWN clustering config, which is
+# independent of the weighting clustering.
 #
 # Here:
 #   - Voyager 2 pre-encounter: a tight maximum residual threshold
@@ -18,7 +18,7 @@
 
 outlier_rejection:
   enabled: true
-  grouping:
+  clustering:
     levels:
       - type: section
         sections:

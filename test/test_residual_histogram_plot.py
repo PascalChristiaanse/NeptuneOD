@@ -86,7 +86,7 @@ class TestResidualHistogram:
         plot = ResidualHistogram(_cfg(), access)
         fig, axs = plot._make_figure()
         assert len(axs) == 2
-        # One histogram patch set per group per panel.
+        # One histogram patch set per cluster per panel.
         assert len(axs[0].patches) > 0
         assert len(axs[1].patches) > 0
         plt.close(fig)
@@ -103,7 +103,7 @@ class TestResidualHistogram:
         access = _access()
         plot = ResidualHistogram(_cfg(), access, group_by="source_set_id")
         fig, axs = plot._make_figure()
-        # Both sets share source_set_id -> a single group.
+        # Both sets share source_set_id -> a single cluster.
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
         assert labels == ["nm0001"]
         plt.close(fig)
@@ -112,7 +112,7 @@ class TestResidualHistogram:
         access = _access()
         plot = ResidualHistogram(_cfg(), access)
         fig, axs = plot._make_figure()
-        # One fitted normal curve per group per panel.
+        # One fitted normal curve per cluster per panel.
         assert len(axs[0].lines) >= 2
         plt.close(fig)
 

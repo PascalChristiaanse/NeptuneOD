@@ -145,15 +145,15 @@ def observatory_groups(
             f"'observatory_code' column, so the receiver cannot be identified."
         )
 
-    groups: list[tuple[str, pd.DataFrame]] = []
+    clusters: list[tuple[str, pd.DataFrame]] = []
     seen: set[str] = set()
-    for code, group in dataframe.groupby("observatory_code", sort=False):
+    for code, cluster in dataframe.groupby("observatory_code", sort=False):
         station = normalize_observatory_code(code)
         if station in seen:
             continue
         seen.add(station)
-        groups.append((station, group))
-    return groups
+        clusters.append((station, cluster))
+    return clusters
 
 
 def build_link_ends(
@@ -401,13 +401,13 @@ def create_absolute_radec_dataset(
     observation_sets = []
     observation_models = []
     center = frame_center_of(dataframe)
-    for station_name, group in observatory_groups(dataframe, dataset_cfg):
+    for station_name, cluster in observatory_groups(dataframe, dataset_cfg):
         if receiver_needs_observatory(center):
             add_observatory_to_SOB(cfg, system_of_bodies, station_name)
         link_ends = build_link_ends(dataset_cfg, station_name, frame_center=center)
         link_definition = obs_model_setup.links.LinkDefinition(link_ends)
 
-        rows = _usable_rows(group, [RA_COLUMN, DEC_COLUMN])
+        rows = _usable_rows(cluster, [RA_COLUMN, DEC_COLUMN])
         times = rows[EPOCH_COLUMN].to_numpy(dtype="float64").tolist()
         data = _as_observation_data(rows[[RA_COLUMN, DEC_COLUMN]].to_numpy(dtype="float64"))
 
@@ -472,7 +472,7 @@ def create_relative_radec_dataset(
     observation_sets = []
     observation_models = []
     center = frame_center_of(dataframe)
-    for station_name, group in observatory_groups(dataframe, dataset_cfg):
+    for station_name, cluster in observatory_groups(dataframe, dataset_cfg):
         if receiver_needs_observatory(center):
             add_observatory_to_SOB(cfg, system_of_bodies, station_name)
         link_ends = build_link_ends(
@@ -480,7 +480,7 @@ def create_relative_radec_dataset(
         )
         link_definition = obs_model_setup.links.LinkDefinition(link_ends)
 
-        rows = _usable_rows(group, [RA_COLUMN, DEC_COLUMN])
+        rows = _usable_rows(cluster, [RA_COLUMN, DEC_COLUMN])
         times = rows[EPOCH_COLUMN].to_numpy(dtype="float64").tolist()
         data = _as_observation_data(rows[[RA_COLUMN, DEC_COLUMN]].to_numpy(dtype="float64"))
 
@@ -530,7 +530,7 @@ def create_relative_position_angle_dataset(
     rather than one combined observable: the combined model returns a two-element
     observation and cannot accept a row whose half was never measured.
 
-    The models are built per group and appended in step with the sets, so a
+    The models are built per cluster and appended in step with the sets, so a
     dataset holding both kinds of row yields two models for one station.
 
     Args:
@@ -571,7 +571,7 @@ def create_relative_position_angle_dataset(
     observation_models: list = []
     center = frame_center_of(dataframe)
 
-    for station_name, group in observatory_groups(dataframe, dataset_cfg):
+    for station_name, cluster in observatory_groups(dataframe, dataset_cfg):
         if receiver_needs_observatory(center):
             add_observatory_to_SOB(cfg, system_of_bodies, station_name)
         link_ends = build_link_ends(
@@ -579,9 +579,9 @@ def create_relative_position_angle_dataset(
         )
         link_definition = obs_model_setup.links.LinkDefinition(link_ends)
 
-        angle = pd.to_numeric(group["first_value"], errors="coerce")
-        separation = pd.to_numeric(group["second_value"], errors="coerce")
-        finite = np.isfinite(pd.to_numeric(group[EPOCH_COLUMN], errors="coerce"))
+        angle = pd.to_numeric(cluster["first_value"], errors="coerce")
+        separation = pd.to_numeric(cluster["second_value"], errors="coerce")
+        finite = np.isfinite(pd.to_numeric(cluster[EPOCH_COLUMN], errors="coerce"))
         has_angle = finite & np.isfinite(angle) & ~is_not_given(angle)
         has_separation = finite & np.isfinite(separation) & ~is_not_given(separation)
 
@@ -599,7 +599,7 @@ def create_relative_position_angle_dataset(
                 "second_value",
             ),
         ):
-            selected = group[mask]
+            selected = cluster[mask]
             if selected.empty:
                 continue
             observation_sets.append(
@@ -722,7 +722,7 @@ def create_relative_xy_dataset(
     observation_sets = []
     observation_models = []
     center = frame_center_of(dataframe)
-    for station_name, group in observatory_groups(dataframe, dataset_cfg):
+    for station_name, cluster in observatory_groups(dataframe, dataset_cfg):
         if receiver_needs_observatory(center):
             add_observatory_to_SOB(cfg, system_of_bodies, station_name)
         link_ends = build_link_ends(
@@ -730,7 +730,7 @@ def create_relative_xy_dataset(
         )
         link_definition = obs_model_setup.links.LinkDefinition(link_ends)
 
-        rows = _usable_rows(group, ["first_value", "second_value"])
+        rows = _usable_rows(cluster, ["first_value", "second_value"])
         epochs = rows[EPOCH_COLUMN].to_numpy(dtype="float64")
         if rows.empty:
             continue

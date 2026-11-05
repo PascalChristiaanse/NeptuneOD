@@ -1,9 +1,9 @@
 """Regression tests for the shared weights-DataFrame schema.
 
 Every weighting strategy must emit the same columns, because the engine
-concatenates the per-set frames and the visualization layer groups on
-``group_id``.  A strategy that omits a column (e.g. ``group_id``) produces
-``NaN`` for its rows and breaks downstream sorting/grouping.
+concatenates the per-set frames and the visualization layer clusters on
+``cluster_id``.  A strategy that omits a column (e.g. ``cluster_id``) produces
+``NaN`` for its rows and breaks downstream sorting/clustering.
 """
 
 from types import SimpleNamespace
@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from orbitdet.observations.grouping import Group, GroupList
+from orbitdet.observations.clustering import Cluster, ClusterList
 from orbitdet.observations.weighting.dataframe import WEIGHTS_DF_COLUMNS
 from orbitdet.observations.weighting.layered import LayeredWeight
 from orbitdet.observations.weighting.strategies import (
@@ -35,13 +35,13 @@ def _make_obs_set(times, residuals):
     )
 
 
-def _groups(set_id: str, n: int) -> GroupList:
-    return GroupList(
+def _groups(set_id: str, n: int) -> ClusterList:
+    return ClusterList(
         [
-            Group(indices=np.arange(n, dtype=int), group_id=set_id, level="set", layer=-1),
-            Group(
+            Cluster(indices=np.arange(n, dtype=int), cluster_id=set_id, level="set", layer=-1),
+            Cluster(
                 indices=np.arange(n, dtype=int),
-                group_id=f"{set_id}_tf_0000",
+                cluster_id=f"{set_id}_tf_0000",
                 level="timeframe",
                 layer=0,
                 metadata={"t_start": 0.0, "t_end": 1e6},
@@ -74,23 +74,23 @@ _STRATEGIES = [
 
 @pytest.mark.parametrize("strategy,_needs_tf", _STRATEGIES, ids=lambda s: type(s).__name__)
 def test_strategy_emits_full_schema(strategy, _needs_tf):
-    """Every strategy must emit all standard columns, with no NaN group_id."""
+    """Every strategy must emit all standard columns, with no NaN cluster_id."""
     residuals = np.array([[1e-6, 1e-6], [1.2e-6, 1.1e-6], [0.9e-6, 1.0e-6]])
     obs_set = _make_obs_set([0.0, 1.0, 2.0], residuals)
-    groups = _groups("689", 3)
+    clusters = _groups("689", 3)
 
-    weights, df = strategy.compute_weights(obs_set, groups, "689", 0.001)
+    weights, df = strategy.compute_weights(obs_set, clusters, "689", 0.001)
 
     assert weights.shape == (6,)
     missing = [c for c in WEIGHTS_DF_COLUMNS if c not in df.columns]
     assert not missing, f"{type(strategy).__name__} missing columns: {missing}"
-    # group_id must be a string for every row (never NaN/float).
-    assert df["group_id"].map(lambda v: isinstance(v, str)).all()
-    assert (df["group_id"] != "").all()
+    # cluster_id must be a string for every row (never NaN/float).
+    assert df["cluster_id"].map(lambda v: isinstance(v, str)).all()
+    assert (df["cluster_id"] != "").all()
 
 
 def test_layered_group_id_is_string_not_nan():
-    """Regression: layered previously omitted group_id, yielding NaN on concat."""
+    """Regression: layered previously omitted cluster_id, yielding NaN on concat."""
     strategy = LayeredWeight(
         layers=[
             {
@@ -103,32 +103,32 @@ def test_layered_group_id_is_string_not_nan():
     )
     residuals = np.array([[1e-6, 1e-6], [1e-6, 1e-6], [1e-6, 1e-6], [1e-6, 1e-6]])
     obs_set = _make_obs_set([0.0, 1.0, 2.0, 100.0], residuals)
-    groups = GroupList(
+    clusters = ClusterList(
         [
-            Group(
+            Cluster(
                 indices=np.array([0, 1, 2], dtype=int),
-                group_id="689_pre_encounter",
+                cluster_id="689_pre_encounter",
                 level="section",
                 layer=0,
                 metadata={"section_name": "pre_encounter"},
             ),
-            Group(
+            Cluster(
                 indices=np.array([3], dtype=int),
-                group_id="689_post_encounter",
+                cluster_id="689_post_encounter",
                 level="section",
                 layer=0,
                 metadata={"section_name": "post_encounter"},
             ),
-            Group(
+            Cluster(
                 indices=np.array([0, 1, 2], dtype=int),
-                group_id="689_tf_0000",
+                cluster_id="689_tf_0000",
                 level="timeframe",
                 layer=1,
                 metadata={"t_start": 0.0, "t_end": 2.0},
             ),
-            Group(
+            Cluster(
                 indices=np.array([3], dtype=int),
-                group_id="689_tf_0001",
+                cluster_id="689_tf_0001",
                 level="timeframe",
                 layer=1,
                 metadata={"t_start": 100.0, "t_end": 100.0},
@@ -136,9 +136,9 @@ def test_layered_group_id_is_string_not_nan():
         ]
     )
 
-    _weights, df = strategy.compute_weights(obs_set, groups, "689", 0.001)
+    _weights, df = strategy.compute_weights(obs_set, clusters, "689", 0.001)
 
-    assert "group_id" in df.columns
-    assert df["group_id"].tolist() == ["689_tf_0000"] * 3 + ["689_tf_0001"]
+    assert "cluster_id" in df.columns
+    assert df["cluster_id"].tolist() == ["689_tf_0000"] * 3 + ["689_tf_0001"]
     # Sorting the unique values must not raise (the original crash).
-    assert sorted(df["group_id"].unique()) == ["689_tf_0000", "689_tf_0001"]
+    assert sorted(df["cluster_id"].unique()) == ["689_tf_0000", "689_tf_0001"]

@@ -199,10 +199,10 @@ def main(cfg: DictConfig):
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
-    # Shared top-level grouping.  Each subsystem may override it with its own
-    # `grouping:` node (an outlier-rejection group need not equal a weighting
-    # group), but by default both use the same partitioning.
-    default_grouping = OmegaConf.select(cfg, "grouping")
+    # Shared top-level clustering.  Each subsystem may override it with its own
+    # `clustering:` node (an outlier-rejection cluster need not equal a weighting
+    # cluster), but by default both use the same partitioning.
+    default_clustering = OmegaConf.select(cfg, "clustering")
 
     outlier_cfg = OmegaConf.select(cfg, "outlier_rejection")
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
@@ -237,7 +237,9 @@ def main(cfg: DictConfig):
     weighting_cfg = OmegaConf.select(cfg, "weighting")
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
         logger.info("Applying weighting...")
-        weight_engine = WeightEngine.from_config(weighting_cfg, default_grouping=default_grouping)
+        weight_engine = WeightEngine.from_config(
+            weighting_cfg, default_clustering=default_clustering
+        )
         from hydra.core.hydra_config import HydraConfig
 
         output_dir = Path(HydraConfig.get().runtime.output_dir)
@@ -252,19 +254,19 @@ def main(cfg: DictConfig):
     else:
         logger.info("Weighting disabled.")
 
-    # Plot weight groups if weighting was applied
+    # Plot weight clusters if weighting was applied
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
         from orbitdet.visualization import WeightGroups, WeightSummaryTable
 
         fig_weight_groups, _ = WeightGroups(cfg, weights_df).plot()
-        logger.info("Weight groups figure saved.")
+        logger.info("Weight clusters figure saved.")
 
         # Build and save the per-source summary table
         table_builder = WeightSummaryTable(cfg, weights_df)
         src_table = table_builder.build_source()
         grp_table = table_builder.build_group()
         # print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-        # print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
+        # print("\n=== Per-cluster summary ===\n" + table_builder.to_string_group(grp_table))
 
         src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
         grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)
@@ -279,7 +281,7 @@ def main(cfg: DictConfig):
         # Save as Excel with two sheets
         with pd.ExcelWriter(output_dir / "weight_summary.xlsx") as writer:
             src_table.to_excel(writer, sheet_name="Per source", index=False)
-            grp_table.to_excel(writer, sheet_name="Per group", index=False)
+            grp_table.to_excel(writer, sheet_name="Per cluster", index=False)
         logger.info("Excel weight summary tables saved to %s", output_dir)
 
     # Refresh the derived frame now that outlier rejection (and weighting) have run:

@@ -25,15 +25,15 @@ from orbitdet.analysis import (
 class TestClustering:
     def test_split_by_gap_on_two_nights(self):
         epochs = np.array([0.0, 10.0, 20.0, 1000.0, 1010.0])
-        groups = split_by_gap(epochs, gap_seconds=100.0)
-        assert [g.tolist() for g in groups] == [[0, 1, 2], [3, 4]]
+        clusters = split_by_gap(epochs, gap_seconds=100.0)
+        assert [g.tolist() for g in clusters] == [[0, 1, 2], [3, 4]]
 
     def test_min_size_absorbs_small_internal_gap(self):
-        # A gap splits only if the current group already has >= min_size members.
-        # First gap sees a 1-member group (no split); second gap sees 2 (splits).
+        # A gap splits only if the current cluster already has >= min_size members.
+        # First gap sees a 1-member cluster (no split); second gap sees 2 (splits).
         epochs = np.array([0.0, 1000.0, 2000.0])
-        groups = split_by_gap(epochs, gap_seconds=100.0, min_size=2)
-        assert [g.tolist() for g in groups] == [[0, 1], [2]]
+        clusters = split_by_gap(epochs, gap_seconds=100.0, min_size=2)
+        assert [g.tolist() for g in clusters] == [[0, 1], [2]]
 
     def test_empty(self):
         assert split_by_gap([], 10.0) == []

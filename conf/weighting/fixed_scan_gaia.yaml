@@ -22,7 +22,7 @@ weighting:
           type: fixed_scan
           along_scan_sigma_mas: 5.0
           across_scan_sigma_mas: 200.0
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

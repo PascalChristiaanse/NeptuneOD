@@ -1,13 +1,13 @@
-"""Grouping specification and the :func:`build_group_list` pipeline.
+"""Grouping specification and the :func:`build_cluster_list` pipeline.
 
-A *grouping* is an ordered list of partitioning **levels** applied
+A *clustering* is an ordered list of partitioning **levels** applied
 coarse-to-fine.  Each level independently partitions the whole set; the levels
 are then linked into a hierarchy via parent references.  Any number of levels
 is supported (not just two).
 
 Example configuration::
 
-    grouping:
+    clustering:
       levels:
         - type: section
           sections:
@@ -16,7 +16,7 @@ Example configuration::
         - type: timeframe
           gap_threshold_hours: 8.0
 
-Produces section groups at layer 0 and timeframe groups at layer 1, each
+Produces section clusters at layer 0 and timeframe clusters at layer 1, each
 timeframe carrying a ``parent_id`` pointing at its enclosing section.
 """
 
@@ -29,7 +29,7 @@ from typing import Any
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
 
-from .models import Group, GroupList
+from .models import Cluster, ClusterList
 from .partitioners import (
     partition_by_sections,
     partition_by_set,
@@ -52,12 +52,12 @@ def _as_config(config: Any) -> DictConfig | None:
     return config
 
 
-def build_group_list(
+def build_cluster_list(
     times: np.ndarray,
     set_id: str,
     config: DictConfig | Mapping | None,
-) -> GroupList:
-    """Build a :class:`GroupList` from a grouping configuration.
+) -> ClusterList:
+    """Build a :class:`ClusterList` from a clustering configuration.
 
     Parameters
     ----------
@@ -71,54 +71,54 @@ def build_group_list(
 
     Returns
     -------
-    GroupList
-        Flattened list of groups across every partitioning level, with parent
+    ClusterList
+        Flattened list of clusters across every partitioning level, with parent
         references linking finer levels to their coarse parents.
     """
     n_obs = len(times)
 
     config = _as_config(config)
     if config is None:
-        return GroupList(partition_by_set(n_obs, set_id))
+        return ClusterList(partition_by_set(n_obs, set_id))
 
     levels_cfg = OmegaConf.select(config, "levels")
     if not levels_cfg:
-        return GroupList(partition_by_set(n_obs, set_id))
+        return ClusterList(partition_by_set(n_obs, set_id))
 
-    set_group = partition_by_set(n_obs, set_id)
-    set_group_id = set_group[0].group_id
+    set_cluster = partition_by_set(n_obs, set_id)
+    set_cluster_id = set_cluster[0].cluster_id
 
-    gl = GroupList()
-    previous_groups: list[Group] = []  # groups from the immediately coarser level
+    gl = ClusterList()
+    previous_clusters: list[Cluster] = []  # clusters from the immediately coarser level
     layer = 0
 
     for level_entry in levels_cfg:
         level_type = OmegaConf.select(level_entry, "type")
         if level_type is None:
-            raise ValueError("Each grouping level must have a 'type' field.")
+            raise ValueError("Each clustering level must have a 'type' field.")
 
         if level_type == "set":
             # An explicit set level is a real, addressable partitioning layer.
             # This lets a strategy use "the whole set" as its primary layer
             # (e.g. per-file RMSE) and a finer level as its secondary layer.
-            level_groups = _build_set_level(times, set_id, layer, n_obs)
+            level_clusters = _build_set_level(times, set_id, layer, n_obs)
         elif level_type == "section":
-            level_groups = _build_section_level(level_entry, times, set_id, layer, n_obs)
+            level_clusters = _build_section_level(level_entry, times, set_id, layer, n_obs)
         elif level_type == "timeframe":
-            level_groups = _build_timeframe_level(level_entry, times, set_id, layer)
+            level_clusters = _build_timeframe_level(level_entry, times, set_id, layer)
         else:
-            raise ValueError(f"Unknown grouping level type: '{level_type}'")
+            raise ValueError(f"Unknown clustering level type: '{level_type}'")
 
-        # Link each group to its parent in the coarser level.
-        if not previous_groups:
-            for g in level_groups:
+        # Link each cluster to its parent in the coarser level.
+        if not previous_clusters:
+            for g in level_clusters:
                 g.parent_level = "set"
-                g.parent_id = set_group_id
+                g.parent_id = set_cluster_id
         else:
-            _link_parents(level_groups, previous_groups)
+            _link_parents(level_clusters, previous_clusters)
 
-        gl.extend(level_groups)
-        previous_groups = level_groups
+        gl.extend(level_clusters)
+        previous_clusters = level_clusters
         layer += 1
 
     return gl
@@ -135,10 +135,10 @@ def _build_section_level(
     set_id: str,
     layer: int,
     n_obs: int,
-) -> list[Group]:
+) -> list[Cluster]:
     sections_cfg = OmegaConf.select(level_entry, "sections")
     if not sections_cfg:
-        raise ValueError("Section grouping requires a 'sections' list.")
+        raise ValueError("Section clustering requires a 'sections' list.")
 
     section_bounds: list[tuple[str, float, float]] = []
     for sc in sections_cfg:
@@ -149,18 +149,18 @@ def _build_section_level(
             raise ValueError("Each section must have 'name', 'start', and 'end' fields.")
         section_bounds.append((name, float(t_start), float(t_end)))
 
-    groups = partition_by_sections(times, section_bounds, set_id, layer=layer)
+    clusters = partition_by_sections(times, section_bounds, set_id, layer=layer)
 
-    # Observations outside every section fall into a catch-all group.
+    # Observations outside every section fall into a catch-all cluster.
     assigned: set[int] = set()
-    for g in groups:
+    for g in clusters:
         assigned.update(int(i) for i in g.indices)
     unassigned = [i for i in range(n_obs) if i not in assigned]
     if unassigned:
-        groups.append(
-            Group(
+        clusters.append(
+            Cluster(
                 indices=np.array(unassigned, dtype=int),
-                group_id=f"{set_id}_other" if set_id else "other",
+                cluster_id=f"{set_id}_other" if set_id else "other",
                 level="section",
                 layer=layer,
                 layer_name="section",
@@ -170,7 +170,7 @@ def _build_section_level(
                 },
             )
         )
-    return groups
+    return clusters
 
 
 def _build_set_level(
@@ -178,16 +178,16 @@ def _build_set_level(
     set_id: str,
     layer: int,
     n_obs: int,
-) -> list[Group]:
-    """Build an explicit set-level partitioning group.
+) -> list[Cluster]:
+    """Build an explicit set-level partitioning cluster.
 
-    The result is identical in content to the implicit set group but carries a
+    The result is identical in content to the implicit set cluster but carries a
     real ``layer`` so it can be addressed as a primary partitioning layer.
     """
     return [
-        Group(
+        Cluster(
             indices=np.arange(n_obs, dtype=int),
-            group_id=set_id,
+            cluster_id=set_id,
             level="set",
             layer=layer,
             layer_name="set",
@@ -201,21 +201,21 @@ def _build_timeframe_level(
     times: np.ndarray,
     set_id: str,
     layer: int,
-) -> list[Group]:
+) -> list[Cluster]:
     gap_hours = float(OmegaConf.select(level_entry, "gap_threshold_hours", default=4.0))
     min_obs = int(OmegaConf.select(level_entry, "min_obs_per_frame", default=1))
     return partition_by_timeframes(times, gap_hours, min_obs, set_id, layer=layer)
 
 
-def _link_parents(children: list[Group], parents: list[Group]) -> None:
+def _link_parents(children: list[Cluster], parents: list[Cluster]) -> None:
     """Attach each child to the first parent whose indices it overlaps."""
     for child in children:
         child_set = set(int(i) for i in child.indices)
         for parent in parents:
             if child_set & set(int(i) for i in parent.indices):
                 child.parent_level = parent.level
-                child.parent_id = parent.group_id
+                child.parent_id = parent.cluster_id
                 break
 
 
-__all__ = ["build_group_list"]
+__all__ = ["build_cluster_list"]

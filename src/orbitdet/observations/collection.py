@@ -51,7 +51,7 @@ def _rows_of_set(frame: pd.DataFrame, single_set, candidates: np.ndarray) -> np.
 
     Rows are consumed in file order, so a frame holding the same epoch twice maps
     its two rows to the set's two observations in the order both were built in:
-    the grouping and ``_usable_rows`` both preserve file order.  Each set is
+    the clustering and ``_usable_rows`` both preserve file order.  Each set is
     matched independently, because a position angle and a separation in one
     dataset are built from the *same* rows and neither consumes the other's.
 

@@ -1,7 +1,7 @@
 """Engine that orchestrates weighting over an ObservationCollection.
 
 The :class:`WeightEngine` applies a :class:`WeightStrategy` to every
-observation set in a collection, optionally partitioned by grouping levels,
+observation set in a collection, optionally partitioned by clustering levels,
 and assigns the resulting weights via ``set_tabulated_weights``.
 """
 
@@ -17,7 +17,7 @@ import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
-from ..grouping import build_group_list
+from ..clustering import build_cluster_list
 from ..utils import get_set_identifier
 from .base import WeightStrategy
 from .builder import build_strategy
@@ -32,9 +32,9 @@ class WeightEngine:
     ----------
     strategy : WeightStrategy
         The weighting strategy to apply.
-    grouping : DictConfig | None
+    clustering : DictConfig | None
         Grouping configuration (defines levels like sections, timeframes).
-        If None, each set is treated as a single group.
+        If None, each set is treated as a single cluster.
     min_sigma_arcsec : float
         Floor on sigma in arcseconds.
     """
@@ -42,11 +42,11 @@ class WeightEngine:
     def __init__(
         self,
         strategy: WeightStrategy,
-        grouping: DictConfig | None = None,
+        clustering: DictConfig | None = None,
         min_sigma_arcsec: float = 0.01,
     ):
         self._strategy = strategy
-        self._grouping = grouping
+        self._clustering = clustering
         self._min_sigma_arcsec = min_sigma_arcsec
 
     @property
@@ -64,6 +64,7 @@ class WeightEngine:
         bodies: env.SystemOfBodies,
         output_dir: str | Path | None = None,
         dataset_metadata: dict[str, list[dict]] | None = None,
+        access=None,
     ) -> tuple[obs.ObservationCollection, pd.DataFrame]:
         """Compute and assign weights to all observation sets.
 
@@ -82,6 +83,12 @@ class WeightEngine:
             has keys ``name`` (source author), ``dataset_id`` (e.g. ``nm0008``),
             ``observatory_code``, ``ra_type``, and ``dec_type``.
             Metadata entries are consumed FIFO per set_id.
+        access : ObservationAccess, optional
+            The access layer for this collection.  When provided, each set is
+            wrapped in a :class:`~orbitdet.analysis.set_view.SetView` so
+            strategies can read standard-frame columns (notably ``scan_angle``)
+            instead of the retired epoch-keyed registries.  When omitted, the
+            strategies run without a view and must use their frame-free paths.
 
         Returns
         -------
@@ -101,7 +108,7 @@ class WeightEngine:
         if dataset_metadata:
             meta_queues = {k: list(v) for k, v in dataset_metadata.items()}
 
-        for obs_set in all_sets:
+        for set_index, obs_set in enumerate(all_sets):
             set_id = get_set_identifier(obs_set)
             times = np.array([t.to_float() for t in obs_set.observation_times])
             n_obs = len(times)
@@ -110,21 +117,31 @@ class WeightEngine:
                 logger.debug("WeightEngine: skipping empty set '%s'", set_id)
                 continue
 
-            # Build groups from the grouping config
-            groups = build_group_list(times, set_id, self._grouping)
+            # The set's window onto the access layer, so strategies can read
+            # standard-frame columns (scan_angle, observatory_code, ...).
+            view = None
+            if access is not None:
+                # Imported here: ``orbitdet.analysis`` imports this package.
+                from ...analysis.set_view import SetView
+
+                view = SetView.build(access, set_index)
+
+            # Build clusters from the clustering config
+            clusters = build_cluster_list(times, set_id, self._clustering)
             logger.debug(
-                "WeightEngine [%s]: %d groups across levels: %s",
+                "WeightEngine [%s]: %d clusters across levels: %s",
                 set_id,
-                len(groups),
-                {g.level for g in groups},
+                len(clusters),
+                {g.level for g in clusters},
             )
 
             # Compute weights
             weights_array, weights_df = self._strategy.compute_weights(
                 obs_set,
-                groups,
+                clusters,
                 set_id,
                 self._min_sigma_arcsec,
+                view=view,
             )
 
             # Strategies whose weights are not diagonal in (RA, Dec) (e.g. fixed
@@ -134,9 +151,10 @@ class WeightEngine:
             if callable(compute_blocks):
                 block_weights = compute_blocks(
                     obs_set,
-                    groups,
+                    clusters,
                     set_id,
                     self._min_sigma_arcsec,
+                    view=view,
                 )
 
             if len(weights_array) == 0:
@@ -237,7 +255,7 @@ class WeightEngine:
 
     @classmethod
     def from_config(
-        cls, cfg: DictConfig, default_grouping: DictConfig | None = None
+        cls, cfg: DictConfig, default_clustering: DictConfig | None = None
     ) -> WeightEngine:
         """Build an engine from a Hydra configuration node.
 
@@ -248,7 +266,7 @@ class WeightEngine:
             weighting:
               strategy: id_v2
               min_sigma_arcsec: 0.01
-              grouping:
+              clustering:
                 levels: [...]
 
         **Descriptor (recommended)** — strategy options are given inline,
@@ -270,15 +288,15 @@ class WeightEngine:
         Returns
         -------
         WeightEngine
-            An engine with the configured strategy and grouping.
+            An engine with the configured strategy and clustering.
         """
         strategy_node = OmegaConf.select(cfg, "strategy", default="id_v2")
         min_sigma = float(OmegaConf.select(cfg, "min_sigma_arcsec", default=0.01))
-        grouping = OmegaConf.select(cfg, "grouping") or default_grouping
+        clustering = OmegaConf.select(cfg, "clustering") or default_clustering
 
         # Descriptor form: {type: <name>, ...kwargs}
         if isinstance(strategy_node, Mapping) and "type" in strategy_node:
-            strategy_instance = build_strategy(strategy_node, grouping=grouping)
+            strategy_instance = build_strategy(strategy_node, clustering=clustering)
         else:
             # Bare strategy name (e.g. `strategy: id_v2`).  Strategy-specific
             # options, if any, live under a sibling node named after the
@@ -290,9 +308,10 @@ class WeightEngine:
                 if node is not None and hasattr(node, "items")
                 else {}
             )
-            strategy_instance = build_strategy({"type": strategy_name, **params}, grouping=grouping)
+            strategy_instance = build_strategy({"type": strategy_name, **params}, 
+                clustering=clustering)
 
-        return cls(strategy_instance, grouping=grouping, min_sigma_arcsec=min_sigma)
+        return cls(strategy_instance, clustering=clustering, min_sigma_arcsec=min_sigma)
 
 
 # ---------------------------------------------------------------------------

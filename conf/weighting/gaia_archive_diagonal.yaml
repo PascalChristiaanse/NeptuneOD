@@ -20,7 +20,7 @@ weighting:
           type: gaia_archive
           covariance_mode: diagonal
           scale: 1.0
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

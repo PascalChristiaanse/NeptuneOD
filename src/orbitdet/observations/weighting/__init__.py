@@ -1,11 +1,11 @@
 """Weighting subsystem for the NeptuneOD observation pipeline.
 
 Provides pluggable strategies for computing inverse-variance weights from
-observation residuals, with flexible grouping configurations (timeframes,
+observation residuals, with flexible clustering configurations (timeframes,
 sections, etc.).
 """
 
-from ..grouping import Group, GroupList, build_group_list
+from ..clustering import Cluster, ClusterList, build_cluster_list
 from . import strategies  # noqa: F401
 from .base import WeightStrategy
 from .engine import WeightEngine
@@ -15,9 +15,9 @@ from .registry import get_strategy_class, list_registered_strategies, register_w
 __all__ = [
     "WeightEngine",
     "WeightStrategy",
-    "Group",
-    "GroupList",
-    "build_group_list",
+    "Cluster",
+    "ClusterList",
+    "build_cluster_list",
     "register_weight_strategy",
     "get_strategy_class",
     "list_registered_strategies",

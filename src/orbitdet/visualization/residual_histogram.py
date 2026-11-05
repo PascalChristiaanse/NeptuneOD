@@ -2,7 +2,7 @@
 
 Both plots consume an :class:`~orbitdet.analysis.access.ObservationAccess` - the
 standard observation frame joined to the live observation sets - so the
-residuals, the grouping column and the scan-frame rotation all come from one
+residuals, the clustering column and the scan-frame rotation all come from one
 tidy frame instead of a per-set walk over the collection's link ends.
 """
 
@@ -63,7 +63,7 @@ class _HistogramBase(Plot):
         return _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -129,10 +129,10 @@ class _HistogramBase(Plot):
 class ResidualHistogram(_HistogramBase):
     """Histograms of the RA and Dec residuals with fitted normal curves.
 
-    Each group (by default ``observatory_code``) contributes one histogram per
-    component, overlaid with a normal PDF fitted to that group's sample and
+    Each cluster (by default ``observatory_code``) contributes one histogram per
+    component, overlaid with a normal PDF fitted to that cluster's sample and
     annotated with the Shapiro-Wilk normality test.  The bin heights are
-    probability densities, so groups of different sizes are comparable.
+    probability densities, so clusters of different sizes are comparable.
 
     Parameters
     ----------
@@ -144,7 +144,7 @@ class ResidualHistogram(_HistogramBase):
         Name of the figure configuration block under ``cfg.figures``.  Defaults
         to ``"residual_histogram"``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the histograms by.  ``None`` (default)
+        Standard-frame column(s) to cluster the histograms by.  ``None`` (default)
         falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     unit : str | None
@@ -196,13 +196,13 @@ class ResidualHistogram(_HistogramBase):
         bell_curve_color = _cfg_get(plot_cfg, "styling", "bell_curve_color", default="red")
         bell_curve_lw = float(_cfg_get(plot_cfg, "styling", "bell_curve_lw", default=1.5))
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
             label = self._group_label(key, group_cols)
 
             for component, ax in enumerate(axs):
                 column = first_col if component == 0 else second_col
-                values = group[column].to_numpy("float64")
+                values = cluster[column].to_numpy("float64")
                 values = values[np.isfinite(values)]
                 if values.size < 2:
                     continue
@@ -219,7 +219,7 @@ class ResidualHistogram(_HistogramBase):
                     label=label,
                 )
 
-                # Normal curve fitted to this group's sample.
+                # Normal curve fitted to this cluster's sample.
                 mu = float(np.mean(values))
                 sigma = float(np.std(values, ddof=1))
                 if sigma > 0.0:
@@ -291,7 +291,7 @@ class ResidualScanHistogram(_HistogramBase):
         Name of the figure configuration block under ``cfg.figures``.  Defaults
         to ``"residual_histogram"``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the histograms by.
+        Standard-frame column(s) to cluster the histograms by.
     unit : str | None
         Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.
     fig, ax : optional
@@ -345,13 +345,13 @@ class ResidualScanHistogram(_HistogramBase):
         error_color = _cfg_get(plot_cfg, "styling", "error_color", default="black")
         error_lw = float(_cfg_get(plot_cfg, "styling", "error_lw", default=1.0))
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
             label = self._group_label(key, group_cols)
 
             for component, ax in enumerate(axs):
                 column = al_col if component == 0 else ac_col
-                values = group[column].to_numpy("float64")
+                values = cluster[column].to_numpy("float64")
                 values = values[np.isfinite(values)]
                 if values.size == 0:
                     continue

@@ -2,8 +2,8 @@
 
 Every weighting strategy must emit the **same** DataFrame schema, because the
 engine concatenates the per-set frames into one CSV and the visualization layer
-groups on ``group_id``.  A strategy that omits a column (e.g. ``group_id``)
-would produce ``NaN`` for its rows and break downstream sorting/grouping.
+clusters on ``cluster_id``.  A strategy that omits a column (e.g. ``cluster_id``)
+would produce ``NaN`` for its rows and break downstream sorting/clustering.
 
 Keeping the schema in one place guarantees consistency across strategies.
 """
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from ..grouping import GroupList
+from ..clustering import ClusterList
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 WEIGHTS_DF_COLUMNS: tuple[str, ...] = (
     "set_id",
     "strategy",
-    "group_level",
+    "cluster_level",
     "observable_type",
-    "group_id",
+    "cluster_id",
     "parent_id",
     "parent_level",
     "time",
@@ -34,8 +34,8 @@ WEIGHTS_DF_COLUMNS: tuple[str, ...] = (
     "dec_residual_rad",
     "ra_residual_arcsec",
     "dec_residual_arcsec",
-    "group_ra_rms_arcsec",
-    "group_dec_rms_arcsec",
+    "cluster_ra_rms_arcsec",
+    "cluster_dec_rms_arcsec",
     "weight_ra",
     "weight_dec",
 )
@@ -100,7 +100,7 @@ def build_weights_df(
     n_obs: int,
     times: np.ndarray,
     residuals_rad: np.ndarray,
-    groups: GroupList,
+    clusters: ClusterList,
     weights_ra: np.ndarray,
     weights_dec: np.ndarray,
     strategy_name: str,
@@ -110,14 +110,14 @@ def build_weights_df(
 ) -> pd.DataFrame:
     """Build the standard per-observation weight metadata DataFrame.
 
-    Each row is one observation and carries its group assignment at ``level``,
+    Each row is one observation and carries its cluster assignment at ``level``,
     the RA/DEC residuals, and the assigned weights.
 
     Parameters
     ----------
     level : str
-        The grouping level whose ``group_id`` is reported (e.g. ``"timeframe"``).
-        If no group at that level covers an observation, ``group_id`` is ``""``.
+        The clustering level whose ``cluster_id`` is reported (e.g. ``"timeframe"``).
+        If no cluster at that level covers an observation, ``cluster_id`` is ``""``.
     observable_type : str
         Human-readable observable type (e.g. ``"absolute"``, ``"relative"``).
     """
@@ -127,13 +127,13 @@ def build_weights_df(
     parent_ids = np.full(n_obs, "", dtype=object)
     parent_levels = np.full(n_obs, "", dtype=object)
 
-    for g in groups:
+    for g in clusters:
         if g.level != level:
             continue
         ra_rms = rms(residuals_rad[g.indices, 0])
         dec_rms = rms(residuals_rad[g.indices, 1])
         for idx in g.indices:
-            group_ids[idx] = g.group_id
+            group_ids[idx] = g.cluster_id
             group_ra_rms[idx] = ra_rms
             group_dec_rms[idx] = dec_rms
             if g.parent_id:
@@ -145,9 +145,9 @@ def build_weights_df(
         {
             "set_id": set_id,
             "strategy": strategy_name,
-            "group_level": level,
+            "cluster_level": level,
             "observable_type": observable_type,
-            "group_id": group_ids,
+            "cluster_id": group_ids,
             "parent_id": parent_ids,
             "parent_level": parent_levels,
             "time": times,
@@ -155,8 +155,8 @@ def build_weights_df(
             "dec_residual_rad": residuals_rad[:, 1],
             "ra_residual_arcsec": np.rad2deg(residuals_rad[:, 0]) * 3600.0,
             "dec_residual_arcsec": np.rad2deg(residuals_rad[:, 1]) * 3600.0,
-            "group_ra_rms_arcsec": np.rad2deg(group_ra_rms) * 3600.0,
-            "group_dec_rms_arcsec": np.rad2deg(group_dec_rms) * 3600.0,
+            "cluster_ra_rms_arcsec": np.rad2deg(group_ra_rms) * 3600.0,
+            "cluster_dec_rms_arcsec": np.rad2deg(group_dec_rms) * 3600.0,
             "weight_ra": weights_ra,
             "weight_dec": weights_dec,
         }

@@ -24,7 +24,7 @@ weighting:
               sigmas:
                 pre_encounter:  {ra: 1.0, dec: 1.0} # 0.5 sigma
                 post_encounter: {ra: 4.0, dec: 4.0} # 2 sigma
-        grouping:
+        clustering:
           levels:
             - type: section
               sections:
@@ -41,10 +41,10 @@ weighting:
               mode: fixed
               sigmas:
                 Gaia: {ra: 0.01, dec: 0.01}
-        grouping:
+        clustering:
           levels:
             - type: set
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

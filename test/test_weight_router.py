@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from omegaconf import OmegaConf
 
-from orbitdet.observations.grouping import Group, GroupList
+from orbitdet.observations.clustering import Cluster, ClusterList
 from orbitdet.observations.weighting.engine import WeightEngine
 from orbitdet.observations.weighting.router import RouterWeight
 
@@ -30,12 +30,12 @@ def _make_obs_set(times, residuals, set_id="689", body_name="Earth", reference_p
 
 
 def _simple_groups(set_id, n):
-    return GroupList(
+    return ClusterList(
         [
-            Group(indices=np.arange(n, dtype=int), group_id=set_id, level="set", layer=-1),
-            Group(
+            Cluster(indices=np.arange(n, dtype=int), cluster_id=set_id, level="set", layer=-1),
+            Cluster(
                 indices=np.arange(n, dtype=int),
-                group_id=f"{set_id}_tf_0000",
+                cluster_id=f"{set_id}_tf_0000",
                 level="timeframe",
                 layer=0,
                 metadata={"t_start": 0.0, "t_end": 1e6},
@@ -148,8 +148,8 @@ class TestRouterCompute:
             default="id",
         )
         obs_set = _make_obs_set([0.0, 1.0, 2.0], [[1e-6, 1e-6], [1.1e-6, 1e-6], [0.9e-6, 1e-6]])
-        groups = _simple_groups("Voyager 2", 3)
-        weights, df = r.compute_weights(obs_set, groups, "Voyager 2", 0.001)
+        clusters = _simple_groups("Voyager 2", 3)
+        weights, df = r.compute_weights(obs_set, clusters, "Voyager 2", 0.001)
         assert weights.shape == (6,)
         assert np.all(np.isfinite(weights))
 
@@ -159,13 +159,13 @@ class TestRouterCompute:
             default="id",
         )
         obs_set = _make_obs_set([0.0, 1.0], [[1e-6, 1e-6], [1.1e-6, 1e-6]], set_id="689")
-        groups = _simple_groups("689", 2)
-        weights, _df = r.compute_weights(obs_set, groups, "689", 0.001)
+        clusters = _simple_groups("689", 2)
+        weights, _df = r.compute_weights(obs_set, clusters, "689", 0.001)
         # ID: single constant weight -> both obs share it.
         assert weights[0] == weights[2]
 
-    def test_per_route_grouping_overrides(self):
-        """A route with its own grouping rebuilds groups from that config."""
+    def test_per_route_clustering_overrides(self):
+        """A route with its own clustering rebuilds clusters from that config."""
         r = RouterWeight(
             routes=[
                 {
@@ -180,7 +180,7 @@ class TestRouterCompute:
                             },
                         ],
                     },
-                    "grouping": {
+                    "clustering": {
                         "levels": [
                             {
                                 "type": "section",
@@ -209,9 +209,9 @@ class TestRouterCompute:
             body_name="Voyager 2",
             reference_point="",
         )
-        # Engine-level groups are wrong for this route; the route must rebuild.
-        engine_groups = GroupList(
-            [Group(indices=np.array([0, 1], dtype=int), group_id="Voyager 2", level="set")]
+        # Engine-level clusters are wrong for this route; the route must rebuild.
+        engine_groups = ClusterList(
+            [Cluster(indices=np.array([0, 1], dtype=int), cluster_id="Voyager 2", level="set")]
         )
         weights, _df = r.compute_weights(obs_set, engine_groups, "Voyager 2", 0.001)
         arcsec_to_rad = np.pi / (180.0 * 3600.0)
@@ -240,7 +240,7 @@ class TestRouterFromConfig:
                         },
                     ],
                 },
-                "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
+                "clustering": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
             }
         )
         engine = WeightEngine.from_config(cfg)

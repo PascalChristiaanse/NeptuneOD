@@ -4,7 +4,7 @@ Dispatches each observation set to a sub-strategy chosen by matching rules,
 so different datasets in the same collection (Voyager 2, Gaia, NSDB, ...) can
 use different weighting schemes in a single configuration.
 
-Each route can also override the grouping used for its set, which matters when
+Each route can also override the clustering used for its set, which matters when
 different datasets need different partitions (e.g. Voyager needs a
 section+timeframe split, NSDB needs a set+timeframe split).
 
@@ -27,7 +27,7 @@ Example::
                    sigmas: {pre_encounter: {ra: 1.0, dec: 1.0},
                             post_encounter: {ra: 4.0, dec: 4.0}}}
                 - {level: timeframe, mode: rmse_descaled}
-            grouping:                # overrides the engine grouping for this set
+            clustering:                # overrides the engine clustering for this set
               levels:
                 - type: section
                   sections: [...]
@@ -51,7 +51,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from ..grouping import GroupList
+from ..clustering import ClusterList
 from .base import WeightStrategy
 from .builder import build_strategy
 from .registry import register_weight_strategy
@@ -77,8 +77,8 @@ class RouterWeight(WeightStrategy):
         ``source``
             The sub-strategy descriptor to use (may be a plain name or a
             mapping with a ``type``).
-        ``grouping`` (optional)
-            A grouping config overriding the engine grouping for matched sets.
+        ``clustering`` (optional)
+            A clustering config overriding the engine clustering for matched sets.
 
         The first matching route wins.
     default : dict | str | None
@@ -96,7 +96,7 @@ class RouterWeight(WeightStrategy):
         self._routes = [self._compile_route(r) for r in (routes or [])]
         self._default_spec = default if default is not None else "id_v2"
         self._default_strategy = None  # built lazily
-        self._grouping = None
+        self._clustering = None
         # Cache built strategies keyed by route index (and "default").
         self._cache: dict[Any, WeightStrategy] = {}
         # Tracks full-matrix preservation per route, computed lazily.
@@ -122,16 +122,16 @@ class RouterWeight(WeightStrategy):
         return {
             "match": match,
             "source": plain["source"],
-            "grouping": plain.get("grouping"),
+            "clustering": plain.get("clustering"),
         }
 
-    def set_grouping(self, grouping) -> None:
-        """Attach the engine grouping (used by routes without their own)."""
-        self._grouping = grouping
+    def set_clustering(self, clustering) -> None:
+        """Attach the engine clustering (used by routes without their own)."""
+        self._clustering = clustering
 
-    def _strategy_for(self, key: Any, spec: Any, grouping) -> WeightStrategy:
+    def _strategy_for(self, key: Any, spec: Any, clustering) -> WeightStrategy:
         if key not in self._cache:
-            self._cache[key] = build_strategy(spec, grouping=grouping)
+            self._cache[key] = build_strategy(spec, clustering=clustering)
         return self._cache[key]
 
     # ------------------------------------------------------------------
@@ -161,11 +161,11 @@ class RouterWeight(WeightStrategy):
         return True
 
     def _route_for(self, set_id: str) -> tuple[Any, Any, Any]:
-        """Return ``(key, source_spec, grouping)`` for *set_id*."""
+        """Return ``(key, source_spec, clustering)`` for *set_id*."""
         for i, route in enumerate(self._routes):
             if self._matches(route["match"], set_id):
-                return i, route["source"], route["grouping"] or self._grouping
-        return "default", self._default_spec, self._grouping
+                return i, route["source"], route["clustering"] or self._clustering
+        return "default", self._default_spec, self._clustering
 
     # ------------------------------------------------------------------
     # WeightStrategy API
@@ -185,7 +185,7 @@ class RouterWeight(WeightStrategy):
             self._preserve = False
             for spec in specs:
                 try:
-                    strat = build_strategy(spec, grouping=self._grouping)
+                    strat = build_strategy(spec, clustering=self._clustering)
                 except Exception:  # pragma: no cover - defensive
                     continue
                 if getattr(strat, "preserve_full_weight_matrix", False):
@@ -196,51 +196,55 @@ class RouterWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
-        key, spec, route_grouping = self._route_for(set_id)
+        key, spec, route_clustering = self._route_for(set_id)
 
-        # If the route overrides grouping, rebuild this set's groups.
-        if route_grouping is not None and route_grouping is not self._grouping:
-            from ..grouping import build_group_list
+        # If the route overrides clustering, rebuild this set's clusters.
+        if route_clustering is not None and route_clustering is not self._clustering:
+            from ..clustering import build_cluster_list
 
             times = np.array([t.to_float() for t in observation_set.observation_times])
-            groups = build_group_list(times, set_id, route_grouping)
+            clusters = build_cluster_list(times, set_id, route_clustering)
 
-        strategy = self._strategy_for(key, spec, route_grouping)
+        strategy = self._strategy_for(key, spec, route_clustering)
         logger.debug(
             "RouterWeight [%s]: route '%s' -> %s",
             set_id,
             key,
             strategy.__class__.__name__,
         )
-        return strategy.compute_weights(observation_set, groups, set_id, min_sigma_arcsec)
+        return strategy.compute_weights(
+            observation_set, clusters, set_id, min_sigma_arcsec, view=view
+        )
 
     def route_source(self, set_id: str) -> WeightStrategy:
         """Return the sub-strategy that would handle *set_id* (for diagnostics)."""
-        key, spec, route_grouping = self._route_for(set_id)
-        return self._strategy_for(key, spec, route_grouping)
+        key, spec, route_clustering = self._route_for(set_id)
+        return self._strategy_for(key, spec, route_clustering)
 
     def compute_block_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> list[np.ndarray] | None:
         """Delegate block-weight computation to the routed sub-strategy."""
-        key, spec, route_grouping = self._route_for(set_id)
+        key, spec, route_clustering = self._route_for(set_id)
 
-        if route_grouping is not None and route_grouping is not self._grouping:
-            from ..grouping import build_group_list
+        if route_clustering is not None and route_clustering is not self._clustering:
+            from ..clustering import build_cluster_list
 
             times = np.array([t.to_float() for t in observation_set.observation_times])
-            groups = build_group_list(times, set_id, route_grouping)
+            clusters = build_cluster_list(times, set_id, route_clustering)
 
-        strategy = self._strategy_for(key, spec, route_grouping)
+        strategy = self._strategy_for(key, spec, route_clustering)
         compute_blocks = getattr(strategy, "compute_block_weights", None)
         if not callable(compute_blocks):
             return None
-        return compute_blocks(observation_set, groups, set_id, min_sigma_arcsec)
+        return compute_blocks(observation_set, clusters, set_id, min_sigma_arcsec, view=view)

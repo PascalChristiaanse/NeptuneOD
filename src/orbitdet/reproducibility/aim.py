@@ -353,7 +353,7 @@ def aim_log_metrics(
     step : int, optional
         Global step / iteration number.  Aim auto-increments if omitted.
     context : dict, optional
-        Optional context dict for grouping (e.g. ``{"subset": "train"}``).
+        Optional context dict for clustering (e.g. ``{"subset": "train"}``).
     """
     run = get_aim_run()
     if run is None:

@@ -19,7 +19,7 @@ import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
-from ..grouping import build_group_list
+from ..clustering import build_cluster_list
 from ..utils import get_set_identifier
 from .base import OutlierStrategy
 from .registry import get_strategy_class
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class _ScopedStrategy:
-    """A strategy paired with an optional set and/or group filter.
+    """A strategy paired with an optional set and/or cluster filter.
 
     Parameters
     ----------
@@ -38,31 +38,31 @@ class _ScopedStrategy:
         If not None, the strategy is only applied to observation sets whose
         :func:`get_set_identifier` is in this set.  If None, the strategy
         applies to all sets.
-    group_filter : set[str] | None
+    cluster_filter : set[str] | None
         If not None, the strategy is only applied to observations that fall in
-        one of the named groups (matched on the group's short ``name``, i.e.
+        one of the named clusters (matched on the cluster's short ``name``, i.e.
         the section name or timeframe id).  Groups come from the outlier
-        subsystem's **own** ``grouping`` config, which is independent of the
-        weighting grouping.
+        subsystem's **own** ``clustering`` config, which is independent of the
+        weighting clustering.
     """
 
     def __init__(
         self,
         strategy: OutlierStrategy,
         set_filter: set[str] | None,
-        group_filter: set[str] | None = None,
+        cluster_filter: set[str] | None = None,
     ):
         self.strategy = strategy
         self.set_filter = set_filter
-        self.group_filter = group_filter
+        self.cluster_filter = cluster_filter
 
     def applies_to(self, set_id: str) -> bool:
         """Check whether this strategy applies to the given set identifier."""
         return self.set_filter is None or set_id in self.set_filter
 
-    def applies_to_group(self, group_name: str) -> bool:
-        """Check whether this strategy applies to the given group name."""
-        return self.group_filter is None or group_name in self.group_filter
+    def applies_to_cluster(self, cluster_name: str) -> bool:
+        """Check whether this strategy applies to the given cluster name."""
+        return self.cluster_filter is None or cluster_name in self.cluster_filter
 
 
 class OutlierEngine:
@@ -73,10 +73,10 @@ class OutlierEngine:
     strategies : list[_ScopedStrategy]
         Ordered list of scoped strategies to apply.  Each strategy is applied
         in sequence to every observation set in the collection.
-    grouping : DictConfig | None
-        The outlier subsystem's **own** grouping configuration.  When present,
-        strategies with a ``groups`` filter are applied per-group (matching the
-        group's short name), using the same partitioning mechanisms the
+    clustering : DictConfig | None
+        The outlier subsystem's **own** clustering configuration.  When present,
+        strategies with a ``clusters`` filter are applied per-cluster (matching the
+        cluster's short name), using the same partitioning mechanisms the
         weighting subsystem uses but with a config that is independent of it.
         When None, only the whole-set ``sets`` scoping applies.
     """
@@ -84,12 +84,12 @@ class OutlierEngine:
     def __init__(
         self,
         strategies: list[_ScopedStrategy],
-        grouping: DictConfig | None = None,
+        clustering: DictConfig | None = None,
     ):
         if not strategies:
             raise ValueError("At least one outlier strategy is required.")
         self._strategies = list(strategies)
-        self._grouping = grouping
+        self._clustering = clustering
 
     @classmethod
     def from_strategies(cls, strategies: list[OutlierStrategy]) -> OutlierEngine:
@@ -214,11 +214,11 @@ class OutlierEngine:
 
             set_metadata: dict[str, Any] = {"set_id": set_id, "strategies": []}
 
-            # Build this subsystem's own grouping for this set (if configured).
-            groups = None
-            if self._grouping is not None:
+            # Build this subsystem's own clustering for this set (if configured).
+            clusters = None
+            if self._clustering is not None:
                 times = np.array([t.to_float() for t in obs_set.observation_times])
-                groups = build_group_list(times, set_id, self._grouping)
+                clusters = build_cluster_list(times, set_id, self._clustering)
 
             for scoped in self._strategies:
                 # The sets filter in configs uses observatory codes (e.g. "689", "Voyager 2"),
@@ -232,15 +232,15 @@ class OutlierEngine:
                     continue
 
                 strategy_name = scoped.strategy.__class__.__name__
-                if groups is not None and scoped.group_filter is not None:
+                if clusters is not None and scoped.cluster_filter is not None:
                     logger.debug(
-                        "Applying strategy '%s' to set '%s' per-group %s",
+                        "Applying strategy '%s' to set '%s' per-cluster %s",
                         strategy_name,
                         set_id,
-                        scoped.group_filter,
+                        scoped.cluster_filter,
                     )
-                    current_set, strategy_meta = self._apply_group_scoped(
-                        scoped, current_set, bodies, groups
+                    current_set, strategy_meta = self._apply_cluster_scoped(
+                        scoped, current_set, bodies, clusters
                     )
                 else:
                     logger.debug("Applying strategy '%s' to set '%s'", strategy_name, set_id)
@@ -307,35 +307,35 @@ class OutlierEngine:
         return filtered_collection, rejected_collection, summary
 
     # ------------------------------------------------------------------
-    # Group-scoped application
+    # Cluster-scoped application
     # ------------------------------------------------------------------
 
-    def _apply_group_scoped(
+    def _apply_cluster_scoped(
         self,
         scoped: _ScopedStrategy,
         observation_set: obs.SingleObservationSet,
         bodies: env.SystemOfBodies,
-        groups,
+        clusters,
     ) -> tuple[obs.SingleObservationSet, dict[str, Any]]:
-        """Apply a strategy to only the observations in matching groups.
+        """Apply a strategy to only the observations in matching clusters.
 
-        Scoping uses each group's time window (via Tudat's
+        Scoping uses each cluster's time window (via Tudat's
         ``time_bounds_filtering``) rather than set indices, so it remains valid
         across repeated applications even as observations are removed.
         """
-        # Resolve matching groups that have a usable time window.
+        # Resolve matching clusters that have a usable time window.
         windows: list[tuple[float, float]] = []
-        n_group = 0
-        for g in groups:
-            if not scoped.applies_to_group(g.name):
+        n_cluster = 0
+        for g in clusters:
+            if not scoped.applies_to_cluster(g.name):
                 continue
             t_start = g.metadata.get("t_start")
             t_end = g.metadata.get("t_end")
             if t_start is None or t_end is None:
-                logger.warning("Group '%s' has no time bounds; cannot scope by group.", g.name)
+                logger.warning("Cluster '%s' has no time bounds; cannot scope by cluster.", g.name)
                 continue
             windows.append((float(t_start), float(t_end)))
-            n_group += g.size
+            n_cluster += g.size
 
         n_total = len(_get_epochs_float(observation_set))
         if not windows:
@@ -345,7 +345,7 @@ class OutlierEngine:
                 "n_rejected": 0,
                 "n_total": n_total,
                 "rejected_epochs": [],
-                "group_scoped": True,
+                "cluster_scoped": True,
             }
 
         current_set = observation_set
@@ -370,8 +370,8 @@ class OutlierEngine:
         n_now = len(_get_epochs_float(current_set))
         meta: dict[str, Any] = {
             "strategy": scoped.strategy.__class__.__name__,
-            "group_scoped": True,
-            "n_group": n_group,
+            "cluster_scoped": True,
+            "n_cluster": n_cluster,
             "n_accepted": n_now,
             "n_rejected": n_total - n_now,
             "n_total": n_total,
@@ -385,7 +385,7 @@ class OutlierEngine:
 
     @classmethod
     def from_config(
-        cls, cfg: DictConfig, default_grouping: DictConfig | None = None
+        cls, cfg: DictConfig, default_clustering: DictConfig | None = None
     ) -> OutlierEngine:
         """Build an engine from a Hydra configuration node.
 
@@ -393,7 +393,7 @@ class OutlierEngine:
 
             outlier_rejection:
               enabled: true
-              grouping:                 # optional, independent of weighting
+              clustering:                 # optional, independent of weighting
                 levels:
                   - type: section
                     sections: [...]
@@ -401,7 +401,7 @@ class OutlierEngine:
                 - type: residual_threshold
                   threshold_arcsec: 1.5
                   sets: ["689"]         # optional set filter
-                  groups: ["night_1"]   # optional group-name filter
+                  clusters: ["night_1"]   # optional cluster-name filter
                 - type: epoch_filter
                   epochs: [...]
 
@@ -413,7 +413,7 @@ class OutlierEngine:
         Returns
         -------
         OutlierEngine
-            An engine with the configured strategies and its own grouping.
+            An engine with the configured strategies and its own clustering.
 
         Raises
         ------
@@ -424,7 +424,7 @@ class OutlierEngine:
         if not strategies_cfg:
             raise ValueError("Outlier rejection config must have a non-empty 'strategies' list.")
 
-        grouping = OmegaConf.select(cfg, "grouping") or default_grouping
+        clustering = OmegaConf.select(cfg, "clustering") or default_clustering
 
         scoped_strategies: list[_ScopedStrategy] = []
         for entry in strategies_cfg:
@@ -437,7 +437,7 @@ class OutlierEngine:
             # Build kwargs from the config entry (excluding the filter keys)
             kwargs = {}
             set_filter: set[str] | None = None
-            group_filter: set[str] | None = None
+            cluster_filter: set[str] | None = None
             for key, value in entry.items():
                 if key == "type":
                     continue
@@ -445,8 +445,8 @@ class OutlierEngine:
                     # Convert to a set of strings for fast lookup
                     set_filter = {str(s) for s in value}
                     continue
-                if key == "groups":
-                    group_filter = {str(s) for s in value}
+                if key == "clusters":
+                    cluster_filter = {str(s) for s in value}
                     continue
                 kwargs[key] = value
 
@@ -456,9 +456,9 @@ class OutlierEngine:
                 kwargs["epochs_to_remove"] = list(kwargs.pop("epochs"))
 
             strategy_instance = cls_strategy(**kwargs)
-            scoped_strategies.append(_ScopedStrategy(strategy_instance, set_filter, group_filter))
+            scoped_strategies.append(_ScopedStrategy(strategy_instance, set_filter, cluster_filter))
 
-        return cls(scoped_strategies, grouping=grouping)
+        return cls(scoped_strategies, clustering=clustering)
 
 
 # ---------------------------------------------------------------------------

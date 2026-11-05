@@ -13,7 +13,7 @@ weighting:
     type: router
     default:
       type: id_v2
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

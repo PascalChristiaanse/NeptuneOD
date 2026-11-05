@@ -2,7 +2,7 @@
 
 Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the standard
 observation frame joined to the live observation sets - so the residuals and the
-grouping column come from one tidy frame instead of a per-set walk over the
+clustering column come from one tidy frame instead of a per-set walk over the
 collection's link ends.
 """
 
@@ -27,7 +27,7 @@ __all__ = ["ResidualQQ"]
 class ResidualQQ(Plot):
     """Q-Q plots of the RA and Dec residuals against a normal distribution.
 
-    Each group (by default ``observatory_code``) contributes one series per
+    Each cluster (by default ``observatory_code``) contributes one series per
     component.  The sample is standardized before plotting, so the axes are in
     units of standard deviations and the residual unit does not matter - a
     normally distributed sample lies on the ``y = x`` reference line.
@@ -42,7 +42,7 @@ class ResidualQQ(Plot):
         Name of the figure configuration block under ``cfg.figures``.  Defaults
         to ``"residual_qq"``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the series by.  ``None`` (default)
+        Standard-frame column(s) to cluster the series by.  ``None`` (default)
         falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     fig, ax : optional
@@ -73,7 +73,7 @@ class ResidualQQ(Plot):
         self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -120,14 +120,14 @@ class ResidualQQ(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
             marker = marker_types[index % len(marker_types)]
             label = self._group_label(key, group_cols)
 
             for component, ax in enumerate(axs):
                 column = "residual_first_rad" if component == 0 else "residual_second_rad"
-                theoretical, sample = qq_points(group[column].to_numpy("float64"))
+                theoretical, sample = qq_points(cluster[column].to_numpy("float64"))
                 if theoretical.size == 0:
                     continue
                 ax.scatter(

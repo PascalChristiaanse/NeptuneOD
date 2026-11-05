@@ -204,7 +204,7 @@ class ResidualsPSD(Plot):
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the
     standard observation frame joined to the live observation sets - so the
-    residuals, epochs and grouping column come from one tidy frame instead of a
+    residuals, epochs and clustering column come from one tidy frame instead of a
     per-set walk over the collection's link ends.  The spectral estimate itself
     is delegated to :mod:`orbitdet.analysis.distribution`.
 
@@ -222,7 +222,7 @@ class ResidualsPSD(Plot):
         Name of the figure configuration block under ``cfg.figures``, used for
         the output file name.  Defaults to ``"residuals_psd"``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the spectra by.  ``None`` (default)
+        Standard-frame column(s) to cluster the spectra by.  ``None`` (default)
         falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     include_rejected : bool
@@ -249,7 +249,7 @@ class ResidualsPSD(Plot):
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -315,17 +315,17 @@ class ResidualsPSD(Plot):
         if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
             target_name = str(frame["observed_object"].dropna().iloc[0])
 
-        for set_index, (key, group) in enumerate(
+        for set_index, (key, cluster) in enumerate(
             frame.groupby(group_cols, dropna=False, sort=True)
         ):
             label = self._group_label(key, group_cols)
             color = colors(set_index % colors.N)
 
-            obs_times_sec_j2000 = group["epoch_tdb"].to_numpy("float64")
+            obs_times_sec_j2000 = cluster["epoch_tdb"].to_numpy("float64")
             residuals = np.column_stack(
                 [
-                    group["residual_first_rad"].to_numpy("float64"),
-                    group["residual_second_rad"].to_numpy("float64"),
+                    cluster["residual_first_rad"].to_numpy("float64"),
+                    cluster["residual_second_rad"].to_numpy("float64"),
                 ]
             )
 

@@ -1,6 +1,6 @@
-"""Low-level partitioners for the shared observation-grouping system.
+"""Low-level partitioners for the shared observation-clustering system.
 
-These functions split a set of observation times into atomic groups.  They are
+These functions split a set of observation times into atomic clusters.  They are
 mechanism-only: they know nothing about weighting or outlier rejection.
 """
 
@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from .models import Group
+from .models import Cluster
 
 
 def partition_by_set(
     n_obs: int,
     set_id: str,
-) -> list[Group]:
-    """Create a single set-level group containing all observations.
+) -> list[Cluster]:
+    """Create a single set-level cluster containing all observations.
 
     Parameters
     ----------
@@ -26,13 +26,13 @@ def partition_by_set(
 
     Returns
     -------
-    list[Group]
-        A list with one set-level group.
+    list[Cluster]
+        A list with one set-level cluster.
     """
     return [
-        Group(
+        Cluster(
             indices=np.arange(n_obs, dtype=int),
-            group_id=f"{set_id}",
+            cluster_id=f"{set_id}",
             level="set",
             layer=-1,
             layer_name="set",
@@ -46,7 +46,7 @@ def partition_by_timeframes(
     min_obs_per_frame: int = 1,
     set_id: str = "",
     layer: int = 0,
-) -> list[Group]:
+) -> list[Cluster]:
     """Split observations into timeframes (nights) based on time gaps.
 
     Parameters
@@ -58,13 +58,13 @@ def partition_by_timeframes(
     min_obs_per_frame : int
         Minimum observations before a gap triggers a new frame.  Default: 1.
     set_id : str
-        Identifier for the set, used in group ids.
+        Identifier for the set, used in cluster ids.
     layer : int
-        Partitioning layer index for the produced groups.
+        Partitioning layer index for the produced clusters.
 
     Returns
     -------
-    list[Group]
+    list[Cluster]
         Groups, one per timeframe.
     """
     gap_threshold_sec = gap_threshold_hours * 3600.0
@@ -74,12 +74,12 @@ def partition_by_timeframes(
         return []
 
     frame_indices = _split_by_gap(times, gap_threshold_sec, min_obs_per_frame)
-    groups: list[Group] = []
+    clusters: list[Cluster] = []
     for i, idx in enumerate(frame_indices):
-        groups.append(
-            Group(
+        clusters.append(
+            Cluster(
                 indices=np.array(idx, dtype=int),
-                group_id=f"{set_id}_tf_{i:04d}" if set_id else f"tf_{i:04d}",
+                cluster_id=f"{set_id}_tf_{i:04d}" if set_id else f"tf_{i:04d}",
                 level="timeframe",
                 layer=layer,
                 layer_name="timeframe",
@@ -90,7 +90,7 @@ def partition_by_timeframes(
                 },
             )
         )
-    return groups
+    return clusters
 
 
 def partition_by_sections(
@@ -98,7 +98,7 @@ def partition_by_sections(
     section_bounds: list[tuple[str, float, float]],
     set_id: str = "",
     layer: int = 0,
-) -> list[Group]:
+) -> list[Cluster]:
     """Split observations into named time intervals.
 
     Parameters
@@ -110,16 +110,16 @@ def partition_by_sections(
         section's time window.  Sections are applied in order; an observation
         falls into the **first** matching section.
     set_id : str
-        Identifier for the set, used in group ids.
+        Identifier for the set, used in cluster ids.
     layer : int
-        Partitioning layer index for the produced groups.
+        Partitioning layer index for the produced clusters.
 
     Returns
     -------
-    list[Group]
+    list[Cluster]
         Groups, one per section with observations in it.
     """
-    groups: list[Group] = []
+    clusters: list[Cluster] = []
     assigned = np.zeros(len(times), dtype=bool)
 
     for name, t_start, t_end in section_bounds:
@@ -127,10 +127,10 @@ def partition_by_sections(
         indices = np.where(mask)[0]
         if len(indices) > 0:
             assigned[indices] = True
-            groups.append(
-                Group(
+            clusters.append(
+                Cluster(
                     indices=indices,
-                    group_id=f"{set_id}_{name}" if set_id else name,
+                    cluster_id=f"{set_id}_{name}" if set_id else name,
                     level="section",
                     layer=layer,
                     layer_name="section",
@@ -143,7 +143,7 @@ def partition_by_sections(
                 )
             )
 
-    return groups
+    return clusters
 
 
 def _split_by_gap(

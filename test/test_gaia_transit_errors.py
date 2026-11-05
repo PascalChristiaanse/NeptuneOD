@@ -9,7 +9,7 @@ from orbitdet.visualization.gaia_transit_errors import (
 
 
 def test_transit_labels_splits_on_gap():
-    # Three groups: [0, 10], [1000, 1010, 1020], [100000].
+    # Three clusters: [0, 10], [1000, 1010, 1020], [100000].
     epochs = np.array([0.0, 10.0, 1000.0, 1010.0, 1020.0, 100000.0])
     labels = _transit_labels(epochs, gap_seconds=100.0)
     assert labels.tolist() == [0, 0, 1, 1, 1, 2]

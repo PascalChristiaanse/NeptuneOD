@@ -300,11 +300,11 @@ class Residuals(Plot):
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the
     standard observation frame joined to the live observation sets - and draws
-    one scatter series per group of a chosen column.  By default the grouping is
+    one scatter series per cluster of a chosen column.  By default the clustering is
     ``observatory_code``, so the same plot covers "per observatory", "per set
     id", "per source", "per coordinate kind" or any other standard-frame column
     without new code: pass ``group_by`` (or set ``group_by`` in the figure
-    config).  Each group's legend entry reports its per-component RMS, read from
+    config).  Each cluster's legend entry reports its per-component RMS, read from
     :func:`orbitdet.analysis.statistics.rms`.
 
     Parameters
@@ -318,7 +318,7 @@ class Residuals(Plot):
         Name of the figure configuration block under ``cfg.figures`` (e.g.
         ``"prefit_residuals_spice"``).  Defaults to ``"residuals"``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the scatter series by.  ``None``
+        Standard-frame column(s) to cluster the scatter series by.  ``None``
         (default) falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     unit : str | None
@@ -359,7 +359,7 @@ class Residuals(Plot):
         self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -377,7 +377,7 @@ class Residuals(Plot):
 
     @staticmethod
     def _rms_label(label: str, value: float, unit: str) -> str:
-        """Render a group's legend entry with its RMS."""
+        """Render a cluster's legend entry with its RMS."""
         if value is None or not np.isfinite(value):
             return label
         return f"{label} - RMS: {value:.3e} {unit}"
@@ -424,14 +424,14 @@ class Residuals(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
             marker = marker_types[index % len(marker_types)]
             label = self._group_label(key, group_cols)
 
-            epochs = _seconds_since_j2000_to_datetimes(group["epoch_tdb"].to_numpy("float64"))
-            first = group[first_col].to_numpy("float64")
-            second = group[second_col].to_numpy("float64")
+            epochs = _seconds_since_j2000_to_datetimes(cluster["epoch_tdb"].to_numpy("float64"))
+            first = cluster[first_col].to_numpy("float64")
+            second = cluster[second_col].to_numpy("float64")
 
             axs[0].scatter(
                 epochs,
@@ -518,8 +518,8 @@ class ResidualsScan(Plot):
 
     Only scanning-instrument rows carry a scan angle; frames without one cannot
     be plotted in the scan frame and raise a :class:`ValueError`.  Rows grouped by
-    ``group_by`` (default ``"observatory_code"``), one scatter series per group,
-    with each group's RMS in the legend, exactly like :class:`Residuals`.
+    ``group_by`` (default ``"observatory_code"``), one scatter series per cluster,
+    with each cluster's RMS in the legend, exactly like :class:`Residuals`.
 
     Parameters
     ----------
@@ -533,7 +533,7 @@ class ResidualsScan(Plot):
         ``"prefit_residuals_spice_scan"``).  When ``None`` the snake_case class
         name is used.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the scatter series by.  ``None``
+        Standard-frame column(s) to cluster the scatter series by.  ``None``
         (default) falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     unit : str | None
@@ -574,7 +574,7 @@ class ResidualsScan(Plot):
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -592,7 +592,7 @@ class ResidualsScan(Plot):
 
     @staticmethod
     def _rms_label(label: str, value: float, unit: str) -> str:
-        """Render a group's legend entry with its RMS."""
+        """Render a cluster's legend entry with its RMS."""
         if value is None or not np.isfinite(value):
             return label
         return f"{label} - RMS: {value:.3e} {unit}"
@@ -642,14 +642,14 @@ class ResidualsScan(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
             marker = marker_types[index % len(marker_types)]
             label = self._group_label(key, group_cols)
 
-            epochs = _seconds_since_j2000_to_datetimes(group["epoch_tdb"].to_numpy("float64"))
-            along = group[al_col].to_numpy("float64")
-            across = group[ac_col].to_numpy("float64")
+            epochs = _seconds_since_j2000_to_datetimes(cluster["epoch_tdb"].to_numpy("float64"))
+            along = cluster[al_col].to_numpy("float64")
+            across = cluster[ac_col].to_numpy("float64")
 
             axs[0].scatter(
                 epochs,
@@ -737,7 +737,7 @@ class NormalizedResiduals(Plot):
 
     A well-calibrated solution has ``RMS(z) ~ 1``; reference lines are drawn at 0
     and ±1.  Rows are grouped by ``group_by`` (default ``"observatory_code"``), one
-    scatter series per group, with each group's ``RMS(z)`` in the legend.
+    scatter series per cluster, with each cluster's ``RMS(z)`` in the legend.
 
     The normalization is the *applied-weight* sigma (the ``sigma_*_rad`` columns
     the access layer fills).  For a full (off-diagonal) weight matrix this is the
@@ -756,7 +756,7 @@ class NormalizedResiduals(Plot):
         ``"postfit_normalized_residuals"``).  When ``None`` the snake_case class
         name is used.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the scatter series by.  ``None``
+        Standard-frame column(s) to cluster the scatter series by.  ``None``
         (default) falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     fig : plt.Figure | None
@@ -791,7 +791,7 @@ class NormalizedResiduals(Plot):
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -809,7 +809,7 @@ class NormalizedResiduals(Plot):
 
     @staticmethod
     def _rms_label(label: str, value: float) -> str:
-        """Render a group's legend entry with its RMS(z)."""
+        """Render a cluster's legend entry with its RMS(z)."""
         if value is None or not np.isfinite(value):
             return label
         return f"{label} - RMS(z): {value:.3f}"
@@ -860,14 +860,14 @@ class NormalizedResiduals(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
             marker = marker_types[index % len(marker_types)]
             label = self._group_label(key, group_cols)
 
-            epochs = _seconds_since_j2000_to_datetimes(group["epoch_tdb"].to_numpy("float64"))
-            z_first = group["z_first"].to_numpy("float64")
-            z_second = group["z_second"].to_numpy("float64")
+            epochs = _seconds_since_j2000_to_datetimes(cluster["epoch_tdb"].to_numpy("float64"))
+            z_first = cluster["z_first"].to_numpy("float64")
+            z_second = cluster["z_second"].to_numpy("float64")
 
             axs[0].scatter(
                 epochs,
@@ -975,7 +975,7 @@ class NormalizedResidualScan(Plot):
 
     Only scanning-instrument rows carry a scan angle; a frame without one raises a
     :class:`ValueError`.  Rows are grouped by ``group_by`` (default
-    ``"observatory_code"``), one scatter series per group.
+    ``"observatory_code"``), one scatter series per cluster.
 
     Parameters
     ----------
@@ -988,7 +988,7 @@ class NormalizedResidualScan(Plot):
         ``"postfit_normalized_residuals_scan"``).  When ``None`` the snake_case
         class name is used.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the scatter series by.  ``None``
+        Standard-frame column(s) to cluster the scatter series by.  ``None``
         (default) falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     fig : plt.Figure | None
@@ -1023,7 +1023,7 @@ class NormalizedResidualScan(Plot):
         self.name = use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -1041,7 +1041,7 @@ class NormalizedResidualScan(Plot):
 
     @staticmethod
     def _rms_label(label: str, value: float) -> str:
-        """Render a group's legend entry with its RMS(z)."""
+        """Render a cluster's legend entry with its RMS(z)."""
         if value is None or not np.isfinite(value):
             return label
         return f"{label} - RMS(z): {value:.3f}"
@@ -1134,7 +1134,7 @@ class NormalizedResidualScan(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for index, (key, group) in enumerate(
+        for index, (key, cluster) in enumerate(
             group_frame.groupby(group_cols, dropna=False, sort=True)
         ):
             color = colors(index % colors.N)
@@ -1142,13 +1142,13 @@ class NormalizedResidualScan(Plot):
             label = self._group_label(key, group_cols)
 
             set_indices = (
-                group["observation_set_index"].dropna().astype(int).unique().tolist()
-                if "observation_set_index" in group.columns
+                cluster["observation_set_index"].dropna().astype(int).unique().tolist()
+                if "observation_set_index" in cluster.columns
                 else []
             )
             set_column = (
-                group["observation_set_index"].astype(int)
-                if "observation_set_index" in group.columns
+                cluster["observation_set_index"].astype(int)
+                if "observation_set_index" in cluster.columns
                 else None
             )
             epoch_chunks: list[np.ndarray] = []
@@ -1156,9 +1156,9 @@ class NormalizedResidualScan(Plot):
             ac_chunks: list[np.ndarray] = []
             for set_index in set_indices:
                 if set_column is None:
-                    rows = group
+                    rows = cluster
                 else:
-                    rows = group.loc[set_column == set_index]
+                    rows = cluster.loc[set_column == set_index]
                 whitened = self._whitened_set(set_index, rows, al_col, ac_col)
                 if whitened is None:
                     continue

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from orbitdet.observations.grouping import Group, GroupList
+from orbitdet.observations.clustering import Cluster, ClusterList
 from orbitdet.observations.weighting.layered import LayeredWeight
 
 
@@ -22,39 +22,39 @@ def _make_obs_set(times, residuals) -> SimpleNamespace:
     )
 
 
-def _two_layer_groups(set_id: str) -> GroupList:
+def _two_layer_groups(set_id: str) -> ClusterList:
     """Section layer (0) + timeframe layer (1) over four observations."""
-    pre_section = Group(
+    pre_section = Cluster(
         indices=np.array([0, 1, 2], dtype=int),
-        group_id=f"{set_id}_pre_encounter",
+        cluster_id=f"{set_id}_pre_encounter",
         level="section",
         layer=0,
         metadata={"section_name": "pre_encounter", "t_start": 0.0, "t_end": 2.0},
     )
-    post_section = Group(
+    post_section = Cluster(
         indices=np.array([3], dtype=int),
-        group_id=f"{set_id}_post_encounter",
+        cluster_id=f"{set_id}_post_encounter",
         level="section",
         layer=0,
         metadata={"section_name": "post_encounter", "t_start": 100.0, "t_end": 100.0},
     )
-    tf0 = Group(
+    tf0 = Cluster(
         indices=np.array([0, 1, 2], dtype=int),
-        group_id=f"{set_id}_tf_0000",
+        cluster_id=f"{set_id}_tf_0000",
         level="timeframe",
         layer=1,
-        parent_id=pre_section.group_id,
+        parent_id=pre_section.cluster_id,
         metadata={"t_start": 0.0, "t_end": 2.0},
     )
-    tf1 = Group(
+    tf1 = Cluster(
         indices=np.array([3], dtype=int),
-        group_id=f"{set_id}_tf_0001",
+        cluster_id=f"{set_id}_tf_0001",
         level="timeframe",
         layer=1,
-        parent_id=post_section.group_id,
+        parent_id=post_section.cluster_id,
         metadata={"t_start": 100.0, "t_end": 100.0},
     )
-    return GroupList([pre_section, post_section, tf0, tf1])
+    return ClusterList([pre_section, post_section, tf0, tf1])
 
 
 class TestLayeredWeightConstruction:
@@ -102,9 +102,9 @@ class TestLayeredWeightCompute:
         # Residuals in radians: ~1e-6 rad ≈ 0.2 arcsec.
         residuals = np.array([[1e-6, 1e-6], [1.2e-6, 1.1e-6], [0.9e-6, 1.0e-6], [5e-6, 5e-6]])
         obs_set = _make_obs_set([0.0, 1.0, 2.0, 100.0], residuals)
-        groups = _two_layer_groups("Voyager 2")
+        clusters = _two_layer_groups("Voyager 2")
 
-        weights, df = strategy.compute_weights(obs_set, groups, "Voyager 2", 0.001)
+        weights, df = strategy.compute_weights(obs_set, clusters, "Voyager 2", 0.001)
 
         assert weights.shape == (8,)
         assert np.all(np.isfinite(weights))
@@ -127,9 +127,9 @@ class TestLayeredWeightCompute:
         )
         residuals = np.array([[1e-6, 1e-6], [1e-6, 1e-6], [1e-6, 1e-6], [1e-6, 1e-6]])
         obs_set = _make_obs_set([0.0, 1.0, 2.0, 100.0], residuals)
-        groups = _two_layer_groups("Voyager 2")
+        clusters = _two_layer_groups("Voyager 2")
 
-        weights, _df = strategy.compute_weights(obs_set, groups, "Voyager 2", 0.001)
+        weights, _df = strategy.compute_weights(obs_set, clusters, "Voyager 2", 0.001)
 
         # Pure fixed sigmas: RA and DEC weights equal 1/sigma^2 (in rad).
         arcsec_to_rad = np.pi / (180.0 * 3600.0)
@@ -152,9 +152,9 @@ class TestLayeredWeightCompute:
         )
         residuals = np.array([[1e-6, 1e-6], [1.2e-6, 1.1e-6], [0.9e-6, 1.0e-6], [5e-6, 5e-6]])
         obs_set = _make_obs_set([0.0, 1.0, 2.0, 100.0], residuals)
-        groups = _two_layer_groups("Voyager 2")
+        clusters = _two_layer_groups("Voyager 2")
 
-        weights, _df = strategy.compute_weights(obs_set, groups, "Voyager 2", 0.001)
+        weights, _df = strategy.compute_weights(obs_set, clusters, "Voyager 2", 0.001)
         assert weights.shape == (8,)
         assert np.all(np.isfinite(weights))
 
@@ -162,16 +162,16 @@ class TestLayeredWeightCompute:
         strategy = LayeredWeight(layers=[{"level": "timeframe", "mode": "rmse"}])
         residuals = np.array([[1e-6, 1e-6], [1e-6, 1e-6]])
         obs_set = _make_obs_set([0.0, 1.0], residuals)
-        groups = GroupList(
-            [Group(indices=np.array([0, 1], dtype=int), group_id="s", level="set", layer=0)]
+        clusters = ClusterList(
+            [Cluster(indices=np.array([0, 1], dtype=int), cluster_id="s", level="set", layer=0)]
         )
         with pytest.raises(ValueError, match="no layer matched"):
-            strategy.compute_weights(obs_set, groups, "689", 0.001)
+            strategy.compute_weights(obs_set, clusters, "689", 0.001)
 
     def test_empty_set(self):
         strategy = LayeredWeight(layers=[{"level": "timeframe", "mode": "rmse"}])
         obs_set = _make_obs_set([], np.empty((0, 2)))
-        groups = GroupList()
-        weights, df = strategy.compute_weights(obs_set, groups, "689", 0.001)
+        clusters = ClusterList()
+        weights, df = strategy.compute_weights(obs_set, clusters, "689", 0.001)
         assert weights.shape == (0,)
         assert df.empty

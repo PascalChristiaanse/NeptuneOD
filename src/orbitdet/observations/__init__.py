@@ -14,20 +14,20 @@ from . import (
     simulated,
     standard_frames,
 )
+from .clustering import (
+    Cluster,
+    ClusterList,
+    build_cluster_list,
+    partition_by_sections,
+    partition_by_set,
+    partition_by_timeframes,
+)
 from .collection import create_observation_collection
 from .configs import (
     ObservationDatasetConfig,
     SimulatedObservationConfig,
 )
 from .factory import create_observation_dataset
-from .grouping import (
-    Group,
-    GroupList,
-    build_group_list,
-    partition_by_sections,
-    partition_by_set,
-    partition_by_timeframes,
-)
 from .helpers import get_observatory_info
 from .outlier_rejection import (
     OutlierEngine,
@@ -89,9 +89,9 @@ __all__ = [
     "WeightStrategy",
     "WeightEngine",
     # Grouping (shared by weighting and outlier rejection)
-    "Group",
-    "GroupList",
-    "build_group_list",
+    "Cluster",
+    "ClusterList",
+    "build_cluster_list",
     "partition_by_set",
     "partition_by_timeframes",
     "partition_by_sections",

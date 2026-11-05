@@ -228,7 +228,7 @@ def _match_rows_by_epoch(
     """Map each set observation to its row in the frame, by epoch.
 
     ``observation_set_index`` already says *which* rows built a set; this
-    resolves *which is which* within that group.  Rows are consumed in file
+    resolves *which is which* within that cluster.  Rows are consumed in file
     order and each set epoch takes the first unused row that matches it, so a
     frame holding the same epoch twice maps its two rows to the set's two
     observations in the order both were built in - the same rule the collection

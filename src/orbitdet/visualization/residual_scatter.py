@@ -2,7 +2,7 @@
 
 Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the standard
 observation frame joined to the live observation sets - so the residuals, the
-grouping column and the epochs all come from one tidy frame instead of a
+clustering column and the epochs all come from one tidy frame instead of a
 per-set walk over the collection's link ends.
 """
 
@@ -39,7 +39,7 @@ def _format_colorbar_tick(value, _position: int | None = None) -> str:
 class ResidualScatter(Plot):
     """Plot RA vs Dec residuals as a scatter, with observation time as colour.
 
-    Each group (by default ``observatory_code``) gets its own marker shape, and
+    Each cluster (by default ``observatory_code``) gets its own marker shape, and
     every point is coloured on a gradient of its observation epoch, so temporal
     trends are visible even though time is not an axis.  A colourbar maps the
     colour back to a date.
@@ -54,7 +54,7 @@ class ResidualScatter(Plot):
         Name of the figure configuration block under ``cfg.figures``.  Defaults
         to ``"residual_scatter"``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the marker shapes by.  ``None``
+        Standard-frame column(s) to cluster the marker shapes by.  ``None``
         (default) falls back to the figure config's ``group_by`` and then to
         ``"observatory_code"``.
     unit : str | None
@@ -94,7 +94,7 @@ class ResidualScatter(Plot):
         self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -144,7 +144,7 @@ class ResidualScatter(Plot):
                 f"Available columns: {sorted(frame.columns)}."
             )
 
-        # Global epoch range, so every group shares one colour scale.
+        # Global epoch range, so every cluster shares one colour scale.
         epochs_all = frame["epoch_tdb"].to_numpy("float64")
         finite_epochs = epochs_all[np.isfinite(epochs_all)]
         if finite_epochs.size:
@@ -159,13 +159,13 @@ class ResidualScatter(Plot):
         marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
         marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
 
-        for index, (key, group) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
+        for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             marker = marker_types[index % len(marker_types)]
             label = self._group_label(key, group_cols)
 
-            epochs = group["epoch_tdb"].to_numpy("float64")
-            first = group[first_col].to_numpy("float64")
-            second = group[second_col].to_numpy("float64")
+            epochs = cluster["epoch_tdb"].to_numpy("float64")
+            first = cluster[first_col].to_numpy("float64")
+            second = cluster[second_col].to_numpy("float64")
             keep = np.isfinite(epochs) & np.isfinite(first) & np.isfinite(second)
             if not keep.any():
                 continue

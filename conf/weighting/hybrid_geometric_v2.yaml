@@ -12,7 +12,7 @@ weighting:
     type: router
     default:
       type: hybrid_geometric_v2
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

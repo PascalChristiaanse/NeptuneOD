@@ -1,11 +1,11 @@
-"""Plot observation groups with coloured time-range spans.
+"""Plot observation clusters with coloured time-range spans.
 
 Produces a two-panel figure:
 
-- **Top**: RA residuals coloured by group, with coloured vertical spans
-  indicating each group's time range.
-- **Bottom**: DEC residuals coloured by group, with coloured vertical spans
-  indicating each group's time range.
+- **Top**: RA residuals coloured by cluster, with coloured vertical spans
+  indicating each cluster's time range.
+- **Bottom**: DEC residuals coloured by cluster, with coloured vertical spans
+  indicating each cluster's time range.
 
 The input is the per-observation weights CSV written by
 :class:`~orbitdet.observations.weighting.WeightEngine`.
@@ -51,7 +51,7 @@ def _seconds_since_j2000_to_datetimes(
 
 
 class WeightGroups(Plot):
-    """Plot groups and weights from a weights DataFrame.
+    """Plot clusters and weights from a weights DataFrame.
 
     Parameters
     ----------
@@ -86,57 +86,57 @@ class WeightGroups(Plot):
         alpha = _cfg_get(plot_cfg, "styling", "alpha", default=0.6)
         span_alpha = _cfg_get(plot_cfg, "styling", "span_alpha", default=0.08)
 
-        # Identify unique groups for colouring.  Coerce to str so a mixed-type
-        # column (e.g. a strategy that omitted group_id -> NaN) cannot raise.
-        unique_groups = sorted(df["group_id"].astype(str).unique())
-        cmap = plt.get_cmap(cmap_name, len(unique_groups))
-        group_to_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
+        # Identify unique clusters for colouring.  Coerce to str so a mixed-type
+        # column (e.g. a strategy that omitted cluster_id -> NaN) cannot raise.
+        unique_clusters = sorted(df["cluster_id"].astype(str).unique())
+        cmap = plt.get_cmap(cmap_name, len(unique_clusters))
+        cluster_to_color = {g: cmap(i) for i, g in enumerate(unique_clusters)}
 
-        # Compute per-group time spans
-        group_spans = {}
-        for g in unique_groups:
-            g_times = df.loc[df["group_id"] == g, "time"].values
-            group_spans[g] = (
-                _seconds_since_j2000_to_datetimes(np.array([g_times.min()])),
-                _seconds_since_j2000_to_datetimes(np.array([g_times.max()])),
+        # Compute per-cluster time spans
+        cluster_spans = {}
+        for g in unique_clusters:
+            c_times = df.loc[df["cluster_id"] == g, "time"].values
+            cluster_spans[g] = (
+                _seconds_since_j2000_to_datetimes(np.array([c_times.min()])),
+                _seconds_since_j2000_to_datetimes(np.array([c_times.max()])),
             )
 
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
-        # ---- Panel 0: RA residuals with group spans ----
+        # ---- Panel 0: RA residuals with cluster spans ----
         ax = axs[0]
-        for group_id in unique_groups:
-            mask = df["group_id"] == group_id
+        for cluster_id in unique_clusters:
+            mask = df["cluster_id"] == cluster_id
             ax.scatter(
                 times[mask],
                 df.loc[mask, "ra_residual_arcsec"],
-                color=group_to_color[group_id],
+                color=cluster_to_color[cluster_id],
                 s=marker_size,
                 alpha=alpha,
-                label=group_id,
+                label=cluster_id,
             )
-            t_start, t_end = group_spans[group_id]
+            t_start, t_end = cluster_spans[cluster_id]
             ax.axvspan(
-                t_start[0], t_end[0], color=group_to_color[group_id], alpha=span_alpha, zorder=0
+                t_start[0], t_end[0], color=cluster_to_color[cluster_id], alpha=span_alpha, zorder=0
             )
         ax.set_ylabel("RA residual [arcsec]")
         ax.grid(True, alpha=0.3)
 
-        # ---- Panel 1: DEC residuals with group spans ----
+        # ---- Panel 1: DEC residuals with cluster spans ----
         ax = axs[1]
-        for group_id in unique_groups:
-            mask = df["group_id"] == group_id
+        for cluster_id in unique_clusters:
+            mask = df["cluster_id"] == cluster_id
             ax.scatter(
                 times[mask],
                 df.loc[mask, "dec_residual_arcsec"],
-                color=group_to_color[group_id],
+                color=cluster_to_color[cluster_id],
                 s=marker_size,
                 alpha=alpha,
-                label=group_id,
+                label=cluster_id,
             )
-            t_start, t_end = group_spans[group_id]
+            t_start, t_end = cluster_spans[cluster_id]
             ax.axvspan(
-                t_start[0], t_end[0], color=group_to_color[group_id], alpha=span_alpha, zorder=0
+                t_start[0], t_end[0], color=cluster_to_color[cluster_id], alpha=span_alpha, zorder=0
             )
         ax.set_ylabel("DEC residual [arcsec]")
         ax.set_xlabel("Epoch")
@@ -144,7 +144,7 @@ class WeightGroups(Plot):
 
         # Single legend on the bottom panel
         ax.legend(
-            title="Group",
+            title="Cluster",
             loc="upper right",
             framealpha=0.8,
             fontsize="small",

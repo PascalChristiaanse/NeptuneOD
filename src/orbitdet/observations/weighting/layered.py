@@ -1,7 +1,7 @@
 """Layered weighting strategy.
 
 Combines one weight per partitioning layer into a single per-observation
-weight.  This is what makes multi-layer grouping useful for weighting: a
+weight.  This is what makes multi-layer clustering useful for weighting: a
 primary partition (e.g. pre/post-encounter **sections**) can supply a fixed
 sigma, while a secondary partition (e.g. **timeframes**) supplies a
 residual-driven weight, and the two are combined by a chosen formula.
@@ -11,7 +11,7 @@ clustering:
 
 .. code-block:: yaml
 
-    grouping:
+    clustering:
       levels:
         - type: section
           sections:
@@ -45,7 +45,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from ..grouping import Group, GroupList
+from ..clustering import Cluster, ClusterList
 from .base import WeightStrategy
 from .dataframe import (
     build_weights_df,
@@ -77,12 +77,12 @@ class LayeredWeight(WeightStrategy):
         One entry per partitioning layer, each with:
 
         ``level``
-            The grouping level to use (``"set"``, ``"section"``,
+            The clustering level to use (``"set"``, ``"section"``,
             ``"timeframe"``) **or** ``layer`` (int, 0-based).
         ``mode``
             One of ``"fixed"``, ``"rmse"``, ``"rmse_descaled"``.
         ``sigmas``
-            Required for ``mode: fixed``.  Maps a group **name**
+            Required for ``mode: fixed``.  Maps a cluster **name**
             (e.g. ``"pre_encounter"``) to either a scalar sigma in arcsec or a
             ``{ra, dec}`` mapping.
     combine : str
@@ -133,10 +133,10 @@ class LayeredWeight(WeightStrategy):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _groups_for_layer(groups: GroupList, spec: dict[str, Any]) -> list[Group]:
+    def _clusters_for_layer(clusters: ClusterList, spec: dict[str, Any]) -> list[Cluster]:
         if spec["layer"] is not None:
-            return groups.by_layer(spec["layer"])
-        return groups.by_level(str(spec["level"]))
+            return clusters.by_layer(spec["layer"])
+        return clusters.by_level(str(spec["level"]))
 
     @staticmethod
     def _sigma_from_entry(entry: Any) -> tuple[float, float] | None:
@@ -158,7 +158,7 @@ class LayeredWeight(WeightStrategy):
     def _layer_weight_array(
         self,
         spec: dict[str, Any],
-        layer_groups: list[Group],
+        layer_clusters: list[Cluster],
         residuals_rad: np.ndarray,
         set_id: str,
         min_sigma_rad: float,
@@ -168,12 +168,12 @@ class LayeredWeight(WeightStrategy):
         w_ra = np.full(n_obs, np.nan)
         w_dec = np.full(n_obs, np.nan)
 
-        # Fallback weight (used for observations no group covers).
+        # Fallback weight (used for observations no cluster covers).
         set_ra = max(rms(residuals_rad[:, 0]), min_sigma_rad)
         set_dec = max(rms(residuals_rad[:, 1]), min_sigma_rad)
         fb_ra, fb_dec = 1.0 / set_ra**2, 1.0 / set_dec**2
 
-        for g in layer_groups:
+        for g in layer_clusters:
             if spec["mode"] == "fixed":
                 entry = spec["sigmas"].get(g.name)
                 resolved = self._sigma_from_entry(entry)
@@ -219,9 +219,10 @@ class LayeredWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = residuals_array(observation_set)
@@ -234,25 +235,25 @@ class LayeredWeight(WeightStrategy):
         layer_ra: list[np.ndarray] = []
         layer_dec: list[np.ndarray] = []
         for spec in self._layers:
-            layer_groups = self._groups_for_layer(groups, spec)
-            if not layer_groups:
+            layer_clusters = self._clusters_for_layer(clusters, spec)
+            if not layer_clusters:
                 logger.warning(
-                    "LayeredWeight [%s]: layer %s/%s matched no groups; skipping.",
+                    "LayeredWeight [%s]: layer %s/%s matched no clusters; skipping.",
                     set_id,
                     spec.get("level"),
                     spec.get("layer"),
                 )
                 continue
             w_ra, w_dec = self._layer_weight_array(
-                spec, layer_groups, residuals_rad, set_id, min_sigma_rad
+                spec, layer_clusters, residuals_rad, set_id, min_sigma_rad
             )
             layer_ra.append(w_ra)
             layer_dec.append(w_dec)
 
         if not layer_ra:
             raise ValueError(
-                f"LayeredWeight [{set_id}]: no layer matched any groups. "
-                f"Check the grouping config levels against the layer specs."
+                f"LayeredWeight [{set_id}]: no layer matched any clusters. "
+                f"Check the clustering config levels against the layer specs."
             )
 
         weights_ra_arr = self._combine_arrays(layer_ra)
@@ -260,7 +261,7 @@ class LayeredWeight(WeightStrategy):
 
         weights_array = interleave_weights(weights_ra_arr, weights_dec_arr)
 
-        # Report against the finest layer used, so group_id is meaningful.
+        # Report against the finest layer used, so cluster_id is meaningful.
         report_level = "timeframe"
         if self._layers:
             last = self._layers[-1]
@@ -270,7 +271,7 @@ class LayeredWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "layered",

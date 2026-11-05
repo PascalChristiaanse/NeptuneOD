@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from ..grouping import Group, GroupList
+from ..clustering import Cluster, ClusterList
 from .base import WeightStrategy
 from .dataframe import (
     build_weights_df as _build_weights_df,
@@ -70,9 +70,10 @@ class IDv2Weight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -82,10 +83,10 @@ class IDv2Weight(WeightStrategy):
         if n_obs == 0:
             return np.array([], dtype=float), pd.DataFrame()
 
-        # Collect timeframe groups
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
-            # Fallback: no timeframes defined — use the set as one group
+        # Collect timeframe clusters
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
+            # Fallback: no timeframes defined — use the set as one cluster
             ra_sigma = max(_rms(residuals_rad[:, 0]), min_sigma_rad)
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
             w_ra = 1.0 / ra_sigma**2
@@ -95,7 +96,7 @@ class IDv2Weight(WeightStrategy):
                 n_obs,
                 times,
                 residuals_rad,
-                groups,
+                clusters,
                 np.full(n_obs, w_ra),
                 np.full(n_obs, w_dec),
                 "id_v2",
@@ -108,7 +109,7 @@ class IDv2Weight(WeightStrategy):
         # Per-timeframe descaled RMSEs
         descaled_ra: list[float] = []
         descaled_dec: list[float] = []
-        for g in tf_groups:
+        for g in tf_clusters:
             ra_rms = _rms(residuals_rad[g.indices, 0])
             dec_rms = _rms(residuals_rad[g.indices, 1])
             scale = np.sqrt(g.size)
@@ -131,7 +132,7 @@ class IDv2Weight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "id_v2",
@@ -147,7 +148,7 @@ class IDv2Weight(WeightStrategy):
             w_ra,
             id_v2_dec_sigma,
             w_dec,
-            len(tf_groups),
+            len(tf_clusters),
         )
         return weights_array, df
 
@@ -179,9 +180,10 @@ class HybridGeometricWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -198,8 +200,8 @@ class HybridGeometricWeight(WeightStrategy):
         w_dec_set = 1.0 / dec_set_sigma**2
 
         # --- Timeframe-level (local) RMSE ---
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
             # Fallback: no timeframes — use set-level only
             w_ra = w_ra_set
             w_dec = w_dec_set
@@ -210,7 +212,7 @@ class HybridGeometricWeight(WeightStrategy):
                 n_obs,
                 times,
                 residuals_rad,
-                groups,
+                clusters,
                 weights_ra_arr,
                 weights_dec_arr,
                 "hybrid_geometric",
@@ -234,7 +236,7 @@ class HybridGeometricWeight(WeightStrategy):
         weights_ra_arr[:] = w_ra_set
         weights_dec_arr[:] = w_dec_set
 
-        for g in tf_groups:
+        for g in tf_clusters:
             ra_tf_sigma = max(_rms(residuals_rad[g.indices, 0]), min_sigma_rad)
             dec_tf_sigma = max(_rms(residuals_rad[g.indices, 1]), min_sigma_rad)
             w_ra_tf = 1.0 / ra_tf_sigma**2
@@ -251,7 +253,7 @@ class HybridGeometricWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "hybrid_geometric",
@@ -262,7 +264,7 @@ class HybridGeometricWeight(WeightStrategy):
         logger.debug(
             "HybridGeoWeight [%s]: %d timeframe(s), set RA σ=%.2e w=%.2e, DEC σ=%.2e w=%.2e",
             set_id,
-            len(tf_groups),
+            len(tf_clusters),
             ra_set_sigma,
             w_ra_set,
             dec_set_sigma,
@@ -293,9 +295,10 @@ class IDWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -318,7 +321,7 @@ class IDWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "id",
@@ -344,7 +347,7 @@ class IDWeight(WeightStrategy):
 
 def _descaled_tf_rmse_and_weights(
     residuals_rad: np.ndarray,
-    tf_groups: list,
+    tf_clusters: list,
     min_sigma_rad: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute descaled per-timeframe RMSE and weights.
@@ -358,8 +361,8 @@ def _descaled_tf_rmse_and_weights(
     ----------
     residuals_rad : np.ndarray, shape (n_obs, 2)
         RA and DEC residuals in radians.
-    tf_groups : list of Group
-        Timeframe groups.
+    tf_clusters : list of Cluster
+        Timeframe clusters.
     min_sigma_rad : float
         Floor on sigma before descaling.
 
@@ -372,7 +375,7 @@ def _descaled_tf_rmse_and_weights(
     n_obs = residuals_rad.shape[0]
     weights_ra_arr = np.zeros(n_obs)
     weights_dec_arr = np.zeros(n_obs)
-    for g in tf_groups:
+    for g in tf_clusters:
         ra_rms = _rms(residuals_rad[g.indices, 0])
         dec_rms = _rms(residuals_rad[g.indices, 1])
         scale = np.sqrt(g.size)
@@ -408,9 +411,10 @@ class TFWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -420,16 +424,16 @@ class TFWeight(WeightStrategy):
         if n_obs == 0:
             return np.array([], dtype=float), pd.DataFrame()
 
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
             # Fallback: no timeframes — use set-level as a single timeframe
-            tf_groups = [
-                Group(indices=np.arange(n_obs, dtype=int), group_id=set_id, level="timeframe")
+            tf_clusters = [
+                Cluster(indices=np.arange(n_obs, dtype=int), cluster_id=set_id, level="timeframe")
             ]
 
         weights_ra_arr, weights_dec_arr = _descaled_tf_rmse_and_weights(
             residuals_rad,
-            tf_groups,
+            tf_clusters,
             min_sigma_rad,
         )
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
@@ -438,7 +442,7 @@ class TFWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "timeframe",
@@ -449,7 +453,7 @@ class TFWeight(WeightStrategy):
         logger.debug(
             "TFWeight [%s]: %d timeframe(s), min_sigma=%.2e arcsec",
             set_id,
-            len(tf_groups),
+            len(tf_clusters),
             min_sigma_arcsec,
         )
         return weights_array, df
@@ -474,9 +478,10 @@ class TFFreeWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         # Ignore min_sigma_arcsec — effectively min_sigma = 0
         residuals_rad = _residuals_array(observation_set)
@@ -486,15 +491,15 @@ class TFFreeWeight(WeightStrategy):
         if n_obs == 0:
             return np.array([], dtype=float), pd.DataFrame()
 
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
-            tf_groups = [
-                Group(indices=np.arange(n_obs, dtype=int), group_id=set_id, level="timeframe")
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
+            tf_clusters = [
+                Cluster(indices=np.arange(n_obs, dtype=int), cluster_id=set_id, level="timeframe")
             ]
 
         weights_ra_arr, weights_dec_arr = _descaled_tf_rmse_and_weights(
             residuals_rad,
-            tf_groups,
+            tf_clusters,
             min_sigma_rad=0.0,
         )
         weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
@@ -503,7 +508,7 @@ class TFFreeWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "timeframe_free",
@@ -514,19 +519,19 @@ class TFFreeWeight(WeightStrategy):
         logger.debug(
             "TFFreeWeight [%s]: %d timeframe(s), no sigma cap",
             set_id,
-            len(tf_groups),
+            len(tf_clusters),
         )
         return weights_array, df
 
 
 # ---------------------------------------------------------------------------
-# ID v2 helper — compute ID v2 (scaled per-file) sigma from timeframe groups
+# ID v2 helper — compute ID v2 (scaled per-file) sigma from timeframe clusters
 # ---------------------------------------------------------------------------
 
 
 def _id_v2_sigmas(
     residuals_rad: np.ndarray,
-    tf_groups: list,
+    tf_clusters: list,
     min_sigma_rad: float,
 ) -> tuple[float, float]:
     """Compute ID v2 per-file sigmas from descaled per-timeframe RMSEs.
@@ -538,7 +543,7 @@ def _id_v2_sigmas(
     """
     descaled_ra: list[float] = []
     descaled_dec: list[float] = []
-    for g in tf_groups:
+    for g in tf_clusters:
         ra_rms = _rms(residuals_rad[g.indices, 0])
         dec_rms = _rms(residuals_rad[g.indices, 1])
         scale = np.sqrt(g.size)
@@ -576,9 +581,10 @@ class HybridGeometricV2Weight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -588,8 +594,8 @@ class HybridGeometricV2Weight(WeightStrategy):
         if n_obs == 0:
             return np.array([], dtype=float), pd.DataFrame()
 
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
             # Fallback: no timeframes — use ID v2 only
             ra_sigma = max(_rms(residuals_rad[:, 0]), min_sigma_rad)
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
@@ -600,7 +606,7 @@ class HybridGeometricV2Weight(WeightStrategy):
                 n_obs,
                 times,
                 residuals_rad,
-                groups,
+                clusters,
                 np.full(n_obs, w_ra),
                 np.full(n_obs, w_dec),
                 "hybrid_geometric_v2",
@@ -613,7 +619,7 @@ class HybridGeometricV2Weight(WeightStrategy):
         # ID v2 file-level weight
         ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(
             residuals_rad,
-            tf_groups,
+            tf_clusters,
             min_sigma_rad,
         )
         w_ra_file = 1.0 / ra_id_v2_sigma**2
@@ -622,7 +628,7 @@ class HybridGeometricV2Weight(WeightStrategy):
         # Descaled TF weight per timeframe
         weights_ra_arr = np.empty(n_obs)
         weights_dec_arr = np.empty(n_obs)
-        for g in tf_groups:
+        for g in tf_clusters:
             ra_rms = _rms(residuals_rad[g.indices, 0])
             dec_rms = _rms(residuals_rad[g.indices, 1])
             scale = np.sqrt(g.size)
@@ -641,7 +647,7 @@ class HybridGeometricV2Weight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "hybrid_geometric_v2",
@@ -652,7 +658,7 @@ class HybridGeometricV2Weight(WeightStrategy):
         logger.debug(
             "HybridGeometricV2Weight [%s]: %d timeframe(s), IDv2 RA σ=%.2e DEC σ=%.2e",
             set_id,
-            len(tf_groups),
+            len(tf_clusters),
             ra_id_v2_sigma,
             dec_id_v2_sigma,
         )
@@ -684,9 +690,10 @@ class HybridArithmeticWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -696,8 +703,8 @@ class HybridArithmeticWeight(WeightStrategy):
         if n_obs == 0:
             return np.array([], dtype=float), pd.DataFrame()
 
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
             # Fallback: no timeframes — use ID v2 only
             ra_sigma = max(_rms(residuals_rad[:, 0]), min_sigma_rad)
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
@@ -708,7 +715,7 @@ class HybridArithmeticWeight(WeightStrategy):
                 n_obs,
                 times,
                 residuals_rad,
-                groups,
+                clusters,
                 np.full(n_obs, w_ra),
                 np.full(n_obs, w_dec),
                 "hybrid_arithmetic",
@@ -721,7 +728,7 @@ class HybridArithmeticWeight(WeightStrategy):
         # ID v2 file-level weight
         ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(
             residuals_rad,
-            tf_groups,
+            tf_clusters,
             min_sigma_rad,
         )
         w_ra_file = 1.0 / ra_id_v2_sigma**2
@@ -730,7 +737,7 @@ class HybridArithmeticWeight(WeightStrategy):
         # Descaled TF weight per timeframe
         weights_ra_arr = np.empty(n_obs)
         weights_dec_arr = np.empty(n_obs)
-        for g in tf_groups:
+        for g in tf_clusters:
             ra_rms = _rms(residuals_rad[g.indices, 0])
             dec_rms = _rms(residuals_rad[g.indices, 1])
             scale = np.sqrt(g.size)
@@ -749,7 +756,7 @@ class HybridArithmeticWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "hybrid_arithmetic",
@@ -760,7 +767,7 @@ class HybridArithmeticWeight(WeightStrategy):
         logger.debug(
             "HybridArithmeticWeight [%s]: %d timeframe(s), IDv2 RA σ=%.2e DEC σ=%.2e",
             set_id,
-            len(tf_groups),
+            len(tf_clusters),
             ra_id_v2_sigma,
             dec_id_v2_sigma,
         )
@@ -843,9 +850,10 @@ class GaiaArchiveWeight(WeightStrategy):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
         residuals_rad = _residuals_array(observation_set)
@@ -875,7 +883,7 @@ class GaiaArchiveWeight(WeightStrategy):
                 n_obs,
                 times,
                 residuals_rad,
-                groups,
+                clusters,
                 weights_ra_arr,
                 weights_dec_arr,
                 "gaia_archive",
@@ -904,8 +912,8 @@ class GaiaArchiveWeight(WeightStrategy):
             set_id,
             n_obs,
         )
-        tf_groups = groups.by_level("timeframe")
-        if not tf_groups:
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
             ra_sigma = max(_rms(residuals_rad[:, 0]), min_sigma_rad)
             dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
             w_ra = 1.0 / ra_sigma**2
@@ -913,7 +921,8 @@ class GaiaArchiveWeight(WeightStrategy):
             weights_ra_arr = np.full(n_obs, w_ra)
             weights_dec_arr = np.full(n_obs, w_dec)
         else:
-            ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(residuals_rad, tf_groups, min_sigma_rad)
+            ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(residuals_rad, tf_clusters, 
+                min_sigma_rad)
             w_ra = 1.0 / ra_id_v2_sigma**2
             w_dec = 1.0 / dec_id_v2_sigma**2
             weights_ra_arr = np.full(n_obs, w_ra)
@@ -924,7 +933,7 @@ class GaiaArchiveWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra_arr,
             weights_dec_arr,
             "gaia_archive",
@@ -935,8 +944,8 @@ class GaiaArchiveWeight(WeightStrategy):
         logger.debug(
             "GaiaArchiveWeight [%s]: fallback ID v2 (RA σ=%.2e, DEC σ=%.2e)",
             set_id,
-            ra_id_v2_sigma if tf_groups else ra_sigma,
-            dec_id_v2_sigma if tf_groups else dec_sigma,
+            ra_id_v2_sigma if tf_clusters else ra_sigma,
+            dec_id_v2_sigma if tf_clusters else dec_sigma,
         )
         return weights_array, df
 
@@ -968,11 +977,10 @@ class FixedScanWeight(WeightStrategy):
     per-observation 2x2 blocks via :meth:`compute_block_weights` (applied with
     ``set_block_diagonal_weights``) rather than a diagonal weight vector.
 
-    The scan angles are read from the registry populated by
-    :meth:`GaiaQuery.to_tudat` (see
-    :func:`orbitdet.data.gaia.get_scan_angles_for_epochs`); sets without
-    registered scan angles fall back to a diagonal ``(RA, Dec)`` weighting with
-    the same sigmas.
+    The scan angles are read from the standard frame through the
+    :class:`~orbitdet.analysis.set_view.SetView` (the ``scan_angle`` column,
+    populated on ingest from the Gaia archive); sets without a finite scan angle
+    fall back to a diagonal ``(RA, Dec)`` weighting with the same sigmas.
 
     Parameters
     ----------
@@ -1008,19 +1016,25 @@ class FixedScanWeight(WeightStrategy):
             self.across_scan_sigma_mas * mas_to_rad,
         )
 
-    def _scan_angles(self, observation_set: obs.SingleObservationSet) -> np.ndarray | None:
-        """Return the per-observation scan angles (radians), or None if unavailable."""
-        from orbitdet.data.gaia import get_scan_angles_for_epochs
+    def _scan_angles(self, view) -> np.ndarray | None:
+        """Return the per-observation scan angles (radians), or None if unavailable.
 
-        epochs = np.array([t.to_float() for t in observation_set.observation_times])
-        return get_scan_angles_for_epochs(epochs)
+        Reads the standard frame's ``scan_angle`` column through the set's
+        :class:`~orbitdet.analysis.set_view.SetView`.  When no view is supplied
+        (a strategy called directly, outside the engine) the angles are
+        unavailable and the caller falls back to a diagonal weighting.
+        """
+        if view is None:
+            return None
+        return view.scan_angles
 
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         """Return the diagonal of the scan-frame weight blocks for reporting.
 
@@ -1036,7 +1050,7 @@ class FixedScanWeight(WeightStrategy):
             return np.array([], dtype=float), pd.DataFrame()
 
         sigma_al, sigma_ac = self._sigmas_rad()
-        psi = self._scan_angles(observation_set)
+        psi = self._scan_angles(view)
 
         if psi is not None and len(psi) == n_obs:
             # Diagonal of the (RA, Dec) weight block, for reporting.
@@ -1063,7 +1077,7 @@ class FixedScanWeight(WeightStrategy):
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             w_ra,
             w_dec,
             "fixed_scan",
@@ -1083,9 +1097,10 @@ class FixedScanWeight(WeightStrategy):
     def compute_block_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> list[np.ndarray] | None:
         """Return one 2x2 ``(RA, Dec)`` weight block per observation.
 
@@ -1096,7 +1111,7 @@ class FixedScanWeight(WeightStrategy):
         if n_obs == 0:
             return None
 
-        psi = self._scan_angles(observation_set)
+        psi = self._scan_angles(view)
         if psi is None or len(psi) != n_obs:
             return None
 

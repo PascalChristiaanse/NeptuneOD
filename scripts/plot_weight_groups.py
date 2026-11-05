@@ -1,11 +1,11 @@
-"""Plot observation groups and print a summary table from a weights CSV.
+"""Plot observation clusters and print a summary table from a weights CSV.
 
 Loads the per-observation weights CSV written by
 :class:`~orbitdet.observations.weighting.WeightEngine` and:
 
-1. Produces a two-panel figure showing RA/DEC residuals coloured by group
-   with coloured vertical spans for each group's time range.
-2. Prints a summary table with per-group statistics (source, site, type,
+1. Produces a two-panel figure showing RA/DEC residuals coloured by cluster
+   with coloured vertical spans for each cluster's time range.
+2. Prints a summary table with per-cluster statistics (source, site, type,
    number of observations, RA/DEC RMSE).
 
 Usage
@@ -85,9 +85,9 @@ def main(cfg: DictConfig):
         return
 
     logger.info(
-        "Loaded %d observations across %d unique groups (strategy: %s)",
+        "Loaded %d observations across %d unique clusters (strategy: %s)",
         len(weights_df),
-        weights_df["group_id"].nunique(),
+        weights_df["cluster_id"].nunique(),
         weights_df["strategy"].iloc[0] if "strategy" in weights_df.columns else "unknown",
     )
 
@@ -95,14 +95,14 @@ def main(cfg: DictConfig):
     plotter = WeightGroups(cfg, weights_df)
     fig, axs = plotter.plot()
 
-    logger.info("Weight groups figure saved to %s", HydraConfig.get().runtime.output_dir)
+    logger.info("Weight clusters figure saved to %s", HydraConfig.get().runtime.output_dir)
 
     # Build and print the summary tables
     table_builder = WeightSummaryTable(cfg, weights_df)
     src_table = table_builder.build_source()
     grp_table = table_builder.build_group()
     print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-    print("\n=== Per-group summary ===\n" + table_builder.to_string_group(grp_table))
+    print("\n=== Per-cluster summary ===\n" + table_builder.to_string_group(grp_table))
 
     # Save tables alongside the figure
     output_dir = Path(HydraConfig.get().runtime.output_dir)
@@ -119,7 +119,7 @@ def main(cfg: DictConfig):
     # Save as Excel with two sheets
     with pd.ExcelWriter(output_dir / "weight_summary.xlsx") as writer:
         src_table.to_excel(writer, sheet_name="Per source", index=False)
-        grp_table.to_excel(writer, sheet_name="Per group", index=False)
+        grp_table.to_excel(writer, sheet_name="Per cluster", index=False)
     logger.info("Excel weight summary tables saved to %s", output_dir)
 
     # Show interactively if not headless

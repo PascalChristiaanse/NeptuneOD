@@ -5,7 +5,6 @@ from pathlib import Path
 
 import hydra
 import numpy as np
-import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro import frame_conversion
@@ -284,33 +283,41 @@ def main(cfg: DictConfig):
 
     # Plot weight clusters if weighting was applied
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
-        from orbitdet.visualization import WeightGroups, WeightSummaryTable
+        from orbitdet.visualization import WeightGroups
 
         fig_weight_groups, _ = WeightGroups(cfg, weights_df).plot()
         logger.info("Weight clusters figure saved.")
 
-        # Build and save the per-source summary table
-        table_builder = WeightSummaryTable(cfg, weights_df)
-        src_table = table_builder.build_source()
-        grp_table = table_builder.build_group()
-        # print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-        # print("\n=== Per-cluster summary ===\n" + table_builder.to_string_group(grp_table))
+        # Summary tables, read from the access layer rather than the weights CSV:
+        # the frame owns the provenance (source, observatory, coordinate kind) and
+        # the residuals, and the weights report is joined only for the cluster
+        # assignment.  Two groupings are published: per source, and per source and
+        # cluster (the old "per-cluster" table).
+        from orbitdet.analysis.tables import WeightSummary
 
-        src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
-        grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)
+        summary_cfg = OmegaConf.select(cfg, "weighting.summary", default=None)
+        extra_columns = list(summary_cfg.get("columns", [])) if summary_cfg else []
+        to_unit = summary_cfg.get("unit", "arcsec") if summary_cfg else "arcsec"
+
+        for suffix, by in (
+            ("source", ("source_set_id",)),
+            ("cluster", ("source_set_id", "cluster_id")),
+        ):
+            summary = WeightSummary(
+                access,
+                weights=weights_df,
+                by=by,
+                columns=extra_columns,
+                to_unit=to_unit,
+                name=f"weight_summary_{suffix}",
+            )
+            table = summary.build()
+            if table.empty:
+                logger.info("Weight summary (%s) is empty; skipping.", suffix)
+                continue
+            logger.info("Weight summary (%s):\n%s", suffix, summary.to_string(table))
+            (output_dir / f"weight_summary_{suffix}.tex").write_text(summary.to_latex(table))
         logger.info("Weight summary tables saved to %s", output_dir)
-
-        with open(output_dir / "weight_summary_source.tex", "w") as f:
-            f.write(table_builder.to_latex_source(src_table))
-        with open(output_dir / "weight_summary_group.tex", "w") as f:
-            f.write(table_builder.to_latex_group(grp_table))
-        logger.info("LaTeX weight summary tables saved to %s", output_dir)
-
-        # Save as Excel with two sheets
-        with pd.ExcelWriter(output_dir / "weight_summary.xlsx") as writer:
-            src_table.to_excel(writer, sheet_name="Per source", index=False)
-            grp_table.to_excel(writer, sheet_name="Per cluster", index=False)
-        logger.info("Excel weight summary tables saved to %s", output_dir)
 
     # Refresh the derived frame now that outlier rejection (and weighting) have run:
     # the sets are narrower, so rejected rows fall out of the join and the

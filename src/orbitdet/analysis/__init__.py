@@ -80,6 +80,8 @@ from .tables import (
     ResidualSummary,
     SourceResidualSummary,
     Table,
+    WeightSummary,
+    coordinate_axis_labels,
 )
 from .views import (
     ARCSEC_PER_RADIAN,
@@ -153,4 +155,6 @@ __all__ = [
     "ResidualSummary",
     "SourceResidualSummary",
     "ObservatoryResidualSummary",
+    "WeightSummary",
+    "coordinate_axis_labels",
 ]

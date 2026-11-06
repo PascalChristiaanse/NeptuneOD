@@ -5,7 +5,6 @@ from pathlib import Path
 
 import hydra
 import numpy as np
-import pandas as pd
 import tudatpy.dynamics.propagation_setup as prop_setup
 from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro import frame_conversion
@@ -175,9 +174,7 @@ def main(cfg: DictConfig):
 
     # Create observation collection
     logger.info("Creating observation collection...")
-    observations, observation_models, standard_frame = create_observation_collection(
-        cfg, bodies
-    )
+    observations, observation_models, standard_frame = create_observation_collection(cfg, bodies)
     # Derived analysis frame: the standard frame plus the residual, weight and
     # rejection columns, joined to the collection through ``observation_set_index``.
     # Built once here and refreshed (never rebuilt) as the residuals change.
@@ -220,7 +217,7 @@ def main(cfg: DictConfig):
     # the applied sigmas exist (see the pre-fit-propagation and post-fit stages).
 
     # plt.show()
-    
+
     ################################################################
     ###################### Outlier rejection #######################
     ################################################################
@@ -233,9 +230,7 @@ def main(cfg: DictConfig):
     if outlier_cfg is not None and outlier_cfg.get("enabled", False):
         logger.info("Applying outlier rejection...")
         outlier_engine = OutlierEngine.from_config(outlier_cfg)
-        observations, rejection_metadata = outlier_engine.apply(
-            observations, bodies, access=access
-        )
+        observations, rejection_metadata = outlier_engine.apply(observations, bodies, access=access)
         logger.info(
             "Outlier rejection complete: %d accepted, %d rejected out of %d",
             rejection_metadata["n_accepted"],
@@ -284,39 +279,32 @@ def main(cfg: DictConfig):
 
     # Plot weight clusters if weighting was applied
     if weighting_cfg is not None and weighting_cfg.get("enabled", False):
-        from orbitdet.visualization import WeightGroups, WeightSummaryTable
+        from orbitdet.analysis.tables import WeightSummary
 
-        fig_weight_groups, _ = WeightGroups(cfg, weights_df).plot()
-        logger.info("Weight clusters figure saved.")
+        summary_cfg = OmegaConf.select(cfg, "weighting.summary", default=None)
+        extra_columns = list(summary_cfg.get("columns", [])) if summary_cfg else []
+        to_unit = summary_cfg.get("unit", "arcsec") if summary_cfg else "arcsec"
 
-        # Build and save the per-source summary table
-        table_builder = WeightSummaryTable(cfg, weights_df)
-        src_table = table_builder.build_source()
-        grp_table = table_builder.build_group()
-        # print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-        # print("\n=== Per-cluster summary ===\n" + table_builder.to_string_group(grp_table))
-
-        src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
-        grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)
+        for suffix, by in (
+            ("source", ("source_set_id",)),
+            ("cluster", ("source_set_id", "cluster_id")),
+        ):
+            summary = WeightSummary(
+                access,
+                weights=weights_df,
+                by=by,
+                columns=extra_columns,
+                to_unit=to_unit,
+                name=f"weight_summary_{suffix}",
+            )
+            table = summary.build()
+            if table.empty:
+                logger.info("Weight summary (%s) is empty; skipping.", suffix)
+                continue
+            logger.info("Weight summary (%s):\n%s", suffix, summary.to_string(table))
+            (output_dir / f"weight_summary_{suffix}.tex").write_text(summary.to_latex(table))
         logger.info("Weight summary tables saved to %s", output_dir)
 
-        with open(output_dir / "weight_summary_source.tex", "w") as f:
-            f.write(table_builder.to_latex_source(src_table))
-        with open(output_dir / "weight_summary_group.tex", "w") as f:
-            f.write(table_builder.to_latex_group(grp_table))
-        logger.info("LaTeX weight summary tables saved to %s", output_dir)
-
-        # Save as Excel with two sheets
-        with pd.ExcelWriter(output_dir / "weight_summary.xlsx") as writer:
-            src_table.to_excel(writer, sheet_name="Per source", index=False)
-            grp_table.to_excel(writer, sheet_name="Per cluster", index=False)
-        logger.info("Excel weight summary tables saved to %s", output_dir)
-
-    # Refresh the derived frame now that outlier rejection (and weighting) have run:
-    # the sets are narrower, so rejected rows fall out of the join and the
-    # ``rejected`` column is set from the accepted sets, so the two can never
-    # disagree.  Outlier rejection returns a new collection, so point the access
-    # layer at it before refreshing.
     access.collection = observations
     access.refresh()
     _log_access_summary(access, "post_rejection")
@@ -563,9 +551,7 @@ def main(cfg: DictConfig):
         SymmetricWhitenedResiduals(
             cfg, access, use_figure_name="postfit_symmetric_whitened_residuals"
         ).plot()
-        MahalanobisResiduals(
-            cfg, access, use_figure_name="postfit_mahalanobis_residuals"
-        ).plot()
+        MahalanobisResiduals(cfg, access, use_figure_name="postfit_mahalanobis_residuals").plot()
         # Gaia random/systematic error split from the transit structure.  Gaia
         # only: the metric needs the scan frame and the intra-transit sampling.
         GaiaTransitErrorComponents(cfg, access).plot()

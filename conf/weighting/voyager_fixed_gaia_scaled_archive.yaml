@@ -22,7 +22,7 @@ weighting:
         type: gaia_components
         random_scale_al: 2.0
         random_scale_ac: 2.0
-        systematic_scale_al: 100.0
+        systematic_scale_al: 1000.0
         systematic_scale_ac: 100.0
 
     # Voyager 2: fixed 1" pre / 4" post encounter, clustered by timeframe.

@@ -32,7 +32,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from orbitdet.reproducibility import enforce_initialization, initialize
-from orbitdet.visualization import WeightGroups, WeightSummaryTable
+from orbitdet.visualization import WeightGroups
 
 # ---------------------------------------------------------------------------
 # Matplotlib backend setup
@@ -97,30 +97,24 @@ def main(cfg: DictConfig):
 
     logger.info("Weight clusters figure saved to %s", HydraConfig.get().runtime.output_dir)
 
-    # Build and print the summary tables
-    table_builder = WeightSummaryTable(cfg, weights_df)
-    src_table = table_builder.build_source()
-    grp_table = table_builder.build_group()
-    print("\n=== Per-source summary ===\n" + table_builder.to_string_source(src_table))
-    print("\n=== Per-cluster summary ===\n" + table_builder.to_string_group(grp_table))
+    # Build and print the summary tables.  This script only has the weights CSV,
+    # not the access layer, so it summarises the report directly: the CSV carries
+    # the provenance columns the engine enriched it with.
+    from orbitdet.analysis.tables import WeightSummary
 
-    # Save tables alongside the figure
     output_dir = Path(HydraConfig.get().runtime.output_dir)
-    src_table.to_csv(output_dir / "weight_summary_source.csv", index=False)
-    grp_table.to_csv(output_dir / "weight_summary_group.csv", index=False)
+    for suffix, by in (
+        ("source", ("source_name",)),
+        ("cluster", ("source_name", "cluster_id")),
+    ):
+        summary = WeightSummary.from_weights(weights_df, by=by, name=f"weight_summary_{suffix}")
+        table = summary.build()
+        if table.empty:
+            logger.info("Weight summary (%s) is empty; skipping.", suffix)
+            continue
+        print(f"\n=== {suffix.capitalize()} summary ===\n" + summary.to_string(table))
+        (output_dir / f"weight_summary_{suffix}.tex").write_text(summary.to_latex(table))
     logger.info("Weight summary tables saved to %s", output_dir)
-
-    with open(output_dir / "weight_summary_source.tex", "w") as f:
-        f.write(table_builder.to_latex_source(src_table))
-    with open(output_dir / "weight_summary_group.tex", "w") as f:
-        f.write(table_builder.to_latex_group(grp_table))
-    logger.info("LaTeX weight summary tables saved to %s", output_dir)
-
-    # Save as Excel with two sheets
-    with pd.ExcelWriter(output_dir / "weight_summary.xlsx") as writer:
-        src_table.to_excel(writer, sheet_name="Per source", index=False)
-        grp_table.to_excel(writer, sheet_name="Per cluster", index=False)
-    logger.info("Excel weight summary tables saved to %s", output_dir)
 
     # Show interactively if not headless
     if not is_headless_display:

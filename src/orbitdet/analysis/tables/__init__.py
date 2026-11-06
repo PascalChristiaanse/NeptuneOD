@@ -13,10 +13,13 @@ from .residual_summary import (
     ResidualSummary,
     SourceResidualSummary,
 )
+from .weight_summary import WeightSummary, coordinate_axis_labels
 
 __all__ = [
     "Table",
     "ResidualSummary",
     "SourceResidualSummary",
     "ObservatoryResidualSummary",
+    "WeightSummary",
+    "coordinate_axis_labels",
 ]

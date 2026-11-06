@@ -33,6 +33,7 @@ dependencies:
   # The NSDB descriptor parser builds its field grammar with pyparsing.
   - pyparsing
   - plotly
+  - grimp
   - joblib
   - platformdirs
 

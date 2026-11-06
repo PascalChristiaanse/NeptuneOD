@@ -121,6 +121,8 @@ def _attach_transit_weights(observation_set, source: GaiaSource, dataset_cfg) ->
         )
         return
 
+    _cache_covariance_components(observation_set, source, dataset_cfg)
+
     matrices = [np.linalg.inv(block) for block in blocks]
     # Force symmetry: the inversion introduces numerical asymmetry, and Tudat's
     # normal equations assume a symmetric weight matrix.
@@ -191,3 +193,63 @@ def _selection_keys(dataset_cfg) -> list[int]:
         except (TypeError, ValueError):
             continue
     return keys
+
+
+def _cache_covariance_components(observation_set, source: GaiaSource, dataset_cfg) -> None:
+    """Cache the random and systematic covariance blocks for this dataset's set.
+
+    The full transit matrix attached to the observation set is the *sum* of the
+    two components, and a sum cannot be decomposed again.  A strategy that wants
+    to re-weight them independently (``gaia_components``) therefore needs them
+    kept apart, which is what this does.
+
+    The cache is keyed by the set identifier the weighting engine will use, so
+    the strategy can find it from ``set_id`` alone.
+    """
+    from orbitdet.observations.weighting.gaia_cache import store_gaia_covariance_components
+
+    components = source.covariance_components
+    if not components:
+        logger.debug(
+            "Gaia dataset %s: no random/systematic covariance components available; "
+            "the gaia_components strategy will fall back to residual-driven weighting.",
+            dataset_cfg.get("identifier", "?"),
+        )
+        return
+
+    selection = _selection_keys(dataset_cfg)
+    chosen = None
+    for key in selection:
+        if key in components:
+            chosen = components[key]
+            break
+    if chosen is None and len(components) == 1:
+        chosen = next(iter(components.values()))
+    if chosen is None:
+        logger.warning(
+            "Gaia dataset %s: no covariance components found for %s; the query holds %s.",
+            dataset_cfg.get("identifier", "?"),
+            selection or "the configured selection",
+            sorted(components.keys()),
+        )
+        return
+
+    random_blocks, systematic_blocks = chosen
+    if not random_blocks:
+        return
+
+    # Key the cache by the identifier the weighting engine will derive for this
+    # set, so the strategy can find it from ``set_id`` alone.  Gaia's receiver is
+    # a body-origin link end with no reference point, so this resolves to the
+    # body name ("Gaia"); deriving it keeps the two in step if that ever changes.
+    from orbitdet.observations.utils import get_set_identifier
+
+    set_id = get_set_identifier(observation_set)
+    store_gaia_covariance_components(set_id, random_blocks, systematic_blocks)
+    logger.debug(
+        "Gaia dataset %s: cached %d random / %d systematic covariance block(s) for set '%s'.",
+        dataset_cfg.get("identifier", "?"),
+        len(random_blocks),
+        len(systematic_blocks),
+        set_id,
+    )

@@ -29,7 +29,7 @@ from .dataframe import (
 from .dataframe import (
     rms as _rms,
 )
-from .gaia_cache import get_gaia_weights
+from .gaia_cache import get_gaia_covariance_components, get_gaia_weights
 from .layered import LayeredWeight  # noqa: F401  (registers the "layered" strategy)
 from .registry import register_weight_strategy
 
@@ -950,6 +950,349 @@ class GaiaArchiveWeight(WeightStrategy):
 
 
 # ---------------------------------------------------------------------------
+# Gaia component (random/systematic) strategy
+# ---------------------------------------------------------------------------
+
+
+def _blocks_to_full_matrix(blocks: list) -> np.ndarray:
+    """Concatenate per-transit covariance/weight blocks into one block-diagonal matrix."""
+    if len(blocks) == 1:
+        return np.asarray(blocks[0], dtype=float)
+    from scipy.linalg import block_diag
+
+    return block_diag(*[np.asarray(block, dtype=float) for block in blocks])
+
+
+def _scan_frame_rotation(scan_angles: np.ndarray, dec: np.ndarray) -> np.ndarray:
+    """Return per-observation ``(RA, Dec) -> (AL, AC)`` rotation matrices.
+
+    The scan frame is rotated by the position angle of scan ``psi`` and scaled by
+    ``cos(dec)`` because RA is a longitude::
+
+        east  = dRA * cos(dec),   north = dDec
+        AL    = east * sin(psi) + north * cos(psi)
+        AC    = east * cos(psi) - north * sin(psi)
+
+    so ``T`` maps a ``(RA, Dec)`` offset to ``(AL, AC)`` and a covariance
+    transforms as ``C_scan = T C T^T``.  This is the same convention
+    :class:`FixedScanWeight` uses.
+    """
+    cos_dec = np.cos(dec)
+    sin_psi = np.sin(scan_angles)
+    cos_psi = np.cos(scan_angles)
+    rotation = np.empty((len(scan_angles), 2, 2))
+    rotation[:, 0, 0] = sin_psi * cos_dec
+    rotation[:, 0, 1] = cos_psi
+    rotation[:, 1, 0] = cos_psi * cos_dec
+    rotation[:, 1, 1] = -sin_psi
+    return rotation
+
+
+def _scale_in_scan_frame(
+    matrix: np.ndarray,
+    rotation: np.ndarray,
+    scale_al: float,
+    scale_ac: float,
+) -> np.ndarray:
+    """Scale a ``(RA, Dec)`` covariance along/across scan, then rotate back.
+
+    With ``S = diag(scale_al, scale_ac)`` and ``A = blockdiag(T_k^{-1} S T_k)``
+    the scaled covariance is the similarity transform ``A C A^T``.  Writing it
+    this way handles the random component (block diagonal) and the systematic
+    component (dense within a transit) with the same expression: the systematic
+    part is one physical offset per transit, so its ``(i, j)`` entry is rotated
+    by observation ``i`` on one side and observation ``j`` on the other.
+    """
+    if scale_al == 1.0 and scale_ac == 1.0:
+        return matrix
+
+    scale = np.diag([scale_al, scale_ac])
+    n_obs = rotation.shape[0]
+    transform = np.zeros((2 * n_obs, 2 * n_obs))
+    for k in range(n_obs):
+        rows = slice(2 * k, 2 * k + 2)
+        transform[rows, rows] = np.linalg.inv(rotation[k]) @ scale @ rotation[k]
+    return transform @ matrix @ transform.T
+
+
+@register_weight_strategy("gaia_components")
+class GaiaComponentsWeight(WeightStrategy):
+    r"""Gaia archive weighting with independent random/systematic scaling.
+
+    The Gaia archive covariance has two parts: a **random** component, which
+    varies from CCD crossing to crossing, and a **systematic** component, which
+    is constant across a whole transit and therefore correlates every pair of
+    observations within it.  :class:`GaiaArchiveWeight` scales the *total*
+    covariance with a single factor; this strategy instead scales the two parts
+    independently and recombines them::
+
+        C = alpha_random * C_random + alpha_systematic * C_systematic
+        W = C^{-1}
+
+    so the intra-transit systematic correlation can be tuned (down-weighted by
+    ``systematic_scale < 1``, emphasised by ``> 1``) without touching the random
+    noise level, or vice versa.
+
+    Each component can be scaled **per scan axis** as well.  The archive blocks
+    are stored in ``(RA, Dec)``, but Gaia's error budget is naturally expressed
+    along and across the scan direction, so the four factors are applied in the
+    scan frame: each block is rotated by the observation's position angle of
+    scan, scaled by ``diag(scale_al, scale_ac)``, and rotated back.  The
+    single-factor ``random_scale`` / ``systematic_scale`` remain as a shorthand
+    that sets both axes at once.
+
+    Like :class:`GaiaArchiveWeight` this is a full-matrix scheme — the resulting
+    ``W`` has off-diagonal transit blocks — so it sets
+    :attr:`preserve_full_weight_matrix` to True and rewrites the observation
+    set's full weight matrix.  The component covariance blocks are read from the
+    cache populated by the Gaia observation factory; if none are available the
+    strategy falls back to the ID v2 residual-driven weighting.
+
+    This strategy is configurable through ``weighting.gaia_components``:
+
+    ``random_scale_al`` / ``random_scale_ac``
+        Multiplicative factors applied to the random covariance component along
+        and across the scan direction (default ``1.0``).  Use ``> 1`` to inflate
+        the random noise (down-weight) or ``< 1`` to tighten it.
+    ``systematic_scale_al`` / ``systematic_scale_ac``
+        The same, for the systematic covariance component.
+    ``random_scale`` / ``systematic_scale``
+        Shorthand that sets both axes of the corresponding component.  Ignored
+        for an axis that is given explicitly.
+    """
+
+    def __init__(
+        self,
+        random_scale: float | None = None,
+        systematic_scale: float | None = None,
+        random_scale_al: float | None = None,
+        random_scale_ac: float | None = None,
+        systematic_scale_al: float | None = None,
+        systematic_scale_ac: float | None = None,
+    ):
+        """Configure the Gaia component weighting.
+
+        Parameters
+        ----------
+        random_scale : float, optional
+            Shorthand for setting both ``random_scale_al`` and
+            ``random_scale_ac``.  Defaults to ``1.0`` where not overridden.
+        systematic_scale : float, optional
+            Shorthand for setting both ``systematic_scale_al`` and
+            ``systematic_scale_ac``.
+        random_scale_al : float, optional
+            Along-scan factor for the random covariance component.
+        random_scale_ac : float, optional
+            Across-scan factor for the random covariance component.
+        systematic_scale_al : float, optional
+            Along-scan factor for the systematic covariance component.
+        systematic_scale_ac : float, optional
+            Across-scan factor for the systematic covariance component.
+        """
+        self.random_scale_al = self._resolve_scale(
+            "random_scale_al", random_scale_al, random_scale
+        )
+        self.random_scale_ac = self._resolve_scale(
+            "random_scale_ac", random_scale_ac, random_scale
+        )
+        self.systematic_scale_al = self._resolve_scale(
+            "systematic_scale_al", systematic_scale_al, systematic_scale
+        )
+        self.systematic_scale_ac = self._resolve_scale(
+            "systematic_scale_ac", systematic_scale_ac, systematic_scale
+        )
+
+    @staticmethod
+    def _resolve_scale(name: str, explicit: float | None, shorthand: float | None) -> float:
+        """Pick the per-axis factor, falling back to the shorthand, then to 1.0."""
+        value = explicit if explicit is not None else shorthand
+        if value is None:
+            return 1.0
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(
+                f"GaiaComponentsWeight: '{name}' must be a positive finite number, got {value!r}."
+            )
+        return float(value)
+
+    @property
+    def preserve_full_weight_matrix(self) -> bool:
+        """The component weights *are* the (reweighted) full transit matrix."""
+        return True
+
+    def _component_weight_matrix(
+        self,
+        set_id: str,
+        scan_angles: np.ndarray | None = None,
+        dec: np.ndarray | None = None,
+    ) -> np.ndarray | None:
+        """Build ``W = (alpha_r C_r + alpha_s C_s)^{-1}`` from the cached components.
+
+        The per-axis factors are applied in the scan frame, which needs the
+        position angle of scan and the declination of every observation.  When
+        those are unavailable the factors are applied directly in ``(RA, Dec)``
+        — exact for the isotropic case (``scale_al == scale_ac``) and a
+        documented approximation otherwise.
+
+        Returns ``None`` if the components for *set_id* are not cached or do not
+        describe a single, consistently-sized system.
+        """
+        cached = get_gaia_covariance_components(set_id)
+        if cached is None:
+            return None
+        random_blocks, systematic_blocks = cached
+        if not random_blocks or len(random_blocks) != len(systematic_blocks):
+            return None
+
+        random_matrix = _blocks_to_full_matrix(random_blocks)
+        systematic_matrix = _blocks_to_full_matrix(systematic_blocks)
+
+        rotation = self._rotation_for(random_matrix.shape[0], scan_angles, dec)
+        if rotation is None:
+            random_matrix = self._scale_isotropic(
+                random_matrix, self.random_scale_al, self.random_scale_ac
+            )
+            systematic_matrix = self._scale_isotropic(
+                systematic_matrix, self.systematic_scale_al, self.systematic_scale_ac
+            )
+        else:
+            random_matrix = _scale_in_scan_frame(
+                random_matrix, rotation, self.random_scale_al, self.random_scale_ac
+            )
+            systematic_matrix = _scale_in_scan_frame(
+                systematic_matrix, rotation, self.systematic_scale_al, self.systematic_scale_ac
+            )
+
+        covariance = random_matrix + systematic_matrix
+
+        weight_matrix = np.linalg.inv(covariance)
+        # Force symmetry: the inversion introduces numerical asymmetry, and Tudat's
+        # normal equations assume a symmetric weight matrix.
+        return (weight_matrix + weight_matrix.T) / 2.0
+
+    @staticmethod
+    def _rotation_for(
+        n_entries: int, scan_angles: np.ndarray | None, dec: np.ndarray | None
+    ) -> np.ndarray | None:
+        """Return the per-observation rotations, or ``None`` if they are unavailable."""
+        if scan_angles is None or dec is None:
+            return None
+        n_obs = n_entries // 2
+        if len(scan_angles) != n_obs or len(dec) != n_obs:
+            return None
+        return _scan_frame_rotation(
+            np.asarray(scan_angles, dtype=float), np.asarray(dec, dtype=float)
+        )
+
+    @staticmethod
+    def _scale_isotropic(matrix: np.ndarray, scale_al: float, scale_ac: float) -> np.ndarray:
+        """Scale the ``(RA, Dec)`` axes directly, for when scan angles are missing."""
+        if scale_al == 1.0 and scale_ac == 1.0:
+            return matrix
+        scaled = matrix.copy()
+        scaled[0::2, :] *= scale_al
+        scaled[:, 0::2] *= scale_al
+        scaled[1::2, :] *= scale_ac
+        scaled[:, 1::2] *= scale_ac
+        return scaled
+
+    def compute_weights(
+        self,
+        observation_set: obs.SingleObservationSet,
+        clusters: ClusterList,
+        set_id: str,
+        min_sigma_arcsec: float = 0.01,
+        view=None,
+    ) -> tuple[np.ndarray, pd.DataFrame]:
+        min_sigma_rad = min_sigma_arcsec * _ARCSEC_TO_RAD
+        residuals_rad = _residuals_array(observation_set)
+        n_obs = residuals_rad.shape[0]
+        times = np.array([t.to_float() for t in observation_set.observation_times])
+
+        if n_obs == 0:
+            return np.array([], dtype=float), pd.DataFrame()
+
+        # The per-axis factors are applied in the scan frame, which needs the
+        # position angle of scan and the declination of each observation.  Both
+        # are only read when the scan angles are actually available, so a set
+        # without them never touches the observation array.
+        scan_angles = view.scan_angles if view is not None else None
+        dec = None
+        if scan_angles is not None:
+            observed = np.asarray(observation_set.concatenated_observations, dtype=float)
+            dec = observed.reshape(-1, 2)[:, 1]
+
+        weight_matrix = self._component_weight_matrix(set_id, scan_angles=scan_angles, dec=dec)
+        if weight_matrix is not None and weight_matrix.shape[0] == 2 * n_obs:
+            # Rewrite the full transit matrix in place; the engine preserves it.
+            if getattr(observation_set, "has_full_weight_matrix_contribution", False):
+                observation_set.set_full_weight_matrix(weight_matrix)
+            weights_array = np.diag(weight_matrix).copy()
+            weights_ra_arr = weights_array[0::2]
+            weights_dec_arr = weights_array[1::2]
+            df = _build_weights_df(
+                n_obs,
+                times,
+                residuals_rad,
+                clusters,
+                weights_ra_arr,
+                weights_dec_arr,
+                "gaia_components",
+                set_id,
+                "set",
+                observable_type=_observable_type_str(observation_set),
+            )
+            logger.debug(
+                "GaiaComponentsWeight [%s]: random(AL=%.3g, AC=%.3g), "
+                "systematic(AL=%.3g, AC=%.3g) [%s]; rewrote full transit matrix "
+                "(RA w range=[%.2e, %.2e], DEC w range=[%.2e, %.2e])",
+                set_id,
+                self.random_scale_al,
+                self.random_scale_ac,
+                self.systematic_scale_al,
+                self.systematic_scale_ac,
+                "scan frame" if scan_angles is not None else "RA/Dec fallback",
+                weights_ra_arr.min(),
+                weights_ra_arr.max(),
+                weights_dec_arr.min(),
+                weights_dec_arr.max(),
+            )
+            return weights_array, df
+
+        # Fallback: no cached components — use ID v2 residual-driven weighting.
+        logger.warning(
+            "GaiaComponentsWeight [%s]: no cached random/systematic covariance components found "
+            "(set_id='%s', n_obs=%d). Falling back to ID v2 residual-driven weighting.",
+            set_id,
+            set_id,
+            n_obs,
+        )
+        tf_clusters = clusters.by_level("timeframe")
+        if not tf_clusters:
+            ra_sigma = max(_rms(residuals_rad[:, 0]), min_sigma_rad)
+            dec_sigma = max(_rms(residuals_rad[:, 1]), min_sigma_rad)
+        else:
+            ra_sigma, dec_sigma = _id_v2_sigmas(residuals_rad, tf_clusters, min_sigma_rad)
+        w_ra = 1.0 / ra_sigma**2
+        w_dec = 1.0 / dec_sigma**2
+        weights_ra_arr = np.full(n_obs, w_ra)
+        weights_dec_arr = np.full(n_obs, w_dec)
+        weights_array = _interleave_weights(weights_ra_arr, weights_dec_arr)
+        df = _build_weights_df(
+            n_obs,
+            times,
+            residuals_rad,
+            clusters,
+            weights_ra_arr,
+            weights_dec_arr,
+            "gaia_components",
+            set_id,
+            "set",
+            observable_type=_observable_type_str(observation_set),
+        )
+        return weights_array, df
+
+
+# ---------------------------------------------------------------------------
 # Fixed along/across-scan weighting
 # ---------------------------------------------------------------------------
 
@@ -1145,3 +1488,277 @@ class FixedScanWeight(WeightStrategy):
                 )
             )
         return blocks
+
+
+# ---------------------------------------------------------------------------
+# Fixed along/across-scan weighting with explicit random + systematic components
+# ---------------------------------------------------------------------------
+
+#: Epoch gap (seconds) above which a new Gaia transit starts.  Mirrors
+#: ``orbitdet.visualization.gaia_transit_errors.DEFAULT_TRANSIT_GAP_SECONDS``:
+#: intra-transit samples span tens of seconds, transits are >= ~106 min apart.
+_FIXED_SCAN_COMPONENTS_TRANSIT_GAP_SECONDS = 1800.0
+
+
+@register_weight_strategy("fixed_scan_components")
+class FixedScanComponentsWeight(FixedScanWeight):
+    r"""Fixed scan-frame weighting with random (block-diagonal) + systematic (rank-1) parts.
+
+    A sibling of :class:`FixedScanWeight` for the case where the along/across-scan
+    uncertainty is known as a **random** and a **systematic** component rather
+    than a single sigma.  The two are *not* combined in quadrature into one
+    per-observation sigma; they keep their distinct statistical structure, which
+    is exactly what the Gaia archive does (see
+    ``GaiaAstrometry.get_observation_covariance_components``):
+
+    ``random`` (within transit)
+        Independent from crossing to crossing, so it contributes a **block
+        diagonal** scan-frame covariance: one ``2x2`` block per observation,
+        ``diag(sigma_AL,r^2, sigma_AC,r^2)``.
+    ``systematic`` (between transits)
+        Constant across a whole transit, so it correlates *every* pair of
+        observations within that transit.  For a transit with ``n`` observations
+        it contributes a dense ``2n x 2n`` block built as a **Kronecker product**
+        of an all-ones ``n x n`` matrix with the ``2x2`` systematic scan
+        covariance::
+
+            C_sys,transit = ones(n, n) ⊗ diag(sigma_AL,s^2, sigma_AC,s^2)
+
+    The two are summed and inverted per transit to give the full (off-diagonal)
+    ``(RA, Dec)`` weight matrix, rotated out of the scan frame.  Weighting each
+    transit's observations jointly (rather than per observation) is the point:
+    the systematic offset is degenerate across a transit, so its block carries
+    off-diagonal terms the per-observation path cannot express.
+
+    Because the result is a full transit matrix, this strategy sets
+    :attr:`preserve_full_weight_matrix` to True and writes the set's full weight
+    matrix (as :class:`GaiaComponentsWeight` does).  The ``random`` and
+    ``systematic`` values are the ``random σ`` / ``systematic σ`` measured by
+    :class:`orbitdet.visualization.gaia_transit_errors.GaiaTransitErrorComponents`.
+
+    Configurable through ``weighting.fixed_scan_components`` (all in mas):
+
+    ``random_along_scan_mas``
+        Along-scan random 1σ (within-transit), in milliarcseconds.
+    ``random_across_scan_mas``
+        Across-scan random 1σ, in milliarcseconds.
+    ``systematic_along_scan_mas``
+        Along-scan systematic 1σ (transit-to-transit), in milliarcseconds.
+    ``systematic_across_scan_mas``
+        Across-scan systematic 1σ, in milliarcseconds.
+    ``transit_gap_seconds``
+        Epoch gap (seconds) above which a new transit starts (default ``1800``).
+    """
+
+    def __init__(
+        self,
+        random_along_scan_mas: float = 0.0,
+        random_across_scan_mas: float = 0.0,
+        systematic_along_scan_mas: float = 0.0,
+        systematic_across_scan_mas: float = 0.0,
+        transit_gap_seconds: float = _FIXED_SCAN_COMPONENTS_TRANSIT_GAP_SECONDS,
+    ):
+        for name, value in (
+            ("random_along_scan_mas", random_along_scan_mas),
+            ("random_across_scan_mas", random_across_scan_mas),
+            ("systematic_along_scan_mas", systematic_along_scan_mas),
+            ("systematic_across_scan_mas", systematic_across_scan_mas),
+        ):
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(
+                    f"FixedScanComponentsWeight: '{name}' must be a non-negative finite "
+                    f"number, got {value!r}."
+                )
+        if float(random_along_scan_mas) <= 0.0 or float(random_across_scan_mas) <= 0.0:
+            raise ValueError(
+                "FixedScanComponentsWeight: the random along/across-scan sigma must be "
+                "positive (it is the block-diagonal part that keeps the transit covariance "
+                f"invertible); got random_AL={random_along_scan_mas!r}, "
+                f"random_AC={random_across_scan_mas!r}."
+            )
+        if not np.isfinite(transit_gap_seconds) or transit_gap_seconds <= 0.0:
+            raise ValueError(
+                "FixedScanComponentsWeight: 'transit_gap_seconds' must be a positive finite "
+                f"number, got {transit_gap_seconds!r}."
+            )
+
+        # The parent's per-observation sigma is only used for the reporting path
+        # (compute_weights) and the diagonal fallback; the actual weighting is the
+        # full transit matrix built in compute_block_weights.  Combine in
+        # quadrature here purely for that reporting sigma.
+        super().__init__(
+            along_scan_sigma_mas=float(np.hypot(random_along_scan_mas, systematic_along_scan_mas)),
+            across_scan_sigma_mas=float(
+                np.hypot(random_across_scan_mas, systematic_across_scan_mas)
+            ),
+        )
+        self.random_along_scan_mas = float(random_along_scan_mas)
+        self.random_across_scan_mas = float(random_across_scan_mas)
+        self.systematic_along_scan_mas = float(systematic_along_scan_mas)
+        self.systematic_across_scan_mas = float(systematic_across_scan_mas)
+        self.transit_gap_seconds = float(transit_gap_seconds)
+
+    @property
+    def preserve_full_weight_matrix(self) -> bool:
+        """This strategy's weights *are* the full (per-transit) weight matrix."""
+        return True
+
+    def _component_sigmas_rad(self) -> tuple[float, float, float, float]:
+        """Return ``(random_AL, random_AC, systematic_AL, systematic_AC)`` in radians."""
+        mas_to_rad = _ARCSEC_TO_RAD / 1e3
+        return (
+            self.random_along_scan_mas * mas_to_rad,
+            self.random_across_scan_mas * mas_to_rad,
+            self.systematic_along_scan_mas * mas_to_rad,
+            self.systematic_across_scan_mas * mas_to_rad,
+        )
+
+    @staticmethod
+    def _transit_labels(epochs: np.ndarray, gap_seconds: float) -> np.ndarray:
+        """Label sorted epochs with a transit index, splitting on epoch gaps."""
+        if epochs.size == 0:
+            return np.zeros(0, dtype=int)
+        starts = np.concatenate([[False], np.diff(epochs) > gap_seconds])
+        return np.cumsum(starts).astype(int)
+
+    def _full_weight_matrix(
+        self, observation_set: obs.SingleObservationSet, n_obs: int, view=None
+    ) -> np.ndarray | None:
+        """Build the full ``(2n, 2n)`` scan-frame weight matrix, or ``None``.
+
+        ``None`` means the set cannot be handled as one transit matrix (no scan
+        angles), so the caller should fall back to the per-observation path.
+        """
+        psi = self._scan_angles(view)
+        if psi is None or len(psi) != n_obs:
+            return None
+
+        epochs = np.array([t.to_float() for t in observation_set.observation_times], dtype=float)
+        order = np.argsort(epochs, kind="stable")
+        sorted_epochs = epochs[order]
+        transit_id = self._transit_labels(sorted_epochs, self.transit_gap_seconds)
+        n_transits = int(transit_id[-1]) + 1
+
+        observed = np.asarray(observation_set.concatenated_observations, dtype=float).reshape(-1, 2)
+        dec_obs = observed[:, 1]
+
+        sigma_al_r, sigma_ac_r, sigma_al_s, sigma_ac_s = self._component_sigmas_rad()
+        random_cov_scan = np.diag([sigma_al_r**2, sigma_ac_r**2])
+        systematic_cov_scan = np.diag([sigma_al_s**2, sigma_ac_s**2])
+
+        blocks: list[np.ndarray] = []
+        for j in range(n_transits):
+            members = np.flatnonzero(transit_id == j)
+            n = members.size
+            # Rotation from (RA, Dec) to (AL, AC) for each member.
+            #   east = ΔRA cos(dec), north = ΔDec
+            #   AL = east sin psi + north cos psi
+            #   AC = east cos psi - north sin psi
+            t_blocks = np.empty((n, 2, 2))
+            for k, idx in enumerate(members.tolist()):
+                cos_dec = np.cos(dec_obs[idx])
+                sin_psi = np.sin(psi[idx])
+                cos_psi = np.cos(psi[idx])
+                t_blocks[k] = np.array(
+                    [
+                        [sin_psi * cos_dec, cos_psi],
+                        [cos_psi * cos_dec, -sin_psi],
+                    ]
+                )
+
+            # Per-member random covariance in (RA, Dec): T_k^T C_rand_scan T_k.
+            random_cov = np.zeros((2 * n, 2 * n))
+            for k in range(n):
+                rk = t_blocks[k].T @ random_cov_scan @ t_blocks[k]
+                random_cov[2 * k : 2 * k + 2, 2 * k : 2 * k + 2] = rk
+
+            # Systematic covariance in (RA, Dec), constant across the transit:
+            # the systematic offset is one physical shift per transit, rotated by
+            # each member's own scan angle, so its (RA, Dec) covariance is
+            # C = mean_k(T_k^T C_sys_scan T_k).  The transit (Kronecker) structure
+            # then tiles this 2x2 block with ones(n, n).
+            c_sys_radec = np.zeros((2, 2))
+            for k in range(n):
+                c_sys_radec += t_blocks[k].T @ systematic_cov_scan @ t_blocks[k]
+            c_sys_radec /= n
+            systematic_cov = np.kron(np.ones((n, n)), c_sys_radec)
+
+            covariance = random_cov + systematic_cov
+            weight = np.linalg.inv(covariance)
+            blocks.append((weight + weight.T) / 2.0)
+
+        # Assemble block-diagonal over transits, then undo the epoch sort so the
+        # matrix lines up with the set's original observation order.
+        from scipy.linalg import block_diag
+
+        weight_matrix = block_diag(*blocks) if len(blocks) > 1 else blocks[0]
+
+        # ``order`` is the permutation that sorted the epochs; the matrix built
+        # above is in sorted order, so permute its 2x2 rows/columns back.
+        perm = np.argsort(order, kind="stable")  # inverse permutation
+        idx = np.empty(2 * n_obs, dtype=int)
+        idx[0::2] = 2 * perm
+        idx[1::2] = 2 * perm + 1
+        weight_matrix = weight_matrix[np.ix_(idx, idx)]
+        return weight_matrix
+
+    def compute_weights(
+        self,
+        observation_set: obs.SingleObservationSet,
+        clusters: ClusterList,
+        set_id: str,
+        min_sigma_arcsec: float = 0.01,
+        view=None,
+    ) -> tuple[np.ndarray, pd.DataFrame]:
+        """Write the full transit weight matrix and report its diagonal."""
+        residuals_rad = _residuals_array(observation_set)
+        n_obs = residuals_rad.shape[0]
+        times = np.array([t.to_float() for t in observation_set.observation_times])
+
+        if n_obs == 0:
+            return np.array([], dtype=float), pd.DataFrame()
+
+        weight_matrix = self._full_weight_matrix(observation_set, n_obs, view=view)
+        if weight_matrix is None:
+            # No scan angles: defer to FixedScanWeight's diagonal fallback (the
+            # engine will not preserve the full matrix, since none was set).
+            logger.warning(
+                "FixedScanComponentsWeight [%s]: no scan angles; falling back to the "
+                "diagonal (RA, Dec) weighting.",
+                set_id,
+            )
+            return super().compute_weights(
+                observation_set, clusters, set_id, min_sigma_arcsec, view=view
+            )
+
+        if getattr(observation_set, "has_full_weight_matrix_contribution", False):
+            observation_set.set_full_weight_matrix(weight_matrix)
+
+        weights_array = np.diag(weight_matrix).copy()
+        weights_ra_arr = weights_array[0::2]
+        weights_dec_arr = weights_array[1::2]
+        df = _build_weights_df(
+            n_obs,
+            times,
+            residuals_rad,
+            clusters,
+            weights_ra_arr,
+            weights_dec_arr,
+            "fixed_scan_components",
+            set_id,
+            "set",
+            observable_type=_observable_type_str(observation_set),
+        )
+        logger.debug(
+            "FixedScanComponentsWeight [%s]: random(AL=%.3g, AC=%.3g) mas, "
+            "systematic(AL=%.3g, AC=%.3g) mas; wrote full %dx%d transit matrix",
+            set_id,
+            self.random_along_scan_mas,
+            self.random_across_scan_mas,
+            self.systematic_along_scan_mas,
+            self.systematic_across_scan_mas,
+            *weight_matrix.shape,
+        )
+        return weights_array, df
+
+

@@ -1,8 +1,8 @@
 """Pure statistics over a derived observation frame.
 
 Every function here takes a dataframe (or plain arrays) and returns a value or a
-new tidy dataframe.  Nothing reads config, logs to Aim, or touches the file
-system - that is the job of the table layer (:mod:`orbitdet.analysis.tables`).
+new tidy dataframe.  Nothing reads config or touches the file system - that is
+the job of the table layer (:mod:`orbitdet.analysis.tables`).
 Keeping the maths pure makes it unit-testable without a collection, a system of
 bodies, or an active Hydra run, and makes the assumptions explicit.
 

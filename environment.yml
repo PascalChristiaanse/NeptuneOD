@@ -32,7 +32,6 @@ dependencies:
   - beautifulsoup4
   # The NSDB descriptor parser builds its field grammar with pyparsing.
   - pyparsing
-  - aim
   - plotly
   - joblib
   - platformdirs

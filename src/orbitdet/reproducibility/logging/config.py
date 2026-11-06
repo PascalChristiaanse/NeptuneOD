@@ -2,9 +2,9 @@
 """Declarative configuration for the single logging pipeline.
 
 The repository previously configured logging in several overlapping places
-(Hydra's ``job_logging``, ``logging.basicConfig`` in ``runtime.py``, file-descriptor
-capture, and Aim's terminal-log capture). That stack made ``cfg.logging.level`` a
-no-op and sent every application error to stdout instead of stderr.
+(Hydra's ``job_logging``, ``logging.basicConfig`` in ``runtime.py``, and
+file-descriptor capture). That stack made ``cfg.logging.level`` a no-op and sent
+every application error to stdout instead of stderr.
 
 Everything now flows through one :func:`logging.config.dictConfig` call built
 here. The design goals are:
@@ -39,33 +39,6 @@ STDERR_HANDLER_NAME = "console_err"
 #: Name of the rotating file handler.
 FILE_HANDLER_NAME = "file"
 
-#: Name of the AimStack handler (no dictConfig entry; created by configure_logging).
-AIM_HANDLER_NAME = "aim"
-
-
-@dataclass
-class AimSettings:
-    """Settings for the AimStack logging sink.
-
-    Grouped separately because Aim is an optional external sink that can fail
-    independently of the local files and console.
-
-    Attributes:
-        enabled: Whether to forward records to Aim.
-        level: Level for the Aim sink. Defaults to the console ``level``.
-        max_warnings: How many Aim handler failures to report before going
-            quiet.
-        capture_terminal_logs: Whether Aim should also capture terminal output
-            itself. Disabled by default: the Aim handler already carries the
-            same content, and Aim's capture globally patches ``sys.stdout``,
-            which previously conflicted with the other capture mechanisms.
-    """
-
-    enabled: bool = True
-    level: str | int | None = None
-    max_warnings: int = 3
-    capture_terminal_logs: bool = False
-
 
 @dataclass
 class LoggingSettings:
@@ -75,7 +48,7 @@ class LoggingSettings:
     applies defaults for every optional field so a partial config is valid.
 
     Attributes:
-        level: Level for the console streams and (later) the Aim sink.
+        level: Level for the console streams.
         file_level: Level for the rotating file sink. Defaults to ``level``; set
             lower (e.g. ``DEBUG``) to keep a complete on-disk record while
             keeping the console quiet.
@@ -84,7 +57,6 @@ class LoggingSettings:
         filename: Base name of the run log file.
         max_bytes: Rotation size threshold in bytes.
         backup_count: Number of rotated files to keep.
-        aim: Settings for the AimStack sink.
     """
 
     level: str | int = "INFO"
@@ -94,7 +66,6 @@ class LoggingSettings:
     filename: str = "run.log"
     max_bytes: int = 10 * 1024 * 1024
     backup_count: int = 5
-    aim: AimSettings = field(default_factory=AimSettings)
 
     @classmethod
     def from_config(cls, cfg: DictConfig | None) -> LoggingSettings:
@@ -116,17 +87,6 @@ class LoggingSettings:
 
         filename = section.get("filename", None)
 
-        aim_section = section.get("aim", None)
-        if aim_section is None:
-            aim = AimSettings()
-        else:
-            aim = AimSettings(
-                enabled=bool(aim_section.get("enabled", True)),
-                level=aim_section.get("level", None),
-                max_warnings=int(aim_section.get("max_warnings", 3)),
-                capture_terminal_logs=bool(aim_section.get("capture_terminal_logs", False)),
-            )
-
         return cls(
             level=section.get("level", cls.level),
             file_level=section.get("file_level", None),
@@ -135,7 +95,6 @@ class LoggingSettings:
             filename=str(filename) if filename is not None else cls.filename,
             max_bytes=int(section.get("max_bytes", cls.max_bytes)),
             backup_count=int(section.get("backup_count", cls.backup_count)),
-            aim=aim,
         )
 
     @property
@@ -144,17 +103,9 @@ class LoggingSettings:
         return coerce_level(self.file_level if self.file_level is not None else self.level)
 
     @property
-    def effective_aim_level(self) -> int:
-        """Numeric level for the Aim sink, falling back to :attr:`level`."""
-        return coerce_level(self.aim.level if self.aim.level is not None else self.level)
-
-    @property
     def root_level(self) -> int:
         """Numeric root level - the most verbose of the enabled sinks."""
-        levels = [coerce_level(self.level), self.effective_file_level]
-        if self.aim.enabled:
-            levels.append(self.effective_aim_level)
-        return min(levels)
+        return min(coerce_level(self.level), self.effective_file_level)
 
 
 def build_sink_payload(

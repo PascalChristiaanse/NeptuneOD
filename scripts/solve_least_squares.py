@@ -22,8 +22,6 @@ from orbitdet.observations import OutlierEngine, WeightEngine, create_observatio
 from orbitdet.preprocessing.schema import DataSource
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact_reference,
-    aim_log_metrics,
     enforce_initialization,
     initialize,
 )
@@ -457,18 +455,13 @@ def main(cfg: DictConfig):
     ############################################################################
 
     num_iterations = estimation_output.residual_history.shape[1]
-    logger.info("Logging per-iteration metrics to Aim...")
+    logger.info("Logging per-iteration metrics...")
     for i in range(num_iterations):
         rms_i = np.sqrt(np.mean(np.square(estimation_output.residual_history[:, i])))
         logger.info("Iteration %d residual RMS: %.6e", i, rms_i)
-        aim_log_metrics(
-            {"residual_rms": float(rms_i)},
-            step=i,
-            context={"metric_type": "iteration"},
-        )
-    # Log final residual summary metrics to Aim
+    # Log final residual summary metrics
     final_residuals = estimation_output.final_residuals
-    logger.info("Logging summary metrics to Aim...")
+    logger.info("Logging summary metrics...")
     try:
         covariance_condition = float(np.linalg.cond(estimation_output.covariance))
     except np.linalg.LinAlgError as e:
@@ -498,8 +491,7 @@ def main(cfg: DictConfig):
         "inverse_covariance_condition": inverse_covariance_condition,
     }
     logger.info("Summary metrics:\n%s", _format_metrics(summary_metrics))
-    aim_log_metrics(summary_metrics, context={"metric_type": "summary"})
-    logger.info("Logged summary metrics to Aim.")
+    logger.info("Logged summary metrics.")
 
     #################################################################
     ######################## POST-FIT RESIDUALS #####################
@@ -573,8 +565,7 @@ def main(cfg: DictConfig):
         "best_iteration": int(estimation_output.best_iteration),
     }
     logger.info("Best-iteration metrics:\n%s", _format_metrics(best_iteration_metrics))
-    aim_log_metrics(best_iteration_metrics, context={"metric_type": "summary"})
-    logger.info("Logged best-iteration post-fit RMS to Aim.")
+    logger.info("Logged best-iteration post-fit RMS.")
 
     #############################################################################
     ################################## Figures ##################################
@@ -674,17 +665,6 @@ def main(cfg: DictConfig):
         formal_errors_rsw=fe_rsw,
     )
     logger.info("Propagated formal errors saved to %s", output_dir / "propagated_formal_errors.npz")
-
-    # Log artifacts to Aim
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    config_path = output_dir / "config.yaml"
-    if config_path.exists():
-        aim_log_artifact_reference(config_path)
-    # aim_log_artifact_reference(output_dir.with_name("observations.tudat"))
-    # aim_log_artifact_reference(output_dir.with_name("estimation_output.tudat"))
-    # aim_log_artifact_reference(output_dir.with_name("estimation_log.tudat"))
-    logger.info("Attached artifacts to Aim.")
 
 
 if __name__ == "__main__":

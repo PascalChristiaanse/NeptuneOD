@@ -107,7 +107,6 @@ def test_initialize_sets_context_and_writes_metadata(tmp_path, monkeypatch):
         "get",
         staticmethod(lambda: SimpleNamespace(runtime=SimpleNamespace(output_dir=str(tmp_path)))),
     )
-    monkeypatch.setattr(runtime, "aim_start_run", MagicMock())
 
     cfg = OmegaConf.create({"seed": 7, "foo": "bar"})
     ctx = runtime.initialize(cfg)
@@ -287,7 +286,6 @@ def test_initialize_configures_logging_even_when_context_is_cached(monkeypatch, 
     )
     monkeypatch.setattr(runtime, "get_git_commit", MagicMock(return_value="abc123"))
     monkeypatch.setattr(runtime, "save_conda_environment", MagicMock())
-    monkeypatch.setattr(runtime, "aim_start_run", MagicMock())
     monkeypatch.setattr(
         runtime.HydraConfig,
         "get",

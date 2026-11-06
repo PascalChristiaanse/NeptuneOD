@@ -105,9 +105,8 @@ def main(cfg: DictConfig):
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # The Plot base class already saved each figure as a PDF, logged it to Aim
-    # as a static image, and attached the PDF as an artifact reference.
-    logger.info("Figures saved, logged to Aim, and artifacts attached by Plot base class.")
+    # The Plot base class already saved each figure as a PDF.
+    logger.info("Figures saved by Plot base class.")
 
 
 if __name__ == "__main__":

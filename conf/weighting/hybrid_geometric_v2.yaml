@@ -2,17 +2,15 @@
 
 # Weighting: scaled hybrid geometric (ID v2 x descaled TF).
 #
-# Router-shaped: single-strategy via a router `default`.  Thesis label
-# "scaled hybrid geom." == hybrid_geometric_v2.
+# Thesis label "scaled hybrid geom." == hybrid_geometric_v2.
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.005
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: hybrid_geometric_v2
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

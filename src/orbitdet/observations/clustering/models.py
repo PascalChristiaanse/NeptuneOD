@@ -1,11 +1,11 @@
-"""Data models for the shared observation-grouping system.
+"""Data models for the shared observation-clustering system.
 
-Grouping partitions the observations of a single observation set by time.
+Clustering partitions the observations of a single observation set by time.
 It is used by **both** the weighting subsystem and the outlier rejection
-subsystem, but each subsystem derives its own grouping from its own config
-(an outlier-rejection group is not necessarily a weighting group).
+subsystem, but each subsystem derives its own clustering from its own config
+(an outlier-rejection cluster is not necessarily a weighting cluster).
 
-A grouping is built from one or more *partitioning levels* applied
+A clustering is built from one or more *partitioning levels* applied
 coarse-to-fine:
 
 - ``set``       — the whole set (always implicit).
@@ -14,7 +14,7 @@ coarse-to-fine:
 
 The order of levels is significant and is preserved: a strategy that needs
 "split by section, then split by timeframe" walks the levels in that order.
-The order is recorded in :attr:`Group.layer` (0-based, counting only
+The order is recorded in :attr:`Cluster.layer` (0-based, counting only
 *partitioning* levels; the implicit set level is ``-1``).
 """
 
@@ -27,23 +27,23 @@ import numpy as np
 
 
 @dataclass
-class Group:
-    """A single group of observations within one set.
+class Cluster:
+    """A single cluster of observations within one set.
 
     Attributes
     ----------
     indices : np.ndarray
         Integer indices **into the observation set** (0-based) belonging to
-        this group.
-    group_id : str
+        this cluster.
+    cluster_id : str
         Globally unique, human-readable identifier (``"<set>_<name>"``).
     level : str
-        The partitioning level that produced this group (``"set"``,
+        The partitioning level that produced this cluster (``"set"``,
         ``"section"``, ``"timeframe"``).
     parent_level : str | None
-        The coarser level containing this group, if any.
+        The coarser level containing this cluster, if any.
     parent_id : str | None
-        The ``group_id`` of the parent at the coarser level, if any.
+        The ``cluster_id`` of the parent at the coarser level, if any.
     layer : int
         The partitioning layer index (0-based, coarsest first).  The implicit
         set level uses ``-1``.
@@ -54,7 +54,7 @@ class Group:
     """
 
     indices: np.ndarray
-    group_id: str
+    cluster_id: str
     level: str = "timeframe"
     parent_level: str | None = None
     parent_id: str | None = None
@@ -64,13 +64,13 @@ class Group:
 
     @property
     def size(self) -> int:
-        """Number of observations in this group."""
+        """Number of observations in this cluster."""
         return len(self.indices)
 
     @property
     def name(self) -> str:
-        """Short name of this group (the section name if present, else ``group_id``)."""
-        return str(self.metadata.get("section_name") or self.group_id)
+        """Short name of this cluster (the section name if present, else ``cluster_id``)."""
+        return str(self.metadata.get("section_name") or self.cluster_id)
 
     @property
     def time_bounds(self) -> tuple[float | None, float | None]:
@@ -80,10 +80,10 @@ class Group:
 
 @dataclass
 class SectionInfo:
-    """Lightweight descriptor of a section group."""
+    """Lightweight descriptor of a section cluster."""
 
     name: str
-    group_id: str
+    cluster_id: str
     t_start: float | None
     t_end: float | None
     n_obs: int
@@ -92,9 +92,9 @@ class SectionInfo:
 
 @dataclass
 class TimeframeInfo:
-    """Lightweight descriptor of a timeframe group."""
+    """Lightweight descriptor of a timeframe cluster."""
 
-    group_id: str
+    cluster_id: str
     name: str
     t_start: float | None
     t_end: float | None
@@ -104,16 +104,16 @@ class TimeframeInfo:
     layer: int = 0
 
 
-class GroupList:
-    """Ordered collection of :class:`Group` objects.
+class ClusterList:
+    """Ordered collection of :class:`Cluster` objects.
 
     Groups are stored as a flat list and can be subset by level, layer or
     parent.  The preserving order of the levels is available via
     :attr:`levels` and :attr:`layer_count`.
     """
 
-    def __init__(self, groups: list[Group] | None = None):
-        self._groups: list[Group] = list(groups) if groups else []
+    def __init__(self, clusters: list[Cluster] | None = None):
+        self._groups: list[Cluster] = list(clusters) if clusters else []
 
     def __len__(self) -> int:
         return len(self._groups)
@@ -121,30 +121,30 @@ class GroupList:
     def __iter__(self):
         return iter(self._groups)
 
-    def __getitem__(self, index: int) -> Group:
+    def __getitem__(self, index: int) -> Cluster:
         return self._groups[index]
 
-    def add(self, group: Group) -> None:
-        self._groups.append(group)
+    def add(self, cluster: Cluster) -> None:
+        self._groups.append(cluster)
 
-    def extend(self, groups: list[Group]) -> None:
-        self._groups.extend(groups)
+    def extend(self, clusters: list[Cluster]) -> None:
+        self._groups.extend(clusters)
 
     @property
-    def groups(self) -> list[Group]:
-        """All groups (read-only view)."""
+    def clusters(self) -> list[Cluster]:
+        """All clusters (read-only view)."""
         return list(self._groups)
 
-    def by_level(self, level: str) -> list[Group]:
-        """Return groups at a specific level."""
+    def by_level(self, level: str) -> list[Cluster]:
+        """Return clusters at a specific level."""
         return [g for g in self._groups if g.level == level]
 
-    def by_layer(self, layer: int) -> list[Group]:
-        """Return groups at a specific partitioning layer."""
+    def by_layer(self, layer: int) -> list[Cluster]:
+        """Return clusters at a specific partitioning layer."""
         return [g for g in self._groups if g.layer == layer]
 
-    def by_parent(self, parent_id: str) -> list[Group]:
-        """Return groups with a specific parent group id."""
+    def by_parent(self, parent_id: str) -> list[Cluster]:
+        """Return clusters with a specific parent cluster id."""
         return [g for g in self._groups if g.parent_id == parent_id]
 
     @property
@@ -166,20 +166,20 @@ class GroupList:
                 seen[g.level] = g.layer
         return [name for name, _ in sorted(seen.items(), key=lambda kv: kv[1])]
 
-    def sections(self) -> list[Group]:
-        """All section-level groups."""
+    def sections(self) -> list[Cluster]:
+        """All section-level clusters."""
         return self.by_level("section")
 
-    def timeframes(self) -> list[Group]:
-        """All timeframe-level groups."""
+    def timeframes(self) -> list[Cluster]:
+        """All timeframe-level clusters."""
         return self.by_level("timeframe")
 
     def section_infos(self) -> list[SectionInfo]:
-        """Descriptors for every section group."""
+        """Descriptors for every section cluster."""
         return [
             SectionInfo(
-                name=str(g.metadata.get("section_name", g.group_id)),
-                group_id=g.group_id,
+                name=str(g.metadata.get("section_name", g.cluster_id)),
+                cluster_id=g.cluster_id,
                 t_start=g.metadata.get("t_start"),
                 t_end=g.metadata.get("t_end"),
                 n_obs=g.size,
@@ -189,11 +189,11 @@ class GroupList:
         ]
 
     def timeframe_infos(self) -> list[TimeframeInfo]:
-        """Descriptors for every timeframe group."""
+        """Descriptors for every timeframe cluster."""
         return [
             TimeframeInfo(
-                group_id=g.group_id,
-                name=str(g.metadata.get("section_name") or g.group_id),
+                cluster_id=g.cluster_id,
+                name=str(g.metadata.get("section_name") or g.cluster_id),
                 t_start=g.metadata.get("t_start"),
                 t_end=g.metadata.get("t_end"),
                 n_obs=g.size,
@@ -204,24 +204,24 @@ class GroupList:
             for g in self.timeframes()
         ]
 
-    def filter_to(self, indices: np.ndarray) -> GroupList:
+    def filter_to(self, indices: np.ndarray) -> ClusterList:
         """Return a copy restricted to *indices*, dropping empties.
 
         ``indices`` are treated as **global positions** into the original set;
-        the returned groups keep their global indices, filtered to the subset
+        the returned clusters keep their global indices, filtered to the subset
         that survives.  This is useful when outlier rejection removes
-        observations and a previously-built grouping must be re-applied.
+        observations and a previously-built clustering must be re-applied.
         """
         keep = set(int(i) for i in indices)
-        new_groups: list[Group] = []
+        new_clusters: list[Cluster] = []
         for g in self._groups:
             surviving = np.array([i for i in g.indices if int(i) in keep], dtype=int)
             if surviving.size == 0:
                 continue
-            new_groups.append(
-                Group(
+            new_clusters.append(
+                Cluster(
                     indices=surviving,
-                    group_id=g.group_id,
+                    cluster_id=g.cluster_id,
                     level=g.level,
                     parent_level=g.parent_level,
                     parent_id=g.parent_id,
@@ -230,4 +230,4 @@ class GroupList:
                     metadata=dict(g.metadata),
                 )
             )
-        return GroupList(new_groups)
+        return ClusterList(new_clusters)

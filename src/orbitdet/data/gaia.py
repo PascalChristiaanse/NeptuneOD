@@ -58,61 +58,10 @@ _GAIA_QUERY_CACHE = Memory(
 )
 _GAIA_QUERY_CACHE_TTL = expires_after(weeks=1)
 
-# Registry of position angle of scan (radians) keyed by the observation epoch
-# (seconds since J2000 TDB).  The Tudat ``ObservationCollection`` /
-# ``SingleObservationSet`` pybind classes do not allow attaching arbitrary
-# attributes, so we carry the scan angles alongside via this module-level map.
-# Epochs are unique per observation, so they form a stable key that survives
-# merging of observation collections.
-_SCAN_ANGLE_REGISTRY: dict[tuple[float, ...], np.ndarray] = {}
-
-
-def _register_scan_angles(epochs: np.ndarray | list[float], scan_angles: np.ndarray) -> None:
-    """Store the per-observation scan angles keyed by their epochs.
-
-    Args:
-        epochs: Observation epochs in seconds since J2000 TDB.
-        scan_angles: Position angle of scan (radians) for each observation.
-    """
-    _SCAN_ANGLE_REGISTRY[tuple(float(e) for e in epochs)] = np.asarray(scan_angles, dtype=float)
-
-
-def get_scan_angles_for_epochs(epochs: np.ndarray | list[float]) -> np.ndarray | None:
-    """Return the scan angles (radians) matching the given epochs, if registered.
-
-    Performs an exact match first (fast path for a collection built from a
-    single :class:`GaiaQuery`).  If no exact match is found, falls back to a
-    per-epoch lookup across all registered epoch sets, which is robust to
-    observation collections formed by merging several Gaia queries.
-
-    Args:
-        epochs: Observation epochs in seconds since J2000 TDB.
-
-    Returns:
-        Array of scan angles matching ``epochs`` (same length), or ``None`` if
-        no matching scan angles could be found.
-    """
-    key = tuple(float(e) for e in epochs)
-    direct = _SCAN_ANGLE_REGISTRY.get(key)
-    if direct is not None:
-        return direct
-
-    # Fallback: build an epoch->angle map across all registered sets and look up
-    # each requested epoch individually.
-    epoch_map: dict[float, float] = {}
-    for registered_epochs, angles in _SCAN_ANGLE_REGISTRY.items():
-        epoch_map.update(dict(zip(registered_epochs, angles.tolist())))
-
-    try:
-        return np.asarray([epoch_map[float(e)] for e in epochs], dtype=float)
-    except KeyError:
-        return None
-
-
 # Registry of archived Gaia random/systematic errors keyed by the observation
-# epoch (seconds since J2000 TDB).  Mirrors ``_SCAN_ANGLE_REGISTRY``: the Tudat
-# ``SingleObservationSet`` pybind classes cannot carry arbitrary attributes, so
-# the archived random/systematic errors are carried alongside via this map.
+# epoch (seconds since J2000 TDB).  The Tudat ``SingleObservationSet`` pybind
+# classes cannot carry arbitrary attributes, so the archived random/systematic
+# errors are carried alongside via this map.
 # Each value is an ``(n, 6)`` array with columns
 # ``[ra_err_random, dec_err_random, corr_random,
 #    ra_err_systematic, dec_err_systematic, corr_systematic]``
@@ -143,8 +92,8 @@ def _register_gaia_errors(epochs: np.ndarray | list[float], errors: np.ndarray) 
 def get_gaia_errors_for_epochs(epochs: np.ndarray | list[float]) -> np.ndarray | None:
     """Return the Gaia errors matching the given epochs, if registered.
 
-    Mirrors :func:`get_scan_angles_for_epochs`: exact match first, then a
-    per-epoch fallback across all registered sets.
+    Mirrors :func:`get_gaia_errors_for_epochs`'s sibling accessors: exact match
+    first, then a per-epoch fallback across all registered sets.
 
     Args:
         epochs: Observation epochs in seconds since J2000 TDB.
@@ -674,18 +623,14 @@ class GaiaQuery:
             )
             table = converted
 
-        # Register the per-observation scan angles (radians) keyed by epoch so the
-        # residual visualisations can rotate RA/Dec residuals into the Gaia
-        # along-scan / across-scan frame without re-querying the archive.
+        # The scan angles themselves are carried on the standard frame's
+        # ``scan_angle`` column (see ``orbitdet.observations.gaia``), so nothing
+        # needs registering here.
         set_epochs = [
             np.array([epoch.to_float() for epoch in observation_set.observation_times])
             for observation_set in collection.get_single_observation_sets()
         ]
         epochs = np.concatenate(set_epochs) if set_epochs else np.array([])
-        if len(epochs) > 0 and "position_angle_scan" in table.columns:
-            epoch_to_angle = dict(zip(table["epoch"], table["position_angle_scan"]))
-            scan_angles = np.array([epoch_to_angle[float(epoch)] for epoch in epochs], dtype=float)
-            _register_scan_angles(epochs, scan_angles)
 
         # Register the per-observation random/systematic errors (radians) keyed by
         # epoch so the scan-residual visualisations can draw archive error bars.

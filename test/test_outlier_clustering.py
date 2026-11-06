@@ -1,7 +1,7 @@
-"""Tests for group-scoped outlier rejection.
+"""Tests for cluster-scoped outlier rejection.
 
-The outlier subsystem has its **own** grouping, independent of weighting.
-Strategies may carry a ``groups`` filter (matching group names such as section
+The outlier subsystem has its **own** clustering, independent of weighting.
+Strategies may carry a ``clusters`` filter (matching cluster names such as section
 names or timeframe ids) in addition to the existing ``sets`` filter.
 """
 
@@ -52,7 +52,7 @@ def _make_collection(sets):
 
 @pytest.fixture
 def patch_tudat_filtering(monkeypatch):
-    """Patch Tudat filtering so group scoping works with mocks."""
+    """Patch Tudat filtering so cluster scoping works with mocks."""
 
     class MockCollection:
         def __init__(self, sets):
@@ -101,7 +101,7 @@ def _reject_above_strategy(threshold: float):
     """Strategy that rejects observations whose first residual exceeds *threshold*."""
     strategy = MagicMock(spec=OutlierStrategy)
 
-    def apply_side_effect(obs_set, bodies):
+    def apply_side_effect(obs_set, bodies, view=None):
         residuals = np.asarray(obs_set.residuals, dtype=float)
         epochs = [t.to_float() for t in obs_set.observation_times]
         keep_epochs, reject_epochs = [], []
@@ -130,38 +130,38 @@ def _reject_above_strategy(threshold: float):
 
 
 # ===========================================================================
-# _ScopedStrategy group filter
+# _ScopedStrategy cluster filter
 # ===========================================================================
 
 
 class TestScopedStrategyGroupFilter:
     def test_no_group_filter_applies_to_all(self):
-        scoped = _ScopedStrategy(MagicMock(spec=OutlierStrategy), set_filter=None)
-        assert scoped.applies_to_group("anything") is True
+        scoped = _ScopedStrategy(MagicMock(spec=OutlierStrategy))
+        assert scoped.applies_to_cluster("anything") is True
 
     def test_group_filter_matches(self):
         scoped = _ScopedStrategy(
-            MagicMock(spec=OutlierStrategy), set_filter=None, group_filter={"night_1", "night_2"}
+            MagicMock(spec=OutlierStrategy), cluster_filter={"night_1", "night_2"}
         )
-        assert scoped.applies_to_group("night_1") is True
-        assert scoped.applies_to_group("night_3") is False
+        assert scoped.applies_to_cluster("night_1") is True
+        assert scoped.applies_to_cluster("night_3") is False
 
 
 # ===========================================================================
-# from_config with grouping + groups filter
+# from_config with clustering + clusters filter
 # ===========================================================================
 
 
 class TestOutlierEngineFromConfigGrouping:
-    def test_parses_grouping(self):
+    def test_parses_clustering(self):
         cfg = OmegaConf.create(
             {
-                "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
+                "clustering": {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]},
                 "strategies": [{"type": "residual_threshold", "threshold_arcsec": 1.5}],
             }
         )
         engine = OutlierEngine.from_config(cfg)
-        assert engine._grouping is not None
+        assert engine._clustering is not None
 
     def test_parses_group_filter(self):
         cfg = OmegaConf.create(
@@ -170,37 +170,37 @@ class TestOutlierEngineFromConfigGrouping:
                     {
                         "type": "residual_threshold",
                         "threshold_arcsec": 0.5,
-                        "groups": ["pre_encounter"],
+                        "clusters": ["pre_encounter"],
                     }
                 ],
             }
         )
         engine = OutlierEngine.from_config(cfg)
         scoped = engine._strategies[0]
-        assert scoped.group_filter == {"pre_encounter"}
-        assert scoped.set_filter is None
+        assert scoped.cluster_filter == {"pre_encounter"}
+        assert scoped.selection is None
 
-    def test_group_and_set_filters_together(self):
+    def test_cluster_and_select_filters_together(self):
         cfg = OmegaConf.create(
             {
                 "strategies": [
                     {
                         "type": "residual_threshold",
                         "threshold_arcsec": 0.5,
-                        "sets": ["Voyager 2"],
-                        "groups": ["pre_encounter"],
+                        "select": "observatory_code == 'Voyager 2'",
+                        "clusters": ["pre_encounter"],
                     }
                 ],
             }
         )
         engine = OutlierEngine.from_config(cfg)
         scoped = engine._strategies[0]
-        assert scoped.group_filter == {"pre_encounter"}
-        assert scoped.set_filter == {"Voyager 2"}
+        assert scoped.cluster_filter == {"pre_encounter"}
+        assert scoped.selection is not None
 
 
 # ===========================================================================
-# Group-scoped application
+# Cluster-scoped application
 # ===========================================================================
 
 
@@ -213,14 +213,14 @@ class TestGroupScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        grouping = OmegaConf.create({"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]})
-        # Group ids are "<set>_tf_0000"/"<set>_tf_0001"; match the first night.
+        clustering = OmegaConf.create({"levels": [{"type": "timeframe", 
+            "gap_threshold_hours": 4.0}]})
+        # Cluster ids are "<set>_tf_0000"/"<set>_tf_0001"; match the first night.
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-            set_filter=None,
-            group_filter={"689_tf_0000"},
+                        cluster_filter={"689_tf_0000"},
         )
-        engine = OutlierEngine([scoped], grouping=grouping)
+        engine = OutlierEngine([scoped], clustering=clustering)
 
         filtered, summary = engine.apply(collection, MagicMock())
 
@@ -231,7 +231,7 @@ class TestGroupScopedApplication:
         assert summary["n_total_observations"] == 4
 
     def test_unmatched_group_filter_rejects_nothing(self, patch_tudat_filtering):
-        # Group ids are "<set>_tf_0000"/"<set>_tf_0001"; name a group that does
+        # Cluster ids are "<set>_tf_0000"/"<set>_tf_0001"; name a cluster that does
         # not exist -> no observations are scoped, so nothing is rejected.
         epochs = [0.0, 3600.0, 100000.0, 1003600.0]
         residuals = np.array([[9e-6, 9e-6], [9e-6, 9e-6], [9e-6, 9e-6], [9e-6, 9e-6]])
@@ -239,30 +239,30 @@ class TestGroupScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        grouping = OmegaConf.create({"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]})
+        clustering = OmegaConf.create({"levels": [{"type": "timeframe", 
+            "gap_threshold_hours": 4.0}]})
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-            set_filter=None,
-            group_filter={"689_tf_0099"},  # does not exist
+                        cluster_filter={"689_tf_0099"},  # does not exist
         )
-        engine = OutlierEngine([scoped], grouping=grouping)
+        engine = OutlierEngine([scoped], clustering=clustering)
 
         _, summary = engine.apply(collection, MagicMock())
 
         assert summary["n_rejected"] == 0
         assert summary["n_accepted"] == 4
 
-    def test_group_filter_without_grouping_is_whole_set(self, patch_tudat_filtering):
-        # No grouping config -> group_filter is effectively ignored (whole set).
+    def test_cluster_filter_without_clustering_is_whole_set(self, patch_tudat_filtering):
+        # No clustering config -> cluster_filter is effectively ignored (whole set).
         epochs = [0.0, 3600.0]
         obs_set = _make_obs_set(epochs)
         obs_set.residuals = np.array([[9e-6, 9e-6], [9e-6, 9e-6]])
         collection = _make_collection([obs_set])
 
         scoped = _ScopedStrategy(
-            _reject_above_strategy(1e-6), set_filter=None, group_filter={"whatever"}
+            _reject_above_strategy(1e-6), cluster_filter={"whatever"}
         )
-        engine = OutlierEngine([scoped], grouping=None)
+        engine = OutlierEngine([scoped], clustering=None)
 
         _, summary = engine.apply(collection, MagicMock())
 
@@ -271,7 +271,7 @@ class TestGroupScopedApplication:
 
 
 # ===========================================================================
-# Section-based grouping (Voyager pre/post encounter)
+# Section-based clustering (Voyager pre/post encounter)
 # ===========================================================================
 
 
@@ -287,7 +287,7 @@ class TestSectionScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        grouping = OmegaConf.create(
+        clustering = OmegaConf.create(
             {
                 "levels": [
                     {
@@ -302,10 +302,9 @@ class TestSectionScopedApplication:
         )
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-            set_filter=None,
-            group_filter={"pre_encounter"},
+                        cluster_filter={"pre_encounter"},
         )
-        engine = OutlierEngine([scoped], grouping=grouping)
+        engine = OutlierEngine([scoped], clustering=clustering)
 
         _, summary = engine.apply(collection, MagicMock())
 

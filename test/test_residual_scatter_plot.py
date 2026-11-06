@@ -78,7 +78,7 @@ class TestResidualScatter:
         plot = ResidualScatter(_cfg(), access)
         fig, ax = plot._make_figure()
         offsets = ax.collections[0].get_offsets()
-        # First group (673): RA = 1e-6, 3e-6 rad -> arcsec.
+        # First cluster (673): RA = 1e-6, 3e-6 rad -> arcsec.
         assert offsets[0, 0] == pytest.approx(1e-6 * ARCSEC, rel=1e-6)
         assert offsets[0, 1] == pytest.approx(2e-6 * ARCSEC, rel=1e-6)
         plt.close(fig)

@@ -2,17 +2,15 @@
 
 # Weighting: ID (plain per-file RMSE) scheme.
 #
-# Router-shaped: single-strategy via a router `default`.  Thesis label
-# "per file" maps here.
+# Thesis label "per file" maps here.
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.01
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: id
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 4.0

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.estimation.observations as obs
 
-from ..grouping import GroupList
+from ..clustering import ClusterList
 
 
 class WeightStrategy(ABC):
@@ -17,7 +17,7 @@ class WeightStrategy(ABC):
     Each strategy computes per-observation inverse-variance weights from
     residuals.  Strategies receive a
     :class:`~tudatpy.estimation.observations.SingleObservationSet` together
-    with its pre-computed :class:`GroupList` and return both the interleaved
+    with its pre-computed :class:`ClusterList` and return both the interleaved
     weight array and a metadata DataFrame.
 
     Subclasses must implement :meth:`compute_weights` and should be registered
@@ -40,9 +40,10 @@ class WeightStrategy(ABC):
     def compute_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> tuple[np.ndarray, pd.DataFrame]:
         """Compute per-observation weights from residuals.
 
@@ -50,13 +51,18 @@ class WeightStrategy(ABC):
         ----------
         observation_set : SingleObservationSet
             The observation set to weight.  Residuals must be populated.
-        groups : GroupList
+        clusters : ClusterList
             Groups derived from the observation set (timeframes, sections, etc.).
         set_id : str
             Identifier for this observation set (e.g. observatory code).
         min_sigma_arcsec : float
             Floor on the RMSE in arcseconds — prevents a single near-perfect
-            group from receiving an astronomically large weight.
+            cluster from receiving an astronomically large weight.
+        view : SetView | None
+            The set's window onto the access layer, carrying the standard-frame
+            columns (notably ``scan_angle``).  ``None`` when a strategy is
+            called directly rather than through the engine; strategies that need
+            frame columns must then fall back to a frame-free path.
 
         Returns
         -------
@@ -64,7 +70,7 @@ class WeightStrategy(ABC):
             - weights_array : shape ``(2 * n_obs,)`` with RA at even indices
               and DEC at odd indices (ready for ``set_tabulated_weights``).
             - weights_df : DataFrame with per-observation weight metadata
-              (columns include ``group_id``, ``level``, ``ra_rmse``,
+              (columns include ``cluster_id``, ``level``, ``ra_rmse``,
               ``dec_rmse``, ``weight_ra``, ``weight_dec``).
         """
         ...
@@ -72,9 +78,10 @@ class WeightStrategy(ABC):
     def compute_block_weights(
         self,
         observation_set: obs.SingleObservationSet,
-        groups: GroupList,
+        clusters: ClusterList,
         set_id: str,
         min_sigma_arcsec: float = 0.01,
+        view=None,
     ) -> list[np.ndarray] | None:
         """Optionally compute per-observation 2x2 weight blocks.
 
@@ -91,7 +98,7 @@ class WeightStrategy(ABC):
         ----------
         observation_set : SingleObservationSet
             The observation set to weight.
-        groups : GroupList
+        clusters : ClusterList
             Groups derived from the observation set.
         set_id : str
             Identifier for this observation set.

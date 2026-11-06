@@ -2,25 +2,23 @@
 
 # Weighting: Gaia archive diagonal (others -> ID v2).
 #
-# Router-shaped: the Gaia set is routed to the archive strategy in `diagonal`
-# mode (the archive full matrix is cleared and its per-observation diagonal is
-# applied as base weights); other sets use ID v2.
+# The Gaia set is routed to the archive strategy in `diagonal` mode (the archive
+# full matrix is cleared and its per-observation diagonal is applied as base
+# weights); other sets use ID v2.
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.005
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: id_v2
-    routes:
-      - match:
-          set_id_contains: ["Gaia"]
-        source:
-          type: gaia_archive
-          covariance_mode: diagonal
-          scale: 1.0
-  grouping:
+  overrides:
+    - select: "data_source == 'gaia_archive'"
+      strategy:
+        type: gaia_archive
+        covariance_mode: diagonal
+        scale: 1.0
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

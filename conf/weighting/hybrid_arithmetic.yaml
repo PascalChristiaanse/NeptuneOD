@@ -2,17 +2,15 @@
 
 # Weighting: scaled hybrid arithmetic ((ID v2 + descaled TF) / 2).
 #
-# Router-shaped: single-strategy via a router `default`.  Thesis label
-# "scaled hybrid arith.".
+# Thesis label "scaled hybrid arith.".
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.01
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: hybrid_arithmetic
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 4.0

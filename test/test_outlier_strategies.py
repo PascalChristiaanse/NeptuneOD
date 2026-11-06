@@ -354,3 +354,109 @@ class TestEpochFilterOutlier:
         _, metadata = strategy.apply(obs_set, bodies)
 
         assert metadata["strategy"] == "epoch_filter"
+
+
+class TestEpochFilterTolerance:
+    """A configured epoch is a decimal literal; the set's epoch is a float.
+
+    The two are rarely bit-identical, so matching must be by tolerance.  Without
+    it the filter silently removes nothing and the observation survives into the
+    propagation, where it can fall outside the ephemeris span.
+    """
+
+    # The exact pair from the failure that motivated the tolerance: a config
+    # value and the epoch Tudat actually held, 0.95 microseconds apart.
+    CONFIGURED = -1162202738.851083
+    ACTUAL = -1162202738.851084
+
+    def test_sub_microsecond_difference_still_matches(self):
+        obs_set = _make_mock_obs_set(np.zeros((1, 2)), [self.ACTUAL])
+        strategy = EpochFilterOutlier(epochs_to_remove=[self.CONFIGURED])
+
+        _, metadata = strategy.apply(obs_set, MagicMock())
+
+        assert metadata["n_rejected"] == 1
+        assert metadata["n_accepted"] == 0
+
+    def test_matched_epoch_is_the_observations_own_value(self):
+        # The downstream Tudat filter matches exactly, so the resolved epoch must
+        # be the observation's value, not the configured one.
+        strategy = EpochFilterOutlier(epochs_to_remove=[self.CONFIGURED])
+        matched, unmatched = strategy._resolve_epochs([self.ACTUAL, 0.0])
+
+        assert matched == [self.ACTUAL]
+        assert unmatched == []
+
+    def test_difference_is_warned_about(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        strategy = EpochFilterOutlier(epochs_to_remove=[self.CONFIGURED])
+        strategy._resolve_epochs([self.ACTUAL])
+
+        assert "difference of" in caplog.text
+        assert "tolerance" in caplog.text
+
+    def test_exact_match_does_not_warn(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        strategy = EpochFilterOutlier(epochs_to_remove=[100.0])
+        strategy._resolve_epochs([100.0])
+
+        assert caplog.text == ""
+
+    def test_epoch_beyond_tolerance_is_not_matched(self):
+        # 1 ms is the default; 10 ms away must not match.
+        obs_set = _make_mock_obs_set(np.zeros((1, 2)), [100.0])
+        strategy = EpochFilterOutlier(epochs_to_remove=[100.01])
+
+        _, metadata = strategy.apply(obs_set, MagicMock())
+
+        assert metadata["n_rejected"] == 0
+
+    def test_unmatched_epoch_warns_with_the_nearest_gap(self, caplog):
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        obs_set = _make_mock_obs_set(np.zeros((1, 2)), [100.0])
+        strategy = EpochFilterOutlier(epochs_to_remove=[100.5])
+
+        _, metadata = strategy.apply(obs_set, MagicMock())
+
+        assert metadata["n_rejected"] == 0
+        assert "matched no observation" in caplog.text
+        assert "0.5" in caplog.text
+
+    def test_custom_tolerance_is_honoured(self):
+        obs_set = _make_mock_obs_set(np.zeros((1, 2)), [100.0])
+        strategy = EpochFilterOutlier(epochs_to_remove=[100.01], tolerance_seconds=0.1)
+
+        _, metadata = strategy.apply(obs_set, MagicMock())
+
+        assert metadata["n_rejected"] == 1
+
+    def test_zero_tolerance_requires_an_exact_match(self):
+        obs_set = _make_mock_obs_set(np.zeros((1, 2)), [self.ACTUAL])
+        strategy = EpochFilterOutlier(epochs_to_remove=[self.CONFIGURED], tolerance_seconds=0.0)
+
+        _, metadata = strategy.apply(obs_set, MagicMock())
+
+        assert metadata["n_rejected"] == 0
+
+    def test_negative_tolerance_raises(self):
+        with pytest.raises(ValueError, match="must be non-negative"):
+            EpochFilterOutlier(tolerance_seconds=-1.0)
+
+    def test_nearest_of_several_observations_wins(self):
+        strategy = EpochFilterOutlier(epochs_to_remove=[100.0004])
+        matched, _ = strategy._resolve_epochs([99.0, 100.0, 101.0])
+
+        assert matched == [100.0]
+
+    def test_empty_set_reports_every_epoch_unmatched(self):
+        strategy = EpochFilterOutlier(epochs_to_remove=[1.0, 2.0])
+        matched, unmatched = strategy._resolve_epochs([])
+
+        assert matched == []
+        assert unmatched == [1.0, 2.0]

@@ -1,0 +1,48 @@
+# @package _global_
+
+# Outlier rejection: `select:`-scoped strategies.
+#
+# `select` is a pandas query over the standard observation frame, so a strategy
+# can be scoped by any column -- data source, observatory, instrument, reduction
+# type -- not just the set identifier.  It is the general form of the older
+# `sets:` filter, which still works and matches the raw observatory code.
+#
+# `clusters:` additionally restricts a strategy to named clusters (a section
+# name or a timeframe id) from this subsystem's OWN `clustering` config, which
+# is independent of the weighting clustering.
+#
+# Here:
+#   - Voyager 2 pre-encounter: a tight maximum residual threshold
+#   - Voyager 2 post-encounter: a looser maximum threshold
+#   - NSDB ground-based: a standard threshold
+#
+# NOTE: an `isolation_forest` strategy is planned for NSDB data but is NOT yet
+# implemented; the entry is left commented so the config stays runnable.
+
+outlier_rejection:
+  enabled: true
+  clustering:
+    levels:
+      - type: section
+        sections:
+          - {name: "pre_encounter",  start: -1e30,             end: -326688543.8172541}
+          - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
+  strategies:
+    # Voyager 2, split by encounter section.
+    - type: residual_threshold
+      threshold_arcsec: 0.5
+      select: "observatory_code == 'Voyager 2'"
+      clusters: ["pre_encounter"]
+    - type: residual_threshold
+      threshold_arcsec: 2.0
+      select: "observatory_code == 'Voyager 2'"
+      clusters: ["post_encounter"]
+
+    # NSDB / ground-based: standard maximum threshold.
+    - type: residual_threshold
+      threshold_arcsec: 1.5
+      select: "data_source == 'nsdb'"
+
+    # Planned (not implemented yet):
+    # - type: isolation_forest
+    #   select: "data_source == 'nsdb'"

@@ -1,7 +1,7 @@
 """Analyze integrator/interpolator validation sweep results.
 
 Reads the NPZ files produced by ``validate_integrator.py`` or
-``validate_interpolator.py`` from a sweep output directory, groups them by
+``validate_interpolator.py`` from a sweep output directory, clusters them by
 integrator/interpolator type, and produces convergence plots.
 
 Usage
@@ -104,7 +104,7 @@ def _discover_results(input_dir: Path) -> list[dict]:
 
 
 def _group_by_type_and_strategy(results: list[dict]) -> dict[str, dict[str, dict[float, dict]]]:
-    """Group results by (strategy, integrator/interpolator type), then by timestep.
+    """Cluster results by (strategy, integrator/interpolator type), then by timestep.
 
     Applies a buffer slice to each result to exclude boundary regions where
     Runge's phenomenon may inflate error statistics. Interpolator runs produced

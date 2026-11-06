@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from orbitdet.observations.grouping import Group, GroupList
+from orbitdet.observations.clustering import Cluster, ClusterList
 
 # Re-import for the hybrid strategy
 from orbitdet.observations.weighting.strategies import (
@@ -116,10 +116,10 @@ class TestBuildWeightsDf:
         n_obs = 3
         times = np.array([0.0, 100.0, 200.0])
         residuals_rad = np.array([[1e-6, 2e-6], [3e-6, 4e-6], [5e-6, 6e-6]])
-        groups = GroupList(
+        clusters = ClusterList(
             [
-                Group(
-                    indices=np.array([0, 1, 2], dtype=int), group_id="tf_0000", level="timeframe"
+                Cluster(
+                    indices=np.array([0, 1, 2], dtype=int), cluster_id="tf_0000", level="timeframe"
                 ),
             ]
         )
@@ -130,7 +130,7 @@ class TestBuildWeightsDf:
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra,
             weights_dec,
             "id_v2",
@@ -142,9 +142,9 @@ class TestBuildWeightsDf:
         assert list(df.columns) == [
             "set_id",
             "strategy",
-            "group_level",
+            "cluster_level",
             "observable_type",
-            "group_id",
+            "cluster_id",
             "parent_id",
             "parent_level",
             "time",
@@ -152,14 +152,14 @@ class TestBuildWeightsDf:
             "dec_residual_rad",
             "ra_residual_arcsec",
             "dec_residual_arcsec",
-            "group_ra_rms_arcsec",
-            "group_dec_rms_arcsec",
+            "cluster_ra_rms_arcsec",
+            "cluster_dec_rms_arcsec",
             "weight_ra",
             "weight_dec",
         ]
         assert df["set_id"].tolist() == ["obs1"] * 3
         assert df["strategy"].tolist() == ["id_v2"] * 3
-        assert df["group_id"].tolist() == ["tf_0000"] * 3
+        assert df["cluster_id"].tolist() == ["tf_0000"] * 3
 
     def test_multiple_groups(self):
         n_obs = 4
@@ -172,10 +172,12 @@ class TestBuildWeightsDf:
                 [4e-6, 5e-6],
             ]
         )
-        groups = GroupList(
+        clusters = ClusterList(
             [
-                Group(indices=np.array([0, 1], dtype=int), group_id="tf_0000", level="timeframe"),
-                Group(indices=np.array([2, 3], dtype=int), group_id="tf_0001", level="timeframe"),
+                Cluster(indices=np.array([0, 1], dtype=int), cluster_id="tf_0000", 
+                    level="timeframe"),
+                Cluster(indices=np.array([2, 3], dtype=int), cluster_id="tf_0001", 
+                    level="timeframe"),
             ]
         )
         weights_ra = np.array([1e12, 1e12, 2e12, 2e12])
@@ -185,7 +187,7 @@ class TestBuildWeightsDf:
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra,
             weights_dec,
             "hybrid_geometric",
@@ -193,8 +195,8 @@ class TestBuildWeightsDf:
             "timeframe",
         )
 
-        assert df.loc[0, "group_id"] == "tf_0000"
-        assert df.loc[3, "group_id"] == "tf_0001"
+        assert df.loc[0, "cluster_id"] == "tf_0000"
+        assert df.loc[3, "cluster_id"] == "tf_0001"
         assert df.loc[0, "weight_ra"] == 1e12
         assert df.loc[3, "weight_ra"] == 2e12
 
@@ -202,11 +204,11 @@ class TestBuildWeightsDf:
         n_obs = 2
         times = np.array([0.0, 100.0])
         residuals_rad = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
-        groups = GroupList(
+        clusters = ClusterList(
             [
-                Group(
+                Cluster(
                     indices=np.array([0, 1], dtype=int),
-                    group_id="tf_0000",
+                    cluster_id="tf_0000",
                     level="timeframe",
                     parent_level="section",
                     parent_id="early",
@@ -220,7 +222,7 @@ class TestBuildWeightsDf:
             n_obs,
             times,
             residuals_rad,
-            groups,
+            clusters,
             weights_ra,
             weights_dec,
             "id_v2",
@@ -265,41 +267,41 @@ def _make_timeframe_groups(
     n_obs: int,
     split_indices: list[int] | None = None,
     set_id: str = "obs1",
-) -> GroupList:
-    """Build a GroupList with timeframe groups.
+) -> ClusterList:
+    """Build a ClusterList with timeframe clusters.
 
-    If split_indices is given (e.g. [2]), the first group has indices [0,1]
-    and the second has [2,3,...]. Otherwise a single group is returned.
+    If split_indices is given (e.g. [2]), the first cluster has indices [0,1]
+    and the second has [2,3,...]. Otherwise a single cluster is returned.
     """
     if split_indices:
-        groups = []
+        clusters = []
         start = 0
         for si in split_indices:
-            groups.append(
-                Group(
+            clusters.append(
+                Cluster(
                     indices=np.arange(start, si, dtype=int),
-                    group_id=f"{set_id}_tf_{len(groups):04d}",
+                    cluster_id=f"{set_id}_tf_{len(clusters):04d}",
                     level="timeframe",
                     parent_level="set",
                     parent_id=set_id,
                 )
             )
             start = si
-        groups.append(
-            Group(
+        clusters.append(
+            Cluster(
                 indices=np.arange(start, n_obs, dtype=int),
-                group_id=f"{set_id}_tf_{len(groups):04d}",
+                cluster_id=f"{set_id}_tf_{len(clusters):04d}",
                 level="timeframe",
                 parent_level="set",
                 parent_id=set_id,
             )
         )
-        return GroupList(groups)
-    return GroupList(
+        return ClusterList(clusters)
+    return ClusterList(
         [
-            Group(
+            Cluster(
                 indices=np.arange(n_obs, dtype=int),
-                group_id=f"{set_id}_tf_0000",
+                cluster_id=f"{set_id}_tf_0000",
                 level="timeframe",
                 parent_level="set",
                 parent_id=set_id,
@@ -319,10 +321,10 @@ class TestIDv2Weight:
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = IDv2Weight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # Expected: RA RMS = sqrt(mean([1e-6^2, 3e-6^2])) = sqrt(5e-12) ≈ 2.236e-6
         # DEC RMS = sqrt(mean([2e-6^2, 4e-6^2])) = sqrt(10e-12) ≈ 3.162e-6
@@ -353,10 +355,10 @@ class TestIDv2Weight:
         )
         times = [0.0, 100.0, 100000.0, 100100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(4, split_indices=[2])
+        clusters = _make_timeframe_groups(4, split_indices=[2])
 
         strategy = IDv2Weight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # TF0: RA RMS = sqrt(mean([1,9])) * 1e-6 = sqrt(5)e-6
         #      DEC RMS = sqrt(mean([4,16])) * 1e-6 = sqrt(10)e-6
@@ -383,15 +385,15 @@ class TestIDv2Weight:
         np.testing.assert_allclose(weights_array[1::2], expected_w_dec)
 
     def test_no_timeframe_groups_fallback(self):
-        """When no timeframe groups exist, fall back to set-level RMS."""
+        """When no timeframe clusters exist, fall back to set-level RMS."""
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        # Empty GroupList — no timeframe groups
-        groups = GroupList()
+        # Empty ClusterList — no timeframe clusters
+        clusters = ClusterList()
 
         strategy = IDv2Weight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         ra_sigma = max(np.sqrt(np.mean(np.square(residuals[:, 0]))), 0.01 * np.pi / (180 * 3600))
         dec_sigma = max(np.sqrt(np.mean(np.square(residuals[:, 1]))), 0.01 * np.pi / (180 * 3600))
@@ -400,19 +402,19 @@ class TestIDv2Weight:
 
         np.testing.assert_allclose(weights_array[0], expected_w_ra)
         np.testing.assert_allclose(weights_array[1], expected_w_dec)
-        assert df["group_level"].iloc[0] == "set"
+        assert df["cluster_level"].iloc[0] == "set"
 
     def test_min_sigma_floor_applied(self):
         """Very small residuals should be floored by min_sigma_arcsec."""
         residuals = np.array([[1e-12, 1e-12]])  # tiny residuals
         times = [0.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(1)
+        clusters = _make_timeframe_groups(1)
 
         strategy = IDv2Weight()
         weights_array, df = strategy.compute_weights(
             obs_set,
-            groups,
+            clusters,
             "obs1",
             min_sigma_arcsec=0.1,
         )
@@ -424,10 +426,10 @@ class TestIDv2Weight:
 
     def test_empty_observation_set(self):
         obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
-        groups = GroupList()
+        clusters = ClusterList()
 
         strategy = IDv2Weight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         assert len(weights_array) == 0
         assert df.empty
@@ -436,17 +438,17 @@ class TestIDv2Weight:
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = IDv2Weight()
-        _, df = strategy.compute_weights(obs_set, groups, "obs1")
+        _, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         expected_columns = {
             "set_id",
             "strategy",
-            "group_level",
+            "cluster_level",
             "observable_type",
-            "group_id",
+            "cluster_id",
             "parent_id",
             "parent_level",
             "time",
@@ -454,8 +456,8 @@ class TestIDv2Weight:
             "dec_residual_rad",
             "ra_residual_arcsec",
             "dec_residual_arcsec",
-            "group_ra_rms_arcsec",
-            "group_dec_rms_arcsec",
+            "cluster_ra_rms_arcsec",
+            "cluster_dec_rms_arcsec",
             "weight_ra",
             "weight_dec",
         }
@@ -473,10 +475,10 @@ class TestHybridGeometricWeight:
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = HybridGeometricWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # Set-level RMS
         ra_set_sigma = np.sqrt(np.mean(np.square(residuals[:, 0])))
@@ -508,10 +510,10 @@ class TestHybridGeometricWeight:
         )
         times = [0.0, 100.0, 100000.0, 100100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(4, split_indices=[2])
+        clusters = _make_timeframe_groups(4, split_indices=[2])
 
         strategy = HybridGeometricWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # Set-level RMS (all residuals)
         ra_set_sigma = np.sqrt(np.mean(np.square(residuals[:, 0])))
@@ -549,14 +551,14 @@ class TestHybridGeometricWeight:
         np.testing.assert_allclose(weights_array[7], expected_w_dec_tf1)
 
     def test_no_timeframe_groups_fallback(self):
-        """When no timeframe groups exist, use set-level only."""
+        """When no timeframe clusters exist, use set-level only."""
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = GroupList()
+        clusters = ClusterList()
 
         strategy = HybridGeometricWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         ra_sigma = max(np.sqrt(np.mean(np.square(residuals[:, 0]))), 0.01 * np.pi / (180 * 3600))
         dec_sigma = max(np.sqrt(np.mean(np.square(residuals[:, 1]))), 0.01 * np.pi / (180 * 3600))
@@ -565,18 +567,18 @@ class TestHybridGeometricWeight:
 
         np.testing.assert_allclose(weights_array[0], expected_w_ra)
         np.testing.assert_allclose(weights_array[1], expected_w_dec)
-        assert df["group_level"].iloc[0] == "set"
+        assert df["cluster_level"].iloc[0] == "set"
 
     def test_min_sigma_floor_applied(self):
         residuals = np.array([[1e-12, 1e-12]])
         times = [0.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(1)
+        clusters = _make_timeframe_groups(1)
 
         strategy = HybridGeometricWeight()
         weights_array, df = strategy.compute_weights(
             obs_set,
-            groups,
+            clusters,
             "obs1",
             min_sigma_arcsec=0.1,
         )
@@ -589,10 +591,10 @@ class TestHybridGeometricWeight:
 
     def test_empty_observation_set(self):
         obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
-        groups = GroupList()
+        clusters = ClusterList()
 
         strategy = HybridGeometricWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         assert len(weights_array) == 0
         assert df.empty
@@ -601,17 +603,17 @@ class TestHybridGeometricWeight:
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = HybridGeometricWeight()
-        _, df = strategy.compute_weights(obs_set, groups, "obs1")
+        _, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         expected_columns = {
             "set_id",
             "strategy",
-            "group_level",
+            "cluster_level",
             "observable_type",
-            "group_id",
+            "cluster_id",
             "parent_id",
             "parent_level",
             "time",
@@ -619,8 +621,8 @@ class TestHybridGeometricWeight:
             "dec_residual_rad",
             "ra_residual_arcsec",
             "dec_residual_arcsec",
-            "group_ra_rms_arcsec",
-            "group_dec_rms_arcsec",
+            "cluster_ra_rms_arcsec",
+            "cluster_dec_rms_arcsec",
             "weight_ra",
             "weight_dec",
         }
@@ -637,10 +639,10 @@ class TestIDWeight:
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = IDWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         ra_sigma = np.sqrt(np.mean(np.square(residuals[:, 0])))
         dec_sigma = np.sqrt(np.mean(np.square(residuals[:, 1])))
@@ -656,12 +658,12 @@ class TestIDWeight:
         residuals = np.array([[1e-12, 1e-12]])
         times = [0.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(1)
+        clusters = _make_timeframe_groups(1)
 
         strategy = IDWeight()
         weights_array, df = strategy.compute_weights(
             obs_set,
-            groups,
+            clusters,
             "obs1",
             min_sigma_arcsec=0.1,
         )
@@ -672,9 +674,9 @@ class TestIDWeight:
 
     def test_empty(self):
         obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
-        groups = GroupList()
+        clusters = ClusterList()
         strategy = IDWeight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
         assert len(w) == 0
         assert df.empty
 
@@ -689,10 +691,10 @@ class TestTFWeight:
         residuals = np.array([[1e-6, 2e-6], [3e-6, 4e-6]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = TFWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # Descaled TF RMSE: RMS * sqrt(2)
         n = 2
@@ -717,10 +719,10 @@ class TestTFWeight:
         )
         times = [0.0, 100.0, 100000.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(3, split_indices=[2])
+        clusters = _make_timeframe_groups(3, split_indices=[2])
 
         strategy = TFWeight()
-        weights_array, df = strategy.compute_weights(obs_set, groups, "obs1")
+        weights_array, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # TF0: 2 obs
         ra_tf0 = np.sqrt(np.mean(np.square(residuals[0:2, 0]))) * np.sqrt(2)
@@ -734,12 +736,12 @@ class TestTFWeight:
         residuals = np.array([[1e-12, 1e-12], [1e-12, 1e-12]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = TFWeight()
         w, df = strategy.compute_weights(
             obs_set,
-            groups,
+            clusters,
             "obs1",
             min_sigma_arcsec=0.1,
         )
@@ -752,9 +754,9 @@ class TestTFWeight:
 
     def test_empty(self):
         obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
-        groups = GroupList()
+        clusters = ClusterList()
         strategy = TFWeight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
         assert len(w) == 0
         assert df.empty
 
@@ -770,12 +772,12 @@ class TestTFFreeWeight:
         residuals = np.array([[1e-12, 1e-12], [3e-12, 4e-12]])
         times = [0.0, 100.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(2)
+        clusters = _make_timeframe_groups(2)
 
         strategy = TFFreeWeight()
         w, df = strategy.compute_weights(
             obs_set,
-            groups,
+            clusters,
             "obs1",
             min_sigma_arcsec=0.1,
         )
@@ -788,9 +790,9 @@ class TestTFFreeWeight:
 
     def test_empty(self):
         obs_set = _make_mock_obs_set(np.empty((0, 2)), [])
-        groups = GroupList()
+        clusters = ClusterList()
         strategy = TFFreeWeight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
         assert len(w) == 0
         assert df.empty
 
@@ -812,10 +814,10 @@ class TestHybridGeometricV2Weight:
         )
         times = [0.0, 100.0, 100000.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(3, split_indices=[2])
+        clusters = _make_timeframe_groups(3, split_indices=[2])
 
         strategy = HybridGeometricV2Weight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # ID v2 sigma: RMS of descaled TF RMSEs
         tf0_ra = np.sqrt(np.mean(np.square(residuals[0:2, 0]))) * np.sqrt(2)
@@ -834,11 +836,11 @@ class TestHybridGeometricV2Weight:
         residuals = np.array([[1e-6, 2e-6]])
         times = [0.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = GroupList()
+        clusters = ClusterList()
         strategy = HybridGeometricV2Weight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
         assert len(w) == 2
-        assert df["group_level"].iloc[0] == "set"
+        assert df["cluster_level"].iloc[0] == "set"
 
 
 # ===========================================================================
@@ -858,10 +860,10 @@ class TestHybridArithmeticWeight:
         )
         times = [0.0, 100.0, 100000.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = _make_timeframe_groups(3, split_indices=[2])
+        clusters = _make_timeframe_groups(3, split_indices=[2])
 
         strategy = HybridArithmeticWeight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
 
         # ID v2 sigma
         tf0_ra = np.sqrt(np.mean(np.square(residuals[0:2, 0]))) * np.sqrt(2)
@@ -879,8 +881,8 @@ class TestHybridArithmeticWeight:
         residuals = np.array([[1e-6, 2e-6]])
         times = [0.0]
         obs_set = _make_mock_obs_set(residuals, times)
-        groups = GroupList()
+        clusters = ClusterList()
         strategy = HybridArithmeticWeight()
-        w, df = strategy.compute_weights(obs_set, groups, "obs1")
+        w, df = strategy.compute_weights(obs_set, clusters, "obs1")
         assert len(w) == 2
-        assert df["group_level"].iloc[0] == "set"
+        assert df["cluster_level"].iloc[0] == "set"

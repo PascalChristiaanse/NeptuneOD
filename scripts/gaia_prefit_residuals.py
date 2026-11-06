@@ -84,7 +84,9 @@ def main(cfg: DictConfig):
     prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=[])
 
     # Create observations
-    observations, observation_models, _, standard_frame = create_observation_collection(cfg, bodies)
+    observations, observation_models, standard_frame = create_observation_collection(
+        cfg, bodies
+    )
     logger.info("Observations generated successfully.")
 
     if prop.processing_settings.set_integrated_result:

@@ -16,6 +16,16 @@ from orbitdet.observations.outlier_rejection.engine import (
     _ScopedStrategy,
     get_set_identifier,
 )
+from orbitdet.observations.selection import compile_selection
+from orbitdet.preprocessing.schema import empty_frame
+
+
+def _frame(source, code):
+    """A one-row standard frame, for selection-based scoping tests."""
+    frame = empty_frame()
+    frame["data_source"] = [source]
+    frame["observatory_code"] = [code]
+    return frame
 
 # ===========================================================================
 # Constants and helpers
@@ -98,7 +108,7 @@ def _make_mock_strategy(name: str = "MockStrategy") -> MagicMock:
     """Create a mock OutlierStrategy that accepts all observations."""
     strategy = MagicMock(spec=OutlierStrategy)
 
-    def apply_side_effect(obs_set, bodies):
+    def apply_side_effect(obs_set, bodies, view=None):
         n = len(obs_set.observation_times)
         return obs_set, {
             "strategy": name,
@@ -121,7 +131,7 @@ def _make_mock_rejecting_strategy(
         reject_indices = [0]
     strategy = MagicMock(spec=OutlierStrategy)
 
-    def apply_side_effect(obs_set, bodies):
+    def apply_side_effect(obs_set, bodies, view=None):
         times = [t.to_float() for t in obs_set.observation_times]
         n = len(times)
         keep_times = [t for i, t in enumerate(times) if i not in reject_indices]
@@ -200,23 +210,27 @@ class TestGetSetIdentifier:
 
 
 class TestScopedStrategy:
-    def test_no_filter_applies_to_all(self):
+    def test_no_selection_applies_to_all(self):
         strategy = _make_mock_strategy()
-        scoped = _ScopedStrategy(strategy, set_filter=None)
-        assert scoped.applies_to("any_set") is True
-        assert scoped.applies_to("689") is True
+        scoped = _ScopedStrategy(strategy)
+        assert scoped.applies_to_frame(None) is True
+        assert scoped.applies_to_frame(_frame("nsdb", "689")) is True
 
-    def test_with_filter_matches(self):
+    def test_selection_matches(self):
         strategy = _make_mock_strategy()
-        scoped = _ScopedStrategy(strategy, set_filter={"689", "690"})
-        assert scoped.applies_to("689") is True
-        assert scoped.applies_to("690") is True
+        scoped = _ScopedStrategy(strategy, selection=compile_selection("data_source == 'nsdb'"))
+        assert scoped.applies_to_frame(_frame("nsdb", "689")) is True
 
-    def test_with_filter_does_not_match(self):
+    def test_selection_does_not_match(self):
         strategy = _make_mock_strategy()
-        scoped = _ScopedStrategy(strategy, set_filter={"689"})
-        assert scoped.applies_to("690") is False
-        assert scoped.applies_to("unknown") is False
+        scoped = _ScopedStrategy(strategy, selection=compile_selection("data_source == 'nsdb'"))
+        assert scoped.applies_to_frame(_frame("gaia_archive", "Gaia")) is False
+
+    def test_selection_without_a_frame_applies(self):
+        # No view means nothing to match on, so the strategy is not skipped.
+        strategy = _make_mock_strategy()
+        scoped = _ScopedStrategy(strategy, selection=compile_selection("data_source == 'nsdb'"))
+        assert scoped.applies_to_frame(None) is True
 
 
 # ===========================================================================
@@ -269,11 +283,15 @@ class TestOutlierEngineFromConfig:
         engine = OutlierEngine.from_config(cfg)
         assert len(engine.strategies) == 2
 
-    def test_with_set_filter(self):
+    def test_with_select_filter(self):
         cfg = OmegaConf.create(
             {
                 "strategies": [
-                    {"type": "residual_threshold", "threshold_arcsec": 0.5, "sets": ["Voyager 2"]},
+                    {
+                        "type": "residual_threshold",
+                        "threshold_arcsec": 0.5,
+                        "select": "observatory_code == 'Voyager 2'",
+                    },
                     {"type": "residual_threshold", "threshold_arcsec": 1.5},
                 ],
             }
@@ -375,8 +393,8 @@ class TestOutlierEngineApply:
         assert metadata["n_rejected"] == 2
         assert metadata["n_total_observations"] == 4
 
-    def test_strategy_with_set_filter_applies_only_to_matching(self):
-        """A strategy with a set filter should only apply to matching sets."""
+    def test_strategy_with_selection_applies_only_to_matching(self, monkeypatch):
+        """A strategy with a selection should only apply to matching sets."""
         set1 = _make_mock_obs_set("Voyager 2", n_obs=3, body_name="Voyager 2", reference_point="")
         set2 = _make_mock_obs_set("689", n_obs=3)
         collection = _make_mock_collection([set1, set2])
@@ -384,11 +402,25 @@ class TestOutlierEngineApply:
         # Only apply to Voyager 2
         strategy = _make_mock_rejecting_strategy("VoyagerOnly", reject_indices=[0, 1])
         engine = OutlierEngine.from_strategies([strategy])
-        # Manually set the scoped strategy with a filter
-        engine._strategies = [_ScopedStrategy(strategy, set_filter={"Voyager 2"})]
+        engine._strategies = [
+            _ScopedStrategy(
+                strategy, selection=compile_selection("observatory_code == 'Voyager 2'")
+            )
+        ]
         bodies = MagicMock()
 
-        filtered, metadata = engine.apply(collection, bodies)
+        # The selection is evaluated against each set's frame rows.
+        def _view(source, code):
+            frame = _frame(source, code)
+            return SimpleNamespace(frame=frame, column=lambda name: frame[name].to_numpy())
+
+        views = {0: _view("voyager", "Voyager 2"), 1: _view("nsdb", "689")}
+        monkeypatch.setattr(
+            "orbitdet.analysis.set_view.SetView.build",
+            lambda access, set_index: views[set_index],
+        )
+
+        filtered, metadata = engine.apply(collection, bodies, access=object())
 
         # Voyager 2: 3 - 2 = 1 accepted
         # 689: 3 accepted (strategy skipped)

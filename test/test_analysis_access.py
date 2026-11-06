@@ -186,10 +186,7 @@ class TestWeightMatrices:
         with pytest.raises(KeyError):
             access.weight_matrix("nope")
 
-    def test_scan_basis_without_angles_raises(self, monkeypatch):
-        import orbitdet.data.gaia as gaia
-
-        monkeypatch.setattr(gaia, "get_scan_angles_for_epochs", lambda epochs: None)
+    def test_scan_basis_without_angles_raises(self):
         single_set = make_set([1.0], weights=np.array([[1.0, 1.0]]))
         access = make_access([single_set], [[1.0]])
         # scan_angle defaults to NaN when the source did not record one.
@@ -456,7 +453,7 @@ class TestTables:
 
         tables = ResidualSummary(access)._build()
         assert isinstance(tables, dict)
-        # Every grouping key is prefixed with the table name.
+        # Every clustering key is prefixed with the table name.
         assert all(name.startswith("residual_summary_") for name in tables)
 
     def test_markdown_fallback_renders(self):

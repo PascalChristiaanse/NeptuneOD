@@ -12,8 +12,8 @@ Produces two table variants from a weights DataFrame:
     | Veiga et al. (1996)        | 874  | 51   | Δα cos δ    | 0.′′080   | 51   |
     |                            |      |      | Δδ          | 0.′′046   |
 
-2. **Per-group** (``build_group``): one row per time-based group (e.g. per
-   observing night), with the same columns plus the group identifier.
+2. **Per-cluster** (``build_group``): one row per time-based cluster (e.g. per
+   observing night), with the same columns plus the cluster identifier.
 
 The input is the per-observation weights CSV written by
 :class:`~orbitdet.observations.weighting.WeightEngine`, which now includes
@@ -94,13 +94,13 @@ class WeightSummaryTable:
         return result
 
     def build_group(self) -> pd.DataFrame:
-        """Build the per-group (time-based) summary table.
+        """Build the per-cluster (time-based) summary table.
 
         Returns
         -------
         pd.DataFrame
-            One row per group with columns:
-            ``source``, ``dataset_id``, ``observatory_code``, ``group_id``,
+            One row per cluster with columns:
+            ``source``, ``dataset_id``, ``observatory_code``, ``cluster_id``,
             ``n_obs``, ``ra_type``, ``ra_rms_arcsec``, ``dec_type``,
             ``dec_rms_arcsec``.
         """
@@ -111,7 +111,7 @@ class WeightSummaryTable:
         source_col = "source_name" if "source_name" in df.columns else "set_id"
 
         records = []
-        for (source_name, group_id), grp in df.groupby([source_col, "group_id"], sort=False):
+        for (source_name, cluster_id), grp in df.groupby([source_col, "cluster_id"], sort=False):
             n_obs = len(grp)
             ra_rms = float(np.sqrt(np.mean(np.square(grp["ra_residual_arcsec"].values))))
             dec_rms = float(np.sqrt(np.mean(np.square(grp["dec_residual_arcsec"].values))))
@@ -125,7 +125,7 @@ class WeightSummaryTable:
                     "source": source_name,
                     "dataset_id": dataset_id,
                     "observatory_code": obs_code,
-                    "group_id": group_id,
+                    "cluster_id": cluster_id,
                     "n_obs": n_obs,
                     "ra_type": ra_type,
                     "ra_rms_arcsec": ra_rms,
@@ -135,7 +135,7 @@ class WeightSummaryTable:
             )
 
         result = pd.DataFrame(records)
-        result = result.sort_values(["source", "group_id"])
+        result = result.sort_values(["source", "cluster_id"])
         result = result.reset_index(drop=True)
         return result
 
@@ -167,7 +167,7 @@ class WeightSummaryTable:
         return "\n".join(lines)
 
     def to_string_group(self, table: pd.DataFrame | None = None) -> str:
-        """Format the per-group table as a human-readable string."""
+        """Format the per-cluster table as a human-readable string."""
         if table is None:
             table = self.build_group()
         if table.empty:
@@ -176,7 +176,7 @@ class WeightSummaryTable:
         lines = []
         lines.append("=" * 160)
         lines.append(
-            f"{'Source':<40}  {'DS':>7}  {'Obs':>5}  {'Group':<18}  {'N':>5}  "
+            f"{'Source':<40}  {'DS':>7}  {'Obs':>5}  {'Cluster':<18}  {'N':>5}  "
             f"{'RA type':<20}  {'RA RMSE':>10}  {'DEC type':<20}  {'DEC RMSE':>10}"
         )
         lines.append("=" * 160)
@@ -184,7 +184,7 @@ class WeightSummaryTable:
         for _, row in table.iterrows():
             lines.append(
                 f"{row['source']:<40}  {row['dataset_id']:>7}  {row['observatory_code']:>5}  "
-                f"{row['group_id']:<18}  {row['n_obs']:>5}  {row['ra_type']:<20}  "
+                f"{row['cluster_id']:<18}  {row['n_obs']:>5}  {row['ra_type']:<20}  "
                 f"{row['ra_rms_arcsec']:>8.4f}  {row['dec_type']:<20}  "
                 f"{row['dec_rms_arcsec']:>8.4f}"
             )
@@ -235,7 +235,7 @@ class WeightSummaryTable:
         return "\n".join(lines)
 
     def to_latex_group(self, table: pd.DataFrame | None = None) -> str:
-        """Format the per-group table as a LaTeX ``booktabs`` table."""
+        """Format the per-cluster table as a LaTeX ``booktabs`` table."""
         if table is None:
             table = self.build_group()
         if table.empty:
@@ -244,11 +244,11 @@ class WeightSummaryTable:
         lines = [
             r"\begin{table}[htbp]",
             r"\centering",
-            r"\caption{Observation group summary with per-group RMSE statistics.}",
+            r"\caption{Observation cluster summary with per-cluster RMSE statistics.}",
             r"\label{tab:weight_summary_group}",
             r"\begin{tabular}{l r r l r l r r l r}",
             r"\toprule",
-            r"Source & DS & Obs. & Group & \multicolumn{2}{c}{RA} & \multicolumn{2}{c}{DEC} \\",
+            r"Source & DS & Obs. & Cluster & \multicolumn{2}{c}{RA} & \multicolumn{2}{c}{DEC} \\",
             r"\cmidrule(lr){5-6} \cmidrule(lr){7-8}",
             r"& & & & N & Type & RMSE [arcsec] & N & Type & RMSE [arcsec] \\",
             r"\midrule",
@@ -258,7 +258,7 @@ class WeightSummaryTable:
             source_escaped = str(row["source"]).replace("&", r"\&")
             lines.append(
                 f"{source_escaped} & {row['dataset_id']} & {row['observatory_code']} & "
-                f"{row['group_id']} & {row['n_obs']} & {row['ra_type']} & "
+                f"{row['cluster_id']} & {row['n_obs']} & {row['ra_type']} & "
                 f"{row['ra_rms_arcsec']:.4f} & {row['n_obs']} & {row['dec_type']} & "
                 f"{row['dec_rms_arcsec']:.4f} \\\\"
             )

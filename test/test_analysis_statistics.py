@@ -48,7 +48,7 @@ class TestReductionPrimitives:
 
 class TestPooledWithinGroupRms:
     def test_removes_group_means_and_uses_n_minus_m_dof(self):
-        # Two groups with different means but identical within-group spread.
+        # Two clusters with different means but identical within-cluster spread.
         values = [1.0, 3.0, 11.0, 13.0]
         labels = [0, 0, 1, 1]
         # Within deviations: [-1, 1, -1, 1] -> sum sq = 4, dof = 4 - 2 = 2.
@@ -61,7 +61,7 @@ class TestPooledWithinGroupRms:
         assert pooled_within_group_rms(values, labels) == pytest.approx(sample_std(values))
 
     def test_nan_when_no_residual_dof(self):
-        # One observation per group -> N == M -> no dof.
+        # One observation per cluster -> N == M -> no dof.
         assert pooled_within_group_rms([1.0, 2.0], [0, 1]) != pooled_within_group_rms(
             [1.0, 2.0], [0, 1]
         )  # NaN

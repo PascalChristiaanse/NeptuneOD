@@ -7,9 +7,9 @@ A *descriptor* is either:
 
       {type: layered, combine: geometric, layers: [...]}
 
-Descriptors may nest: a ``router`` route's ``source`` is itself a descriptor.
-Keeping this logic in one place lets both :class:`WeightEngine` and the
-``router`` strategy build sub-strategies identically.
+Descriptors may nest: a ``layered`` strategy's ``layers`` entries are themselves
+descriptors.  Keeping this logic in one place lets both :class:`WeightEngine`
+and the plan builder construct strategies identically.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def to_plain(value: Any) -> Any:
     return value
 
 
-def build_strategy(spec: Any, grouping: Any = None):
+def build_strategy(spec: Any, clustering: Any = None):
     """Instantiate a weight strategy from a descriptor.
 
     Parameters
@@ -36,9 +36,9 @@ def build_strategy(spec: Any, grouping: Any = None):
     spec : str | Mapping
         Either a strategy name (e.g. ``"id_v2"``) or a mapping with a ``type``
         key plus constructor kwargs.
-    grouping : Any, optional
-        The grouping config node.  Passed to strategies that expose a
-        ``set_grouping`` hook (e.g. the ``layered`` strategy).
+    clustering : Any, optional
+        The clustering config node.  Passed to strategies that expose a
+        ``set_clustering`` hook (e.g. the ``layered`` strategy).
 
     Returns
     -------
@@ -61,6 +61,6 @@ def build_strategy(spec: Any, grouping: Any = None):
 
     strategy_cls = get_strategy_class(name)
     strategy = strategy_cls(**params)
-    if hasattr(strategy, "set_grouping"):
-        strategy.set_grouping(grouping)
+    if hasattr(strategy, "set_clustering"):
+        strategy.set_clustering(clustering)
     return strategy

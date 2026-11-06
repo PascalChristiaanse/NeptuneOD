@@ -45,8 +45,8 @@ Usage
 
     python scripts/gen_sequence_diagrams.py            # build from the manifest
     python scripts/gen_sequence_diagrams.py --list     # list scenarios
-    python scripts/gen_sequence_diagrams.py --only grouping weighting
-    python scripts/gen_sequence_diagrams.py --stdout grouping
+    python scripts/gen_sequence_diagrams.py --only clustering weighting
+    python scripts/gen_sequence_diagrams.py --stdout clustering
 """
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ def _scenario_grouping() -> Callable[[], None]:
     import numpy as np
     from omegaconf import OmegaConf
 
-    from orbitdet.observations.grouping import build_group_list
+    from orbitdet.observations.clustering import build_cluster_list
 
     config = OmegaConf.create(
         {
@@ -196,7 +196,7 @@ def _scenario_grouping() -> Callable[[], None]:
         }
     )
     times = np.array([-100.0, -50.0, 10.0, 20.0])
-    return lambda: build_group_list(times, "673", config)
+    return lambda: build_cluster_list(times, "673", config)
 
 
 def _scenario_weighting() -> Callable[[], None]:
@@ -209,7 +209,7 @@ def _scenario_weighting() -> Callable[[], None]:
         {
             "strategy": "id_v2",
             "min_sigma_arcsec": 0.01,
-            "grouping": {"levels": [{"type": "timeframe", "gap_threshold_hours": 8.0}]},
+            "clustering": {"levels": [{"type": "timeframe", "gap_threshold_hours": 8.0}]},
         }
     )
     return lambda: WeightEngine.from_config(config)
@@ -426,7 +426,7 @@ def _scenario_sim_propagator_settings() -> Callable[[], None]:
 
 
 SCENARIOS: dict[str, tuple[str, Callable[[], Callable[[], None]], bool]] = {
-    "grouping": ("Grouping: build_group_list", _scenario_grouping, False),
+    "clustering": ("Grouping: build_cluster_list", _scenario_grouping, False),
     "weighting": ("Weighting: WeightEngine.from_config", _scenario_weighting, False),
     "outlier_rejection": (
         "Outlier rejection: OutlierEngine.from_config",

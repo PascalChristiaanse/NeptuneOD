@@ -1,11 +1,11 @@
 """Cluster observations in time by epoch gaps.
 
 Several parts of the pipeline need to decide which observations belong to the
-same *night* or *transit* - the weighting subsystem (``grouping.partitioners``),
-the Gaia transit-error figure, and any future analysis grouping.  They all mean
-the same thing by it: a new group starts wherever consecutive epochs differ by
+same *night* or *transit* - the weighting subsystem (``clustering.partitioners``),
+the Gaia transit-error figure, and any future analysis clustering.  They all mean
+the same thing by it: a new cluster starts wherever consecutive epochs differ by
 more than a threshold.  This module is that one rule, in one place, so the
-weighting grouping and the analysis figures can never disagree about where a
+weighting clustering and the analysis figures can never disagree about where a
 night ends.
 
 It is pure: it takes epochs (already sorted or not) and returns integer labels.
@@ -28,10 +28,10 @@ def split_by_gap(
     *,
     min_size: int = 1,
 ) -> list[np.ndarray]:
-    """Split sorted epochs into groups separated by more than ``gap_seconds``.
+    """Split sorted epochs into clusters separated by more than ``gap_seconds``.
 
-    A new group starts wherever the gap between consecutive (sorted) epochs
-    exceeds ``gap_seconds``, provided the current group already holds at least
+    A new cluster starts wherever the gap between consecutive (sorted) epochs
+    exceeds ``gap_seconds``, provided the current cluster already holds at least
     ``min_size`` members.  The ``min_size`` guard lets a burst of closely spaced
     observations absorb a short internal gap without splitting, which is what a
     transit needs when its sampling is uneven.
@@ -41,16 +41,16 @@ def split_by_gap(
     epochs : array-like
         Observation epochs (any monotonic unit - typically seconds since J2000).
     gap_seconds : float
-        Epoch gap above which a new group starts, in the same unit as ``epochs``.
+        Epoch gap above which a new cluster starts, in the same unit as ``epochs``.
     min_size : int
-        Minimum members before a gap is allowed to start a new group.  Defaults
+        Minimum members before a gap is allowed to start a new cluster.  Defaults
         to ``1`` (any gap splits).
 
     Returns
     -------
     list[np.ndarray]
         One array of positional indices (into the **sorted** ``epochs``) per
-        group, in time order.  Empty when ``epochs`` is empty.
+        cluster, in time order.  Empty when ``epochs`` is empty.
 
     Raises
     ------
@@ -66,14 +66,14 @@ def split_by_gap(
     if epochs.size == 0:
         return []
 
-    groups: list[list[int]] = [[0]]
+    clusters: list[list[int]] = [[0]]
     for i in range(1, epochs.size):
         gap = epochs[i] - epochs[i - 1]
-        if gap > gap_seconds and len(groups[-1]) >= min_size:
-            groups.append([i])
+        if gap > gap_seconds and len(clusters[-1]) >= min_size:
+            clusters.append([i])
         else:
-            groups[-1].append(i)
-    return [np.asarray(group, dtype=int) for group in groups]
+            clusters[-1].append(i)
+    return [np.asarray(cluster, dtype=int) for cluster in clusters]
 
 
 def cluster_by_gap(
@@ -88,8 +88,8 @@ def cluster_by_gap(
     the labels are assigned on the sorted order and then mapped back to the
     input positions, so ``labels[i]`` corresponds to ``epochs[i]`` as given.
 
-    This is the labelling form of :func:`split_by_gap` (which returns the groups
-    themselves); use it when a grouping column is needed rather than the groups.
+    This is the labelling form of :func:`split_by_gap` (which returns the clusters
+    themselves); use it when a clustering column is needed rather than the clusters.
 
     Parameters
     ----------
@@ -118,10 +118,10 @@ def cluster_by_gap(
         raise ValueError("epochs contains a non-finite value; drop or fill it first.")
 
     order = np.argsort(epochs, kind="stable")
-    groups = split_by_gap(epochs[order], gap_seconds, min_size=min_size)
+    clusters = split_by_gap(epochs[order], gap_seconds, min_size=min_size)
 
     labels_sorted = np.empty(epochs.size, dtype=int)
-    for label, indices in enumerate(groups):
+    for label, indices in enumerate(clusters):
         labels_sorted[indices] = label
 
     labels = np.empty(epochs.size, dtype=int)

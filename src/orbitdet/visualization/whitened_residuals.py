@@ -71,7 +71,7 @@ def _cfg_get(cfg, *keys, default=None):
 class _WhitenedPlotBase(Plot):
     """Shared plumbing for the whitened-residual plots.
 
-    Resolves the figure config, the grouping columns, the scan-frame rows and the
+    Resolves the figure config, the clustering columns, the scan-frame rows and the
     per-set whitening, so the concrete plots only differ in what they draw.
     """
 
@@ -105,7 +105,7 @@ class _WhitenedPlotBase(Plot):
         return _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
 
     def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the grouping columns: argument, then config, then default."""
+        """Resolve the clustering columns: argument, then config, then default."""
         group_by = self.group_by
         if group_by is None:
             group_by = _cfg_get(plot_cfg, "group_by", default=None)
@@ -190,25 +190,25 @@ class _WhitenedPlotBase(Plot):
         return epochs, out
 
     def _grouped_whitened(self, frame: pd.DataFrame, group_cols: list[str]):
-        """Yield ``(label, epochs, z)`` per group, with ``z`` an ``(n, 2)`` array."""
+        """Yield ``(label, epochs, z)`` per cluster, with ``z`` an ``(n, 2)`` array."""
         al_col = "residual_along_scan_rad"
         ac_col = "residual_across_scan_rad"
-        for key, group in frame.groupby(group_cols, dropna=False, sort=True):
+        for key, cluster in frame.groupby(group_cols, dropna=False, sort=True):
             label = self._group_label(key, group_cols)
             set_column = (
-                group["observation_set_index"].astype(int)
-                if "observation_set_index" in group.columns
+                cluster["observation_set_index"].astype(int)
+                if "observation_set_index" in cluster.columns
                 else None
             )
             set_indices = (
-                group["observation_set_index"].dropna().astype(int).unique().tolist()
+                cluster["observation_set_index"].dropna().astype(int).unique().tolist()
                 if set_column is not None
                 else []
             )
             epoch_chunks: list[np.ndarray] = []
             z_chunks: list[np.ndarray] = []
             for set_index in set_indices:
-                rows = group if set_column is None else group.loc[set_column == set_index]
+                rows = cluster if set_column is None else cluster.loc[set_column == set_index]
                 whitened = self._whitened_set(rows, al_col, ac_col)
                 if whitened is None:
                     continue
@@ -278,7 +278,7 @@ class WhitenedResidualScatter(_WhitenedPlotBase):
     use_figure_name : str | None
         Name of the figure configuration block under ``cfg.figures``.
     group_by : str | list[str] | None
-        Standard-frame column(s) to group the scatter series by.
+        Standard-frame column(s) to cluster the scatter series by.
     method : str
         ``"cholesky"`` (default) or ``"symmetric"`` whitening.
     fig, ax : optional

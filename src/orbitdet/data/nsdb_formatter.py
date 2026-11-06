@@ -899,7 +899,7 @@ def group_rows_by_observatory(
 ) -> list[tuple[str, pd.DataFrame]]:
     """Split a frame by observatory, in order of first appearance.
 
-    Each group becomes its own observation set, because a Tudat observation set
+    Each cluster becomes its own observation set, because a Tudat observation set
     is built for one receiver.
 
     Args:
@@ -909,14 +909,14 @@ def group_rows_by_observatory(
     Returns:
         ``(observatory_code, rows)`` pairs, one per distinct observatory.
     """
-    groups: list[tuple[str, pd.DataFrame]] = []
+    clusters: list[tuple[str, pd.DataFrame]] = []
     seen: set[str] = set()
-    for code, group in dataframe.groupby(observatory_codes, sort=False):
+    for code, cluster in dataframe.groupby(observatory_codes, sort=False):
         if code in seen:
             continue
         seen.add(code)
-        groups.append((normalize_observatory_code(code), group))
-    return groups
+        clusters.append((normalize_observatory_code(code), cluster))
+    return clusters
 
 
 def _first_observatory_code(observatories: object) -> object:
@@ -1050,9 +1050,9 @@ def set_relative_position_columns(dataframe: pd.DataFrame) -> tuple[str, str]:
 def _reject_duplicate_headings(dataframe: pd.DataFrame, record: NSDBRecord) -> None:
     """Fail loudly when a dataset's declared headings collide.
 
-    A handful of datasets publish several *groups* of the same quantity - five
+    A handful of datasets publish several *clusters* of the same quantity - five
     Uranian files carry three separate ``hour/minute/second`` triples, one per
-    satellite - and copy the same heading text onto each group.  Pandas accepts
+    satellite - and copy the same heading text onto each cluster.  Pandas accepts
     the duplicate names, but every later lookup then returns a *DataFrame*
     instead of a Series, so the failure surfaces far away as an opaque
     ``TypeError: arg must be a list, tuple, 1-d array, or Series`` inside a
@@ -1060,7 +1060,7 @@ def _reject_duplicate_headings(dataframe: pd.DataFrame, record: NSDBRecord) -> N
 
     Raising here is deliberate, and better than disambiguating automatically.
     With several time triples in one file, picking one would attach the *right*
-    column name to the *wrong* observation group, so the epochs would come out
+    column name to the *wrong* observation cluster, so the epochs would come out
     plausible and wrong.  An explicit error names the colliding headings and
     leaves the choice to whoever knows the dataset.
 
@@ -1079,10 +1079,10 @@ def _reject_duplicate_headings(dataframe: pd.DataFrame, record: NSDBRecord) -> N
     described = ", ".join(f"{name!r} x{count}" for name, count in sorted(duplicates.items()))
     raise ValueError(
         f"Dataset {record.identifier}: the Format block declares duplicate column "
-        f"heading(s): {described}. The file holds several groups of the same quantity "
+        f"heading(s): {described}. The file holds several clusters of the same quantity "
         f"and the headings do not distinguish them, so there is no way to tell which "
-        f"group a later lookup should read. Disambiguate the headings (or add a "
-        f"per-group selector) before this dataset can be formatted."
+        f"cluster a later lookup should read. Disambiguate the headings (or add a "
+        f"per-cluster selector) before this dataset can be formatted."
     )
 
 

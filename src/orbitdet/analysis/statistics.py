@@ -236,31 +236,31 @@ def quadrature(values) -> float:
 
 
 def pooled_within_group_rms(values, labels) -> float:
-    """Pooled within-group RMS about each group's own mean.
+    """Pooled within-cluster RMS about each cluster's own mean.
 
-    This is the "random" component of a scatter that has been split into groups
-    (e.g. transits or nights): the RMS of the residuals about their group means,
-    with the group means removed from the degrees of freedom::
+    This is the "random" component of a scatter that has been split into clusters
+    (e.g. transits or nights): the RMS of the residuals about their cluster means,
+    with the cluster means removed from the degrees of freedom::
 
         sqrt( Σ_g Σ_i (x_gi − x̄_g)² / (N − M) )
 
-    for ``M`` groups and ``N`` finite observations.  It is the natural estimator
-    of the within-group noise when the group means themselves vary (the
-    between-group spread is the *systematic* component, see
-    :func:`sample_std` of the group means).
+    for ``M`` clusters and ``N`` finite observations.  It is the natural estimator
+    of the within-cluster noise when the cluster means themselves vary (the
+    between-cluster spread is the *systematic* component, see
+    :func:`sample_std` of the cluster means).
 
     Parameters
     ----------
     values : array-like
         The observations.
     labels : array-like
-        A group label per observation (any hashable, e.g. an integer transit
+        A cluster label per observation (any hashable, e.g. an integer transit
         id).  Must have the same length as ``values``.
 
     Returns
     -------
     float
-        The pooled within-group RMS, or ``NaN`` when there are no finite
+        The pooled within-cluster RMS, or ``NaN`` when there are no finite
         observations or no residual degrees of freedom (``N <= M``).
 
     Raises
@@ -279,7 +279,7 @@ def pooled_within_group_rms(values, labels) -> float:
     if values.size == 0:
         return np.nan
 
-    # Group means, broadcast back to each observation.
+    # Cluster means, broadcast back to each observation.
     unique_labels, inverse = np.unique(labels, return_inverse=True)
     n_groups = unique_labels.size
     sums = np.bincount(inverse, weights=values, minlength=n_groups)
@@ -546,10 +546,10 @@ def aggregate(
     *,
     to_unit: str = "arcsec",
 ) -> pd.DataFrame:
-    """Aggregate residuals into a tidy one-row-per-group summary table.
+    """Aggregate residuals into a tidy one-row-per-cluster summary table.
 
     This is the generic replacement for the per-observatory / per-source /
-    per-catalog / per-scan-angle reductions the analysis work needs: group the
+    per-catalog / per-scan-angle reductions the analysis work needs: cluster the
     derived frame on any columns and read the standard residual statistics off
     in one call.
 
@@ -568,7 +568,7 @@ def aggregate(
     Returns
     -------
     pd.DataFrame
-        One row per group with columns ``n_obs``, ``n_components``,
+        One row per cluster with columns ``n_obs``, ``n_components``,
         ``mean_first``, ``mean_second``, ``std_first``, ``std_second``,
         ``median_first``, ``median_second``, ``min_first``, ``min_second``,
         ``max_first``, ``max_second``, ``rms_first``, ``rms_second``,
@@ -586,24 +586,24 @@ def aggregate(
     factor = _UNIT_FACTOR[to_unit]
 
     if by is None:
-        groups = [((), df)]
+        clusters = [((), df)]
     else:
         keys = [by] if isinstance(by, str) else list(by)
-        groups = list(df.groupby(keys, dropna=False, sort=True))
-        if not groups:
-            groups = [((), df)]
+        clusters = list(df.groupby(keys, dropna=False, sort=True))
+        if not clusters:
+            clusters = [((), df)]
 
     records: list[dict] = []
-    for key, group in groups:
-        first = group["residual_first_rad"].to_numpy("float64") * factor
-        second = group["residual_second_rad"].to_numpy("float64") * factor
+    for key, cluster in clusters:
+        first = cluster["residual_first_rad"].to_numpy("float64") * factor
+        second = cluster["residual_second_rad"].to_numpy("float64") * factor
         combined = np.concatenate([first, second])
         finite = combined[np.isfinite(combined)]
 
         sigmas = np.concatenate(
             [
-                group["sigma_first_rad"].to_numpy("float64") * factor,
-                group["sigma_second_rad"].to_numpy("float64") * factor,
+                cluster["sigma_first_rad"].to_numpy("float64") * factor,
+                cluster["sigma_second_rad"].to_numpy("float64") * factor,
             ]
         )
 
@@ -616,7 +616,7 @@ def aggregate(
 
         record.update(
             {
-                "n_obs": int(len(group)),
+                "n_obs": int(len(cluster)),
                 "n_components": int(finite.size),
                 "mean_first": mean(first),
                 "mean_second": mean(second),
@@ -631,7 +631,7 @@ def aggregate(
                 "rms_first": rms(first),
                 "rms_second": rms(second),
                 "wrms": weighted_rms(combined, sigmas),
-                "chi2": chi2(group),
+                "chi2": chi2(cluster),
             }
         )
         records.append(record)
@@ -643,7 +643,7 @@ def aggregate(
 
 
 def _key_names(by: str | list[str] | None) -> list[str]:
-    """Return the grouping column names as a list (``["all"]`` when ``by`` is None)."""
+    """Return the clustering column names as a list (``["all"]`` when ``by`` is None)."""
     if by is None:
         return ["all"]
     return [by] if isinstance(by, str) else list(by)

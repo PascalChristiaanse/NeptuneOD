@@ -73,7 +73,9 @@ def main(cfg: DictConfig):
         sim.create_dynamics_simulator(bodies, prop)
 
     # Create observations
-    observations, observation_models, _, standard_frame = create_observation_collection(cfg, bodies)
+    observations, observation_models, standard_frame = create_observation_collection(
+        cfg, bodies
+    )
     logger.info("Observations generated successfully.")
 
     # Create observation simulators for pre-fit residuals

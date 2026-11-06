@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import tudatpy.dynamics.environment as env
 import tudatpy.estimation.observations as obs
-from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf
 
 from orbitdet.data.frame_sources import standard_frame_for
 from orbitdet.data.nsdb_source import NSDBSource
@@ -51,7 +51,7 @@ def _rows_of_set(frame: pd.DataFrame, single_set, candidates: np.ndarray) -> np.
 
     Rows are consumed in file order, so a frame holding the same epoch twice maps
     its two rows to the set's two observations in the order both were built in:
-    the grouping and ``_usable_rows`` both preserve file order.  Each set is
+    the clustering and ``_usable_rows`` both preserve file order.  Each set is
     matched independently, because a position angle and a separation in one
     dataset are built from the *same* rows and neither consumes the other's.
 
@@ -82,63 +82,9 @@ def _rows_of_set(frame: pd.DataFrame, single_set, candidates: np.ndarray) -> np.
     return np.asarray(positions, dtype=int)
 
 
-def _source_name(dataset_cfg: DictConfig, set_name: str) -> str:
-    """Extract a short academic source name from the dataset config.
-
-    Prefers the first line of the ``reference`` field (e.g. "Veiga C.H.,
-    Vieira Martins R. (1996)"), falling back to the dataset key.
-    """
-    ref = dataset_cfg.get("reference", "")
-    if ref:
-        first_line = ref.strip().split("\n")[0].strip()
-        if first_line:
-            return first_line
-    return set_name
-
-
-def _observatory_code(dataset_cfg: DictConfig) -> str:
-    """Extract the observatory code from the dataset config.
-
-    Handles both list form (NSDB configs) and dict form (voyager config).
-
-    ``observatory``
-      - List: ``[{- code: 689, name: ...}]`` → ``"689"``
-      - Dict: ``{- code: -31, name: ...}``  → ``"-31"``
-    """
-    obs_val = dataset_cfg.get("observatory", None)
-    if obs_val is None:
-        return ""
-    if isinstance(obs_val, ListConfig) and len(obs_val) > 0:
-        code = obs_val[0].get("code", "")
-        return str(code).strip()
-    if isinstance(obs_val, DictConfig):
-        code = obs_val.get("code", "")
-        return str(code).strip()
-    return ""
-
-
-def _coordinate_type_label(dataset_type: str) -> tuple[str, str]:
-    """Map a dataset type string to human-readable RA/DEC coordinate labels.
-
-    Returns
-    -------
-    tuple[str, str]
-        ``(ra_type, dec_type)`` — e.g. ``(r"$\\Delta\\alpha\\cos\\delta$", r"$\\Delta\\delta$")``
-        for relative data, or ``(r"$\\alpha$", r"$\\delta$")`` for absolute.
-    """
-    t = dataset_type.lower()
-    if "relative" in t:
-        return (r"$\Delta\alpha\cos\delta$", r"$\Delta\delta$")
-    if "absolute" in t or "voyager" in t:
-        return (r"$\alpha$", r"$\delta$")
-    if "position" in t and "angle" in t:
-        return (r"$\rho$", r"$\theta$")
-    return ("", "")
-
-
 def create_observation_collection(
     cfg: DictConfig, system_of_bodies: env.SystemOfBodies
-) -> tuple[obs.ObservationCollection, list[Any], dict[str, list[dict]], pd.DataFrame]:
+) -> tuple[obs.ObservationCollection, list[Any], pd.DataFrame]:
     """Build an observation collection from multiple dataset configs.
 
     Iterates through dataset configurations in a collection, dispatches each through
@@ -153,14 +99,11 @@ def create_observation_collection(
         Tuple of:
             - ObservationCollection containing all observation sets.
             - List of observation model settings.
-            - Dict mapping set_id (observatory code) to a list of metadata dicts, each
-              with ``name`` (source author), ``coordinate_type`` (human-readable label),
-              and ``index`` (position of the set in the final collection, so it can be
-              retrieved via ``collection.get_single_observation_sets()[index]``).
             - The concatenated standard frame: every row the frame-backed datasets
               contributed, in dataset order, carrying the full schema (provenance,
               units, epochs and measurements).  This is the same data the factories
-              consumed, so it replaces the hand-maintained metadata above.  The
+              consumed, so it is the single description of the observations; there
+              is no parallel metadata mapping to keep in step with it.  The
               ``observation_set_index`` column holds the index of the set each row
               was used to build, so a row can be traced back with
               ``collection.get_single_observation_sets()[index]``; it is null for
@@ -181,7 +124,6 @@ def create_observation_collection(
 
     observation_sets = []
     model_setting = []
-    dataset_metadata: dict[str, list[dict]] = {}
     # Standard frames, one per frame-backed dataset, in dataset order.  They are
     # concatenated at the end and returned alongside the collection, so callers
     # hold the data the observations were built from rather than a second,
@@ -239,11 +181,10 @@ def create_observation_collection(
             observation_sets.append(dataset)
             model_setting.append(model_settings)
 
-            # Extract metadata from the SingleObservationSets produced by this dataset
-            source_name = _source_name(dataset_cfg, set_name)
-            dataset_id = dataset_cfg.get("identifier", set_name)
-            obs_code = _observatory_code(dataset_cfg)
-            ra_type, dec_type = _coordinate_type_label(dataset_cfg.get("type", ""))
+            # Record each set the factory produced, paired with the standard frame
+            # it was built from (``None`` for a modality that built from its own
+            # source).  The frame is the description of the observations; there is
+            # no parallel metadata dict to keep in step with it.
             if isinstance(dataset, obs.ObservationCollection):
                 single_sets = dataset.get_single_observation_sets()
             elif isinstance(dataset, obs.SingleObservationSet):
@@ -251,20 +192,7 @@ def create_observation_collection(
             else:
                 single_sets = []
             for single_set in single_sets:
-                set_records.append(
-                    (
-                        single_set,
-                        {
-                            "name": source_name,
-                            "dataset_id": dataset_id,
-                            "observatory_code": obs_code or get_set_identifier(single_set),
-                            "ra_type": ra_type,
-                            "dec_type": dec_type,
-                            "index": None,
-                        },
-                        frame_position,
-                    )
-                )
+                set_records.append((single_set, frame_position))
 
             logger.debug(f"Successfully created dataset {set_name} ({idx + 1}/{len(datasets)})")
         except Exception as e:
@@ -299,7 +227,7 @@ def create_observation_collection(
     # cannot stand in for identity: where several datasets observed from one station the
     # merge need not order their sets in dataset order, and the queue would then attribute
     # one dataset's rows to another dataset's set.
-    by_identity = {id(single_set): (meta, position) for single_set, meta, position in set_records}
+    by_identity = {id(single_set): position for single_set, position in set_records}
 
     # One column buffer per frame, filled during the walk and attached afterwards.
     set_index_columns = [
@@ -308,16 +236,15 @@ def create_observation_collection(
 
     for set_index, single_set in enumerate(total_collection.get_single_observation_sets()):
         set_id = get_set_identifier(single_set)
-        record = by_identity.get(id(single_set))
-        if record is None:
+        if id(single_set) not in by_identity:
             logger.warning(
                 "Observation set '%s' at index %d was not created by this builder; its "
-                "rows and metadata cannot be resolved.",
+                "rows cannot be resolved.",
                 set_id,
                 set_index,
             )
             continue
-        meta, position = record
+        position = by_identity[id(single_set)]
         if position is not None:
             data_frame = standard_frames[position]
             rows = _rows_of_set(data_frame, single_set, _frame_candidates(data_frame, single_set))
@@ -325,14 +252,10 @@ def create_observation_collection(
             # position-angle-separation row carries both a position angle and a
             # separation, and each becomes its own set - and a single float cannot
             # name both.  Keeping the first means the column points at the set
-            # built from the row's *first* component, which is the primary one;
-            # the further sets are listed in ``dataset_metadata``, keyed by the
-            # same set_id.
+            # built from the row's *first* component, which is the primary one.
             fresh = rows[np.isnan(set_index_columns[position][rows])]
             if fresh.size:
                 set_index_columns[position][fresh] = float(set_index)
-        meta["index"] = set_index
-        dataset_metadata.setdefault(set_id, []).append(meta)
 
     logger.info(f"Successfully created observation collection with {len(observation_sets)} set(s)")
 
@@ -357,4 +280,4 @@ def create_observation_collection(
 
         standard_frame = empty_frame()
 
-    return total_collection, flat_models, dataset_metadata, standard_frame
+    return total_collection, flat_models, standard_frame

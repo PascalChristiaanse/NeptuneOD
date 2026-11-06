@@ -2,18 +2,17 @@
 
 # Weighting: ID v2 (scaled per-file) scheme.
 #
-# Router-shaped like every other weighting config: a router with only a
-# `default` is the single-strategy case.  Switch schemes by editing `default`;
-# add `routes` to give specific sets their own strategy (see `router.yaml`).
+# A plan with only a `default` is the single-strategy case.  Switch schemes by
+# editing `default`; add `overrides` to give specific observations their own
+# strategy and clustering (see `plan.yaml`).
 
 weighting:
   enabled: true
   min_sigma_arcsec: 0.005
-  strategy:
-    type: router
-    default:
+  default:
+    strategy:
       type: id_v2
-  grouping:
+  clustering:
     levels:
       - type: timeframe
         gap_threshold_hours: 8.0

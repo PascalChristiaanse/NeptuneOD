@@ -1,4 +1,4 @@
-"""Tests for the refactored ``Residuals`` plot (access + grouping)."""
+"""Tests for the refactored ``Residuals`` plot (access + clustering)."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _set(epochs, residuals, weights, reference_point):
 
 
 def _access():
-    """Two sets at different observatories, so grouping has something to split."""
+    """Two sets at different observatories, so clustering has something to split."""
     set_a = _set(
         [1.0, 2.0],
         np.array([[1e-6, -2e-6], [3e-6, -4e-6]]),

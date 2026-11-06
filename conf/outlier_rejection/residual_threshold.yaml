@@ -3,18 +3,18 @@
 # Outlier rejection: residual threshold (default).
 # Removes observations whose RA or DEC residual exceeds 1.5 arcsec.
 #
-# To apply different thresholds to specific sets, use the optional ``sets``
-# filter.  Set identifiers are observatory codes (e.g. "689") for ground
-# stations or body names (e.g. "Voyager 2") for spacecraft.
+# To apply different thresholds to specific observations, add a `select` query
+# over the standard observation frame.  `observatory_code` holds the MPC code
+# for ground stations and the body name for spacecraft.
 #
 # Example:
 #   strategies:
 #     - type: residual_threshold
 #       threshold_arcsec: 1.5
-#       sets: ["689", "675"]  # only these observatories
+#       select: "observatory_code in ['689', '675']"
 #     - type: residual_threshold
 #       threshold_arcsec: 0.5
-#       sets: ["Voyager 2"]   # tighter threshold for spacecraft data
+#       select: "observatory_code == 'Voyager 2'"
 
 outlier_rejection:
   enabled: true

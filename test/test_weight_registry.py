@@ -24,7 +24,7 @@ class TestWeightRegistry:
     def test_register_and_retrieve(self):
         @register_weight_strategy("test_strat")
         class TestStrat(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         retrieved = get_strategy_class("test_strat")
@@ -33,7 +33,7 @@ class TestWeightRegistry:
     def test_registered_type_appears_in_list(self):
         @register_weight_strategy("list_test")
         class ListTestStrat(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         types = list_registered_strategies()
@@ -42,12 +42,12 @@ class TestWeightRegistry:
     def test_list_is_sorted(self):
         @register_weight_strategy("z_strat")
         class ZStrat(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         @register_weight_strategy("a_strat")
         class AStrat(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         types = list_registered_strategies()
@@ -56,14 +56,14 @@ class TestWeightRegistry:
     def test_duplicate_registration_raises_value_error(self):
         @register_weight_strategy("dup_test")
         class FirstStrat(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         with pytest.raises(ValueError, match="already registered"):
 
             @register_weight_strategy("dup_test")
             class SecondStrat(WeightStrategy):
-                def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+                def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                     pass
 
         # First registration should still be the one in the registry
@@ -83,12 +83,12 @@ class TestWeightRegistry:
     def test_error_message_includes_available_types(self):
         @register_weight_strategy("type_a")
         class TypeA(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         @register_weight_strategy("type_b")
         class TypeB(WeightStrategy):
-            def compute_weights(self, observation_set, groups, set_id, min_sigma_arcsec=0.01):
+            def compute_weights(self, observation_set, clusters, set_id, min_sigma_arcsec=0.01):
                 pass
 
         with pytest.raises(ValueError, match="type_a.*type_b|type_b.*type_a"):

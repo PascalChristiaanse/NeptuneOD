@@ -1,0 +1,91 @@
+# @package _global_
+
+# Weighting: REFERENCE config for the default-plus-overrides plan shape.
+#
+# A plan says, in one place, "for these observations, weight them this way,
+# partitioned like that".  Each entry carries its own `strategy` AND its own
+# `clustering`, so a rule reads as one thought instead of being assembled from
+# two separate config sections.
+#
+#   default:    the catch-all, applied to every set no override matches
+#   overrides:  ordered; the FIRST entry whose `select` matches a set wins
+#
+# `select` is a pandas query over the standard observation frame, so any column
+# is fair game -- not just the set identifier:
+#
+#   select: "data_source == 'nsdb' and observatory_code != '689'"
+#
+# A set is routed as a whole, so an override matches when ANY of its rows does.
+# To split *within* a set, use a clustering level instead (see `clustering`).
+#
+# This example uses all three datasets at once:
+#   - Gaia      -> archive full transit matrix (off-diagonal, preserved as-is)
+#   - Voyager 2 -> layered: fixed 1"/4" pre/post encounter x timeframe clustering
+#   - NSDB      -> layered: set-level 1/RMSE**2 x timeframe clustering
+#   - anything else -> ID v2
+#
+# See docs/WEIGHTING_CONFIGURATION_GUIDE.md.
+
+weighting:
+  enabled: true
+  min_sigma_arcsec: 0.005
+
+  # Plan-wide clustering.  Entries that name their own `clustering` override it.
+  clustering:
+    levels:
+      - type: timeframe
+        gap_threshold_hours: 8.0
+        min_obs_per_frame: 1
+
+  # Catch-all for unmatched sets (e.g. generic ground-based observatories).
+  default:
+    strategy:
+      type: id_v2
+
+  overrides:
+    # --- Gaia: keep the archive transit matrix ---------------------------
+    - select: "data_source == 'gaia_archive'"
+      strategy:
+        type: gaia_archive
+        covariance_mode: full_matrix
+        scale: 1.0
+
+    # --- Voyager 2: fixed pre/post encounter + timeframe clustering ------
+    - select: "observatory_code == 'Voyager 2'"
+      strategy:
+        type: layered
+        combine: geometric
+        layers:
+          - level: section
+            mode: fixed
+            sigmas:
+              pre_encounter:  {ra: 1.0, dec: 1.0}
+              post_encounter: {ra: 4.0, dec: 4.0}
+          - level: timeframe
+            mode: rmse_descaled
+      clustering:
+        levels:
+          - type: section
+            sections:
+              - {name: "pre_encounter",  start: -1e30,             end: -326688543.8172541}
+              - {name: "post_encounter", start: -326688543.8172541, end: 1e30}
+          - type: timeframe
+            gap_threshold_hours: 8.0
+            min_obs_per_frame: 1
+
+    # --- NSDB / ground-based: set primary + timeframe --------------------
+    - select: "data_source == 'nsdb'"
+      strategy:
+        type: layered
+        combine: geometric
+        layers:
+          - level: set
+            mode: rmse
+          - level: timeframe
+            mode: rmse_descaled
+      clustering:
+        levels:
+          - type: set
+          - type: timeframe
+            gap_threshold_hours: 8.0
+            min_obs_per_frame: 1

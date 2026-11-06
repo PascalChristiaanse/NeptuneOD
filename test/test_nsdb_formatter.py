@@ -94,7 +94,7 @@ class TestDeclaredSentinel:
 
 
 class TestDuplicateHeadings:
-    """Several groups of the same quantity make a heading ambiguous.
+    """Several clusters of the same quantity make a heading ambiguous.
 
     Five Uranian files carry three separate time triples - one per satellite -
     with identical heading text.  Pandas accepts the duplicate names, and every
@@ -134,7 +134,7 @@ class TestDuplicateHeadings:
         assert _reject_duplicate_headings(frame, self._record()) is None
 
     def test_the_guard_explains_why_it_does_not_guess(self):
-        # Guessing which group to read would attach the right name to the wrong
+        # Guessing which cluster to read would attach the right name to the wrong
         # observations, so the message has to say the choice is deliberate.
         frame = pd.DataFrame(np.zeros((2, 2)), columns=["H", "H"])
 
@@ -770,17 +770,17 @@ def test_group_rows_by_observatory():
     dataframe = pd.DataFrame({"Year": [1963, 1964, 1965, 1966]})
     codes = pd.Series(["083", "188", "083", "188"])
 
-    groups = group_rows_by_observatory(dataframe, codes)
+    clusters = group_rows_by_observatory(dataframe, codes)
 
-    assert [code for code, _ in groups] == ["083", "188"]
-    assert groups[0][1]["Year"].tolist() == [1963, 1965]
-    assert groups[1][1]["Year"].tolist() == [1964, 1966]
+    assert [code for code, _ in clusters] == ["083", "188"]
+    assert clusters[0][1]["Year"].tolist() == [1963, 1965]
+    assert clusters[1][1]["Year"].tolist() == [1964, 1966]
 
 
 def test_group_rows_by_observatory_normalises_codes():
     dataframe = pd.DataFrame({"Year": [1963, 1964]})
     codes = pd.Series(["83", "188"])
 
-    groups = group_rows_by_observatory(dataframe, codes)
+    clusters = group_rows_by_observatory(dataframe, codes)
 
-    assert [code for code, _ in groups] == ["083", "188"]
+    assert [code for code, _ in clusters] == ["083", "188"]

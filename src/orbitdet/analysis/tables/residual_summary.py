@@ -26,7 +26,7 @@ _SUMMARY_GROUPINGS: tuple[tuple[str, list[str]], ...] = (
 
 
 class ResidualSummary(Table):
-    """One residual summary table per meaningful grouping of the frame.
+    """One residual summary table per meaningful clustering of the frame.
 
     Parameters
     ----------
@@ -35,7 +35,7 @@ class ResidualSummary(Table):
     groupings : tuple[tuple[str, list[str]], ...] | None
         Named groupings to summarise.  Defaults to
         :data:`_SUMMARY_GROUPINGS` (source, observatory, catalog, coordinate
-        kind), skipping any grouping whose columns are absent from the frame.
+        kind), skipping any clustering whose columns are absent from the frame.
     to_unit : str
         Reporting unit for the residual columns (``"arcsec"`` by default).
     """

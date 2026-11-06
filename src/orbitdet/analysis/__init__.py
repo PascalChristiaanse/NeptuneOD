@@ -4,7 +4,7 @@ The pipeline already produces two per-observation dataframes: the standard
 observation frame (:mod:`orbitdet.preprocessing.schema`), which is the canonical
 *ingest* contract, and the per-observation weights frame
 (:mod:`orbitdet.observations.weighting.dataframe`), which carries residuals,
-weights and grouping.  This package adds the missing third piece: an **access
+weights and clustering.  This package adds the missing third piece: an **access
 layer** that joins the standard frame to the live
 :class:`~tudatpy.estimation.observations.SingleObservationSet` objects through
 the ``observation_set_index`` foreign key, a set of pure **view** functions that
@@ -57,6 +57,7 @@ from .distribution import (
     welch_psd,
 )
 from .frames import analysis_frame
+from .set_view import SetView
 from .statistics import (
     aggregate,
     chi2,
@@ -105,6 +106,8 @@ __all__ = [
     "block_diagonal_basis",
     # Frames
     "analysis_frame",
+    # Per-set view
+    "SetView",
     # Clustering
     "cluster_by_gap",
     "split_by_gap",

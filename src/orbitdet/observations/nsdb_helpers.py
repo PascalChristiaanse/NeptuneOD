@@ -491,7 +491,7 @@ def group_rows_by_observatory(
     dataframe: pd.DataFrame,
     observatory_codes: pd.Series,
 ) -> list[tuple[str, pd.DataFrame]]:
-    """Group dataframe rows by observatory code.
+    """Cluster dataframe rows by observatory code.
 
     Args:
         dataframe: The DataFrame containing the observation data.
@@ -501,11 +501,11 @@ def group_rows_by_observatory(
         A list of (observatory_code, subset_dataframe) tuples, one per distinct observatory,
         preserving the order of first appearance.
     """
-    groups: list[tuple[str, pd.DataFrame]] = []
+    clusters: list[tuple[str, pd.DataFrame]] = []
     seen: set[str] = set()
-    for code, group in dataframe.groupby(observatory_codes, sort=False):
+    for code, cluster in dataframe.groupby(observatory_codes, sort=False):
         if code in seen:
             continue
         seen.add(code)
-        groups.append((code, group))
-    return groups
+        clusters.append((code, cluster))
+    return clusters

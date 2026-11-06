@@ -114,7 +114,7 @@ def _conf_root() -> Path:
 def _selected_collection_config(conf_root: Path) -> Path:
     """Resolve the collection YAML that Hydra selected for this run.
 
-    Hydra records the choice made for each config group in
+    Hydra records the choice made for each config cluster in
     ``runtime.choices``. Using that keeps the caller-facing interface the same
     as before, while the file read below stays an ordinary YAML document.
 

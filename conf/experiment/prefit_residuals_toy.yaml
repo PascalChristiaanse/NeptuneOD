@@ -1,0 +1,56 @@
+# @package _global_
+
+# Experiment: pre-fit residuals, toy default.
+#
+# This is the *default* config of ``scripts/prefit_residuals.py``, so the stage
+# can be run with no arguments at all:
+#
+#     python scripts/prefit_residuals.py
+#
+# It is deliberately small: one NSDB dataset (nm0017, 54 photographic
+# observations of Triton, 1986-1993), the light pre-fit dynamical model, and
+# the classical kernel set.  It exists to make the stage debuggable in seconds,
+# not to produce science.
+#
+# Point it at a real experiment instead with:
+#
+#     python scripts/prefit_residuals.py --config-name=experiment/classic_triton_state
+
+defaults:
+  - /collection: minimal_for_testing
+  - /dynamics: prefit
+  - /kernels: classical
+  - /logging: default
+  - _self_ # Apply experiment fields after the collection
+  - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
+  - /figures/residual_scatter@figures.residual_scatter
+  - /figures/residual_histogram@figures.residual_histogram
+
+seed: 42
+
+# Pre-fit residuals are evaluated against the SPICE ephemeris, so the
+# propagator's integrated result is not needed here.
+propagation:
+  set_integrated_result: false
+
+# ---------------------------------------------------------------------------
+# Figure stage defaults
+# ---------------------------------------------------------------------------
+# ``scripts/plot_residuals_figure.py`` draws one figure per invocation.  These defaults
+# let it run with no arguments at all, reading the artifacts the toy
+# prefit_residuals stage writes.  Snakemake overrides all three.
+figure: "prefit_residuals_spice"
+observations: "results/pipeline/prefit_residuals_toy/prefit_residuals/observations.tudat"
+standard_frame: "results/pipeline/prefit_residuals_toy/prefit_residuals/standard_frame.parquet"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — a window that comfortably brackets the nm0017 observations.
+start_date: 1985-1-1T12:00:00
+end_date: 1995-1-1T12:00:00
+initial_epoch: 1989-08-25T12:00:00

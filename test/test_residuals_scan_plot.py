@@ -68,7 +68,7 @@ def _access(epochs, residuals, psi):
 
 
 def _cfg(**residuals_cfg):
-    return OmegaConf.create({"figures": {"scan": residuals_cfg}})
+    return OmegaConf.create(residuals_cfg)
 
 
 class TestResidualsScan:
@@ -77,7 +77,7 @@ class TestResidualsScan:
         # residual [dRA, dDec]; psi=0 -> AL = dDec, AC = dRA*cos(dec).
         residuals = np.array([[1e-6, 2e-6], [3e-6, -4e-6]])
         access = _access(epochs, residuals, psi=[0.0, 0.0])
-        plot = ResidualsScan(_cfg(), access, use_figure_name="scan")
+        plot = ResidualsScan(_cfg(), access)
         fig, axs = plot._make_figure()
         assert len(axs) == 2
         al = axs[0].collections[0].get_offsets()
@@ -93,7 +93,7 @@ class TestResidualsScan:
         epochs = [1.0]
         residuals = np.array([[1e-6, 2e-6]])
         access = _access(epochs, residuals, psi=[np.pi / 2])
-        plot = ResidualsScan(_cfg(), access, use_figure_name="scan")
+        plot = ResidualsScan(_cfg(), access)
         fig, axs = plot._make_figure()
         al = axs[0].collections[0].get_offsets()
         ac = axs[1].collections[0].get_offsets()
@@ -105,7 +105,7 @@ class TestResidualsScan:
         epochs = [1.0, 2.0]
         residuals = np.array([[1e-6, 2e-6], [3e-6, -4e-6]])
         access = _access(epochs, residuals, psi=[0.0, 0.0])
-        plot = ResidualsScan(_cfg(), access, use_figure_name="scan")
+        plot = ResidualsScan(_cfg(), access)
         fig, axs = plot._make_figure()
         # All rows share observatory_code "Gaia" -> a single series.
         assert len(axs[0].collections) == 1
@@ -120,7 +120,7 @@ class TestResidualsScan:
         frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0]
         collection = obs.ObservationCollection([single_set])
         access = ObservationAccess.build(collection, frame)
-        plot = ResidualsScan(_cfg(), access, use_figure_name="scan")
+        plot = ResidualsScan(_cfg(), access)
         with pytest.raises(ValueError, match="scan_angle"):
             plot._make_figure()
 
@@ -128,7 +128,7 @@ class TestResidualsScan:
         epochs = [1.0, 2.0]
         residuals = np.array([[1e-6, 2e-6], [3e-6, -4e-6]])
         access = _access(epochs, residuals, psi=[0.0, 0.0])
-        plot = ResidualsScan(_cfg(), access, use_figure_name="scan")
+        plot = ResidualsScan(_cfg(), access)
         fig, axs = plot._make_figure()
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
         assert any("RMS:" in label and "arcsec" in label for label in labels)
@@ -138,7 +138,7 @@ class TestResidualsScan:
         epochs = [1.0]
         residuals = np.array([[1e-6, 2e-6]])
         access = _access(epochs, residuals, psi=[0.0])
-        plot = ResidualsScan(_cfg(), access, use_figure_name="scan", unit="mas")
+        plot = ResidualsScan(_cfg(axes={"unit": "mas"}), access)
         fig, axs = plot._make_figure()
         al = axs[0].collections[0].get_offsets()
         assert al[0, 1] == pytest.approx(2e-6 * ARCSEC * 1e3, rel=1e-6)

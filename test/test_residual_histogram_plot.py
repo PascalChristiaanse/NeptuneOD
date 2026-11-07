@@ -77,7 +77,7 @@ def _access(scan_angle=np.nan, n=6):
 
 
 def _cfg(**hist_cfg):
-    return OmegaConf.create({"figures": {"residual_histogram": hist_cfg}})
+    return OmegaConf.create(hist_cfg)
 
 
 class TestResidualHistogram:
@@ -101,7 +101,7 @@ class TestResidualHistogram:
 
     def test_group_by_argument_overrides_default(self):
         access = _access()
-        plot = ResidualHistogram(_cfg(), access, group_by="source_set_id")
+        plot = ResidualHistogram(_cfg(group_by="source_set_id"), access)
         fig, axs = plot._make_figure()
         # Both sets share source_set_id -> a single cluster.
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
@@ -126,7 +126,7 @@ class TestResidualHistogram:
 
     def test_mas_unit(self):
         access = _access()
-        plot = ResidualHistogram(_cfg(), access, unit="mas")
+        plot = ResidualHistogram(_cfg(axes={"unit": "mas"}), access)
         fig, axs = plot._make_figure()
         assert "mas" in axs[0].get_xlabel()
         plt.close(fig)
@@ -142,7 +142,7 @@ class TestResidualHistogram:
 
     def test_unknown_grouping_column_raises(self):
         access = _access()
-        plot = ResidualHistogram(_cfg(), access, group_by="not_a_column")
+        plot = ResidualHistogram(_cfg(group_by="not_a_column"), access)
         with pytest.raises(ValueError, match="not in the standard frame"):
             plot._make_figure()
 

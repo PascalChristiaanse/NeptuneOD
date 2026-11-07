@@ -60,7 +60,7 @@ def _set(epochs, residuals, weights, reference_point):
 
 
 def _cfg(**residuals_cfg):
-    return OmegaConf.create({"figures": {"norm": residuals_cfg}})
+    return OmegaConf.create(residuals_cfg)
 
 
 class TestNormalizedResiduals:
@@ -76,7 +76,7 @@ class TestNormalizedResiduals:
 
     def test_z_is_residual_over_sigma(self):
         access = self._access()
-        plot = NormalizedResiduals(_cfg(), access, use_figure_name="norm")
+        plot = NormalizedResiduals(_cfg(), access)
         fig, axs = plot._make_figure()
         # weight 1 -> sigma 1 rad -> z == residual in radians.
         offsets = axs[0].collections[0].get_offsets()
@@ -85,7 +85,7 @@ class TestNormalizedResiduals:
 
     def test_groups_by_observatory_default(self):
         access = self._access()
-        plot = NormalizedResiduals(_cfg(), access, use_figure_name="norm")
+        plot = NormalizedResiduals(_cfg(), access)
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 2
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
@@ -99,7 +99,7 @@ class TestNormalizedResiduals:
         frame = build_frame([_record(1.0), _record(2.0, station="Gaia", scan_angle=0.3)])
         frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0, 1.0]
         access = ObservationAccess.build(obs.ObservationCollection([set_a, set_b]), frame)
-        plot = NormalizedResiduals(_cfg(), access, use_figure_name="norm")
+        plot = NormalizedResiduals(_cfg(), access)
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 1  # only 673
         plt.close(fig)
@@ -109,7 +109,7 @@ class TestNormalizedResiduals:
         frame = build_frame([_record(1.0, station="Gaia", scan_angle=0.3)])
         frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0]
         access = ObservationAccess.build(obs.ObservationCollection([single_set]), frame)
-        plot = NormalizedResiduals(_cfg(), access, use_figure_name="norm")
+        plot = NormalizedResiduals(_cfg(), access)
         with pytest.raises(ValueError, match="scan_angle"):
             plot._make_figure()
 
@@ -141,7 +141,7 @@ class TestNormalizedResidualScan:
         weight[0:2, 0:2] = block
         weight[2:4, 2:4] = block
         access = SimpleNamespace(weight_matrix=lambda *a, **k: weight)
-        plot = NormalizedResidualScan(_cfg(), access, use_figure_name="norm")
+        plot = NormalizedResidualScan(_cfg(), access)
         rows = pd.DataFrame(
             {
                 "epoch_tdb": [1.0, 2.0],
@@ -163,6 +163,6 @@ class TestNormalizedResidualScan:
         frame = build_frame([_record(1.0, station="Gaia")])  # scan_angle NaN
         frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0]
         access = ObservationAccess.build(obs.ObservationCollection([single_set]), frame)
-        plot = NormalizedResidualScan(_cfg(), access, use_figure_name="norm")
+        plot = NormalizedResidualScan(_cfg(), access)
         with pytest.raises(ValueError, match="scan_angle"):
             plot._make_figure()

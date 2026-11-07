@@ -1,3 +1,4 @@
+plotter: "ResidualsScan"
 output_file: "prefit_residuals_prop_scan.pdf"
 figure:
   width: 16.54

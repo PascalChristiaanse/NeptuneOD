@@ -1,21 +1,24 @@
-dependent_variable_differenced:
-  output_file: "dependent_variable_differenced.pdf"
-  figure:
-    width: 10
-    height: 15
-  titles:
-    suptitle: "Difference in {dependent_variable_name} for {associated_body}"
-  axes:
-    x_label: "Epoch"
-    y_label:
-      - "Semi-major Axis [m]"
-      - "Eccentricity"
-      - "Inclination [rad]"
-      - "Argument of Periapsis [rad]"
-      - "RAAN [rad]"
-      - "True Anomaly [rad]"
-    hover_x_label: "Epoch"
-    hover_y_label:
-      - "X [m/s²]"
-      - "Y [m/s²]"
-      - "Z [m/s²]"
+# No ``plotter`` key: DifferencedDependentVariables needs a reference result plus
+# one or more comparison results, so it is driven directly by the scripts that
+# have several results in hand (compare_gaia_trajectories.py, generate_trajectory.py)
+# rather than by the single-artifact plot_simulation_figure.py.
+output_file: "dependent_variable_differenced.pdf"
+figure:
+  width: 10
+  height: 15
+titles:
+  suptitle: "Difference in {dependent_variable_name} for {associated_body}"
+axes:
+  x_label: "Epoch"
+  y_label:
+    - "Semi-major Axis [m]"
+    - "Eccentricity"
+    - "Inclination [rad]"
+    - "Argument of Periapsis [rad]"
+    - "RAAN [rad]"
+    - "True Anomaly [rad]"
+  hover_x_label: "Epoch"
+  hover_y_label:
+    - "X [m/s²]"
+    - "Y [m/s²]"
+    - "Z [m/s²]"

@@ -1,0 +1,2 @@
+plotter: "ResidualRMSPerIteration"
+output_file: "residual_rms_per_iteration.pdf"

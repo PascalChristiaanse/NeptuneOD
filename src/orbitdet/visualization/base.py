@@ -8,7 +8,7 @@ Subclasses implement :meth:`Plot._make_figure`, which builds and returns the
 ``(fig, axes)`` tuple. The public :meth:`Plot.plot` method wraps that with the
 bookkeeping above, so callers only need::
 
-    fig, ax = Residuals(cfg, observations).plot()
+    fig, ax = Residuals(figure_cfg, access).plot()
 """
 
 import functools

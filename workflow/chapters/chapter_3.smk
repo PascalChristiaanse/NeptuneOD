@@ -150,10 +150,20 @@ rule rsw_prop_two_poles:
         ),
         python_dependencies("scripts/plot_simulation_figure.py"),
         hydra_dependencies("conf/plot_simulation_figure.yaml"),
-        "conf/figures/rsw_prop_two_poles.yaml",
+        "conf/chapter_3/fig_rsw_prop_two_poles.yaml",
 
     output:
         f"{STAGE}/rsw_prop_two_poles.pdf",
+
+    params:
+        # The results are passed in POLE_MODELS order, which is also the order
+        # the figure config's ``labels`` must list them in.
+        results=",".join(
+            expand(
+                f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
+                pole_model=POLE_MODELS,
+            )
+        ),
 
     log:
         f"{STAGE}/rsw_prop_two_poles.log",
@@ -162,8 +172,8 @@ rule rsw_prop_two_poles:
         """
         {PYTHON} scripts/plot_simulation_figure.py \
             hydra.run.dir={STAGE} \
-            figure_config=conf/figures/rsw_prop_two_poles.yaml \
-            +simulation_results=[{STAGE}/pole_sweep/Pole_Model_Jacobson2009/propagation_result.tudat,{STAGE}/pole_sweep/IAU2015/propagation_result.tudat] \
+            figure_config=conf/chapter_3/fig_rsw_prop_two_poles.yaml \
+            +simulation_results=[{params.results}] \
             > {log} 2>&1
         """
 

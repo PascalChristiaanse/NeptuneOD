@@ -4,6 +4,7 @@ from .dependent_variable import DependentVariable
 from .dependent_variable_differenced import DifferencedDependentVariables
 from .estimation_base import EstimationPlot
 from .gaia_transit_errors import GaiaTransitErrorComponents
+from .palettes import DEFAULT_PALETTE, PALETTES, palette
 from .parameter_correlation_heatmap import ParameterCorrelationHeatmap
 from .parameter_history_per_iteration import ParameterHistoryPerIteration
 from .propagated_formal_errors_cartesian import PropagatedFormalErrorsCartesian
@@ -15,10 +16,11 @@ from .residual_qq import ResidualQQ
 from .residual_rms_per_iteration import ResidualRMSPerIteration
 from .residual_scatter import ResidualScatter
 from .residuals import NormalizedResiduals, NormalizedResidualScan, Residuals, ResidualsScan
-from .RSW_distance import RSWDistance
+from .RSW_distance import RSWDistance, RSWDistanceComparison, RSWDistanceDifference
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
 from .simulation_base import ArrayPlot, SimulationPlot
 from .state_history_3d import StateHistory3D
+from .style import DEFAULT_STYLE, apply_style, available_styles
 from .validation import (
     CombinationComparison,
     IntegratorConvergence,
@@ -69,6 +71,14 @@ __all__ = [
     "ResidualRMSPerIteration",
     "ResidualScatter",
     "RSWDistance",
+    "RSWDistanceComparison",
+    "RSWDistanceDifference",
     "RSWDistanceWithUncertainty",
     "StateHistory3D",
+    "DEFAULT_STYLE",
+    "apply_style",
+    "available_styles",
+    "DEFAULT_PALETTE",
+    "PALETTES",
+    "palette",
 ]

@@ -40,7 +40,7 @@ class StateHistory3D(SimulationPlot):
 
         positions = states[:, :3]
 
-        fig_w, fig_h = self._figure_size(10, 8)
+        fig_w, fig_h = self._figure_size()
 
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="x [m]")
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="y [m]")

@@ -290,7 +290,7 @@ class GaiaTransitErrorComponents(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         unit = _cfg_get(plot_cfg, "axes", "unit", default="mas")
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)

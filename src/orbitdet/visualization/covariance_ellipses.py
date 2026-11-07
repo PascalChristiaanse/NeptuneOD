@@ -147,8 +147,8 @@ class CovarianceEllipses(EstimationPlot):
         n_cols = min(3, n_pairs)
         n_rows = (n_pairs + n_cols - 1) // n_cols if n_pairs > 0 else 1
 
-        subplot_width = _cfg_get(plot_cfg, "figure", "width", default=4.0)
-        subplot_height = _cfg_get(plot_cfg, "figure", "height", default=4.0)
+        # Each subplot is one paper-size cell; the figure grows with the grid.
+        subplot_width, subplot_height = self._figure_size(cfg=plot_cfg)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,

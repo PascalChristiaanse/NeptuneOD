@@ -62,12 +62,6 @@ class EstimationPlot(Plot):
         super().__init__(cfg, name=_output_name(cfg))
         self.estimation_output = estimation_output
 
-    def _figure_size(self, default_width: float, default_height: float) -> tuple[float, float]:
-        """Return the configured ``(width, height)``, falling back to defaults."""
-        width = float(_cfg_get(self.cfg, "figure", "width", default=default_width))
-        height = float(_cfg_get(self.cfg, "figure", "height", default=default_height))
-        return width, height
-
     def _parameter_names(self, n_params: int, default_names: list[str]) -> list[str]:
         """Resolve the parameter tick labels, padded/truncated to ``n_params``."""
         names = list(_cfg_get(self.cfg, "parameter_names", default=default_names))

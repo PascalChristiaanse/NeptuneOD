@@ -220,7 +220,6 @@ class ResidualsPSD(ResidualPlot):
         window_length_days = self.window_length_days
         plot_cfg = self.cfg
 
-        figure_cfg = plot_cfg.get("figure", {})
         styling_cfg = plot_cfg.get("styling", {})
         x_lim_cfg = plot_cfg.get("x_lim", plot_cfg.get("axes", {}).get("x_lim", {}))
         axes_cfg = plot_cfg.get("axes", {})
@@ -237,8 +236,7 @@ class ResidualsPSD(ResidualPlot):
         show_triton_period = bool(peak_cfg.get("show_triton_period", True))
         show_average_error = bool(peak_cfg.get("show_average_error", True))
 
-        fig_width = float(figure_cfg.get("width", DEFAULT_FIGURE_WIDTH))
-        fig_height = float(figure_cfg.get("height", DEFAULT_FIGURE_HEIGHT))
+        fig_width, fig_height = self._figure_size(cfg=plot_cfg)
         fig, axs = plt.subplots(2, 1, figsize=(fig_width, fig_height), sharex=True)
         colors = plt.get_cmap(styling_cfg.get("cmap", "tab20"))
         line_width = float(styling_cfg.get("line_width", 1.2))

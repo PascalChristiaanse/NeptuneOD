@@ -53,7 +53,7 @@ class ResidualScatter(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27, 8.27)
+        fig_w, fig_h = self._figure_size()
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
         unit = self.unit
@@ -129,9 +129,7 @@ class ResidualScatter(ResidualPlot):
         cbar.set_label(_cfg_get(plot_cfg, "axes", "colorbar_label", default="Epoch"))
         cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(_format_colorbar_tick))
 
-        hover_x_label = _cfg_get(
-            plot_cfg, "axes", "hover_x_label", default=f"RA Residual [{unit}]"
-        )
+        hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default=f"RA Residual [{unit}]")
         hover_y_label = _cfg_get(
             plot_cfg, "axes", "hover_y_label", default=f"DEC Residual [{unit}]"
         )

@@ -302,7 +302,7 @@ class Residuals(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         unit = self.unit
@@ -404,7 +404,7 @@ class ResidualsScan(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharex=True)
 
         unit = self.unit
@@ -475,9 +475,7 @@ class ResidualsScan(ResidualPlot):
 
         self._legend(axs[0])
         self._legend(axs[1])
-        fig.suptitle(
-            self._suptitle(frame, "suptitle_scan", "Scan Residuals for {target_name}")
-        )
+        fig.suptitle(self._suptitle(frame, "suptitle_scan", "Scan Residuals for {target_name}"))
         fig.set_tight_layout(True)
 
         return fig, axs
@@ -515,7 +513,7 @@ class NormalizedResiduals(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         # The normalized columns come from the analysis frame.
@@ -595,9 +593,7 @@ class NormalizedResiduals(ResidualPlot):
 
         self._legend(axs[0])
         self._legend(axs[1])
-        fig.suptitle(
-            self._suptitle(frame, "suptitle", "Normalized Residuals for {target_name}")
-        )
+        fig.suptitle(self._suptitle(frame, "suptitle", "Normalized Residuals for {target_name}"))
         fig.set_tight_layout(True)
 
         return fig, axs
@@ -686,7 +682,7 @@ class NormalizedResidualScan(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         # Scan-frame residuals live in the analysis frame; whitening needs the
@@ -794,9 +790,7 @@ class NormalizedResidualScan(ResidualPlot):
         self._legend(axs[0])
         self._legend(axs[1])
         fig.suptitle(
-            self._suptitle(
-                frame, "suptitle_scan", "Normalized Scan Residuals for {target_name}"
-            )
+            self._suptitle(frame, "suptitle_scan", "Normalized Scan Residuals for {target_name}")
         )
         fig.set_tight_layout(True)
 

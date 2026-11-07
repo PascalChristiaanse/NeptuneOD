@@ -69,7 +69,7 @@ class DependentVariable(SimulationPlot):
         number_of_plots = value_dict[dependent_variable_dict.time_history[0]].size
 
         # Load plotting configuration
-        fig_w, fig_h = self._figure_size(10, 5 * number_of_plots)
+        fig_w, fig_h = self._figure_size(panels=number_of_plots)
 
         fig, axes = plt.subplots(number_of_plots, 1, figsize=(fig_w, fig_h))
 

@@ -67,7 +67,7 @@ class RSWDistanceWithUncertainty(ArrayPlot):
         # Approximate 1-sigma uncertainty on the norm from quadrature sum
         sigma_norm = np.sqrt(np.sum(rsw_sigma**2, axis=1))
 
-        fig_w, fig_h = self._figure_size(16.54, 11.0)
+        fig_w, fig_h = self._figure_size()
 
         titles = {
             "r": _cfg_get(plot_cfg, "titles", "r", default="Radial (R)"),

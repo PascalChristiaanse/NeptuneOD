@@ -98,12 +98,6 @@ class ResidualPlot(Plot):
             group_by = "observatory_code"
         return [group_by] if isinstance(group_by, str) else list(group_by)
 
-    def _figure_size(self, default_width: float, default_height: float) -> tuple[float, float]:
-        """Return the configured ``(width, height)``, falling back to defaults."""
-        width = float(_cfg_get(self.cfg, "figure", "width", default=default_width))
-        height = float(_cfg_get(self.cfg, "figure", "height", default=default_height))
-        return width, height
-
     # -- Frame ----------------------------------------------------------
 
     def _frame(self, *, unit: str | None, scan: bool, normalized: bool):

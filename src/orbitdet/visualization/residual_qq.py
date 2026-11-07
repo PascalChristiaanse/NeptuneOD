@@ -41,7 +41,7 @@ class ResidualQQ(ResidualPlot):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         # The Q-Q sample is standardized, so no unit conversion is needed.
@@ -111,8 +111,6 @@ class ResidualQQ(ResidualPlot):
         self._legend(axs[0])
         self._legend(axs[1])
 
-        fig.suptitle(
-            self._suptitle(frame, "suptitle", "Residual Q-Q Plot for {target_name}")
-        )
+        fig.suptitle(self._suptitle(frame, "suptitle", "Residual Q-Q Plot for {target_name}"))
         fig.set_tight_layout(True)
         return fig, axs

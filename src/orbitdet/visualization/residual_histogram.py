@@ -60,7 +60,7 @@ class ResidualHistogram(_HistogramBase):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=False)
 
         unit = self.unit
@@ -148,9 +148,7 @@ class ResidualHistogram(_HistogramBase):
 
         self._legend(axs[0])
         self._legend(axs[1])
-        fig.suptitle(
-            self._suptitle(frame, "suptitle", "Residual Histograms for {target_name}")
-        )
+        fig.suptitle(self._suptitle(frame, "suptitle", "Residual Histograms for {target_name}"))
         fig.set_tight_layout(True)
         return fig, axs
 
@@ -175,7 +173,7 @@ class ResidualScanHistogram(_HistogramBase):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=False)
 
         unit = self.unit

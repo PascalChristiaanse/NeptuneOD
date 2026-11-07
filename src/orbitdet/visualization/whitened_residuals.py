@@ -187,7 +187,7 @@ class WhitenedResidualScatter(_WhitenedPlotBase):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27, 8.27)
+        fig_w, fig_h = self._figure_size()
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
         frame = self._scan_frame()
@@ -225,21 +225,15 @@ class WhitenedResidualScatter(_WhitenedPlotBase):
         ax.axvline(0.0, color="black", linewidth=0.8, zorder=0)
         ax.set_aspect("equal", adjustable="datalim")
 
-        x_label = _cfg_get(
-            plot_cfg, "axes", "x_label", default="Whitened component 1 [$\\sigma$]"
-        )
-        y_label = _cfg_get(
-            plot_cfg, "axes", "y_label", default="Whitened component 2 [$\\sigma$]"
-        )
+        x_label = _cfg_get(plot_cfg, "axes", "x_label", default="Whitened component 1 [$\\sigma$]")
+        y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Whitened component 2 [$\\sigma$]")
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         ax.set_title(self._suptitle(frame, "suptitle", "Whitened Residuals for {target_name}"))
 
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="z1")
         hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="z2")
-        ax.format_coord = _make_hover_formatter(
-            hover_x_label, hover_y_label, datetime_x=False
-        )
+        ax.format_coord = _make_hover_formatter(hover_x_label, hover_y_label, datetime_x=False)
 
         self._legend(ax)
         fig.set_tight_layout(True)
@@ -268,7 +262,7 @@ class SymmetricWhitenedResiduals(_WhitenedPlotBase):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         frame = self._scan_frame()
@@ -346,7 +340,7 @@ class MahalanobisResiduals(_WhitenedPlotBase):
 
     def _make_figure(self):
         plot_cfg = self.cfg
-        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig_w, fig_h = self._figure_size()
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
         frame = self._scan_frame()
@@ -389,9 +383,7 @@ class MahalanobisResiduals(_WhitenedPlotBase):
         hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="Mahalanobis distance")
         ax.format_coord = _make_hover_formatter(hover_x_label, hover_y_label)
 
-        ax.set_title(
-            self._suptitle(frame, "suptitle", "Mahalanobis Residuals for {target_name}")
-        )
+        ax.set_title(self._suptitle(frame, "suptitle", "Mahalanobis Residuals for {target_name}"))
         self._legend(ax)
         fig.set_tight_layout(True)
         return fig, ax

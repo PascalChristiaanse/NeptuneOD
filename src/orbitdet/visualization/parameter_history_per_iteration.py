@@ -47,7 +47,7 @@ class ParameterHistoryPerIteration(EstimationPlot):
             plot_data = parameter_history
             y_label = _cfg_get(plot_cfg, "y_label", default="Parameter Value")
 
-        fig_width, fig_height = self._figure_size(10.0, 6.0)
+        fig_width, fig_height = self._figure_size()
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
         for i in range(n_params):

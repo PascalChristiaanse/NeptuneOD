@@ -27,7 +27,7 @@ class ParameterCorrelationHeatmap(EstimationPlot):
         default_names = ["x", "y", "z", "v\u2093", "v_y", "v_z"]
         parameter_names = self._parameter_names(n_params, default_names)
 
-        fig_width, fig_height = self._figure_size(8.0, 8.0)
+        fig_width, fig_height = self._figure_size()
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
         cax = ax.imshow(correlation_matrix, cmap="coolwarm", vmin=-1.0, vmax=1.0)

@@ -69,12 +69,6 @@ class SimulationPlot(Plot):
         super().__init__(cfg, name=_output_name(cfg))
         self.result = _as_simulation_results(result)
 
-    def _figure_size(self, default_width: float, default_height: float) -> tuple[float, float]:
-        """Return the configured ``(width, height)``, falling back to defaults."""
-        width = float(_cfg_get(self.cfg, "figure", "width", default=default_width))
-        height = float(_cfg_get(self.cfg, "figure", "height", default=default_height))
-        return width, height
-
 
 class ArrayPlot(Plot):
     """Base class for plots driven by pre-computed arrays.
@@ -95,12 +89,6 @@ class ArrayPlot(Plot):
     def __init__(self, cfg: DictConfig, epochs):
         super().__init__(cfg, name=_output_name(cfg))
         self.epochs = epochs
-
-    def _figure_size(self, default_width: float, default_height: float) -> tuple[float, float]:
-        """Return the configured ``(width, height)``, falling back to defaults."""
-        width = float(_cfg_get(self.cfg, "figure", "width", default=default_width))
-        height = float(_cfg_get(self.cfg, "figure", "height", default=default_height))
-        return width, height
 
 
 __all__ = [

@@ -54,7 +54,7 @@ class PropagatedFormalErrorsCartesian(ArrayPlot):
         formal_errors = self.formal_errors
         observation_windows = self.observation_windows
 
-        fig_w, fig_h = self._figure_size(12, 6)
+        fig_w, fig_h = self._figure_size()
 
         times = _seconds_since_j2000_to_datetimes(epochs)
 

@@ -55,7 +55,7 @@ class PropagatedFormalErrorsRSW(ArrayPlot):
         formal_errors_rsw = self.formal_errors_rsw
         observation_windows = self.observation_windows
 
-        fig_w, fig_h = self._figure_size(12, 6)
+        fig_w, fig_h = self._figure_size()
 
         times = _seconds_since_j2000_to_datetimes(epochs)
 

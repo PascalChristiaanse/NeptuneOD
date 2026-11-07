@@ -74,7 +74,7 @@ def _access():
 
 
 def _cfg(**residuals_cfg):
-    return OmegaConf.create({"figures": {"residuals": residuals_cfg}})
+    return OmegaConf.create(residuals_cfg)
 
 
 class TestResidualsGrouping:
@@ -90,31 +90,31 @@ class TestResidualsGrouping:
         plt.close(fig)
 
     def test_group_by_set_id(self):
-        plot = Residuals(_cfg(), _access(), group_by="set_id")
+        plot = Residuals(_cfg(group_by="set_id"), _access())
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 2
         plt.close(fig)
 
     def test_group_by_source_set_id(self):
-        plot = Residuals(_cfg(), _access(), group_by="source_set_id")
+        plot = Residuals(_cfg(group_by="source_set_id"), _access())
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 2
         plt.close(fig)
 
     def test_group_by_single_value_is_one_series(self):
-        plot = Residuals(_cfg(), _access(), group_by="coordinate_kind")
+        plot = Residuals(_cfg(group_by="coordinate_kind"), _access())
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 1
         plt.close(fig)
 
-    def test_config_group_by_used_when_arg_none(self):
+    def test_config_group_by_used(self):
         plot = Residuals(_cfg(group_by="source_set_id"), _access())
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 2
         plt.close(fig)
 
     def test_unknown_group_by_raises(self):
-        plot = Residuals(_cfg(), _access(), group_by="not_a_column")
+        plot = Residuals(_cfg(group_by="not_a_column"), _access())
         with pytest.raises(ValueError, match="not_a_column"):
             plot._make_figure()
 
@@ -127,7 +127,7 @@ class TestResidualsGrouping:
         plt.close(fig)
 
     def test_mas_unit(self):
-        plot = Residuals(_cfg(), _access(), unit="mas")
+        plot = Residuals(_cfg(axes={"unit": "mas"}), _access())
         fig, axs = plot._make_figure()
         offsets = axs[0].collections[0].get_offsets()
         assert offsets[0, 1] == pytest.approx(np.rad2deg(1e-6) * 3600.0 * 1e3, rel=1e-3)
@@ -145,7 +145,7 @@ class TestResidualsGrouping:
     def test_include_rejected(self):
         access = _access()
         access.frame.loc[access.frame["set_id"] == "689", "rejected"] = True
-        plot = Residuals(_cfg(), access, include_rejected=True)
+        plot = Residuals(_cfg(include_rejected=True), access)
         fig, axs = plot._make_figure()
         assert len(axs[0].collections) == 2
         plt.close(fig)
@@ -156,22 +156,3 @@ class TestResidualsGrouping:
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
         assert any("RMS:" in label and "arcsec" in label for label in labels)
         plt.close(fig)
-
-    def test_reuses_supplied_figure(self):
-        fig_in, axs_in = plt.subplots(2, 1)
-        plot = Residuals(_cfg(), _access(), fig=fig_in, ax=axs_in)
-        fig, axs = plot._make_figure()
-        assert fig is fig_in
-        assert axs is axs_in
-        plt.close(fig_in)
-
-    def test_fig_without_ax_raises(self):
-        with pytest.raises(ValueError, match="Both fig and ax"):
-            Residuals(_cfg(), _access(), fig=plt.figure())
-
-    def test_wrong_number_of_subplots_raises(self):
-        fig_in, ax = plt.subplots(1, 1)
-        plot = Residuals(_cfg(), _access(), fig=fig_in, ax=[ax])
-        with pytest.raises(ValueError, match="two subplots"):
-            plot._make_figure()
-        plt.close(fig_in)

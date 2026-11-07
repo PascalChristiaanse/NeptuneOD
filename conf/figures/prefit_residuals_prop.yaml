@@ -1,3 +1,4 @@
+plotter: "Residuals"
 output_file: "prefit_residuals_prop.pdf"
 figure:
   width: 16.54

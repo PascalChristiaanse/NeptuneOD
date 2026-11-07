@@ -10,7 +10,7 @@ import os
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import observations as obs
@@ -103,10 +103,12 @@ def main(cfg: DictConfig):
     logger.info("Pre-fit residuals computed successfully.")
 
     access = ObservationAccess.build(observations, standard_frame)
-    Residuals(cfg, access).plot()
-    # ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
-    ResidualsScan(cfg, access).plot()
-    # ResidualScanHistogram(cfg.figures, observations).plot()
+    Residuals(OmegaConf.select(cfg, "figures.residuals", default={}), access).plot()
+    # ResidualsPSD(OmegaConf.select(cfg, "figures.residuals_psd", default={}), access).plot()
+    ResidualsScan(OmegaConf.select(cfg, "figures.residuals_scan", default={}), access).plot()
+    # ResidualScanHistogram(
+    #     OmegaConf.select(cfg, "figures.residual_histogram", default={}), access
+    # ).plot()
 
     logger.info("Pre-fit residuals plotted successfully.")
 

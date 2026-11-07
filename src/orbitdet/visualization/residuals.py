@@ -4,11 +4,11 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig
 from tudatpy.estimation import observations as obs
 
-from orbitdet.analysis import ObservationAccess, Whitening, analysis_frame, rms
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
+from orbitdet.analysis import Whitening, rms
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 
 logger = logging.getLogger(__name__)
 
@@ -225,22 +225,6 @@ def _archive_radec_sigmas(errors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return sigma_ra, sigma_dec
 
 
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            # DictConfig supports get
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
-
-
 def _rad_to_arcsec(angle_rad: np.ndarray) -> np.ndarray:
     return np.rad2deg(angle_rad) * 3600.0
 
@@ -295,7 +279,7 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
-class Residuals(Plot):
+class Residuals(ResidualPlot):
     """Plot residuals versus epoch, grouped by a standard-frame column.
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the
@@ -303,105 +287,28 @@ class Residuals(Plot):
     one scatter series per cluster of a chosen column.  By default the clustering is
     ``observatory_code``, so the same plot covers "per observatory", "per set
     id", "per source", "per coordinate kind" or any other standard-frame column
-    without new code: pass ``group_by`` (or set ``group_by`` in the figure
-    config).  Each cluster's legend entry reports its per-component RMS, read from
+    without new code: set ``group_by`` in the figure config.  Each cluster's
+    legend entry reports its per-component RMS, read from
     :func:`orbitdet.analysis.statistics.rms`.
 
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by``, ``axes.unit`` and ``include_rejected`` are read from here.
     access : ObservationAccess
-        The access layer whose derived frame is plotted.  Positional shorthand:
-        ``Residuals(cfg, access)``.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures`` (e.g.
-        ``"prefit_residuals_spice"``).  Defaults to ``"residuals"``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the scatter series by.  ``None``
-        (default) falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    unit : str | None
-        Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.  ``None``
-        (default) uses the figure config's ``axes.unit`` (itself defaulting to
-        ``"arcsec"``).
-    fig : plt.Figure | None
-        An optional pre-existing figure.  Must be provided together with ``ax``.
-    ax : plt.Axes | None
-        An optional pre-existing axes (a length-2 sequence, RA then Dec).  Must be
-        provided together with ``fig``.
-    include_rejected : bool
-        Whether to plot rows that outlier rejection removed (``rejected`` true).
-        Defaults to ``False`` - rejected observations are left out.
+        The access layer whose derived frame is plotted.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = "residuals",
-        group_by: str | list[str] | None = None,
-        unit: str | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.use_figure_name = use_figure_name or "residuals"
-        self.access = access
-        self.group_by = group_by
-        self.unit = unit
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
-    @staticmethod
-    def _rms_label(label: str, value: float, unit: str) -> str:
-        """Render a cluster's legend entry with its RMS."""
-        if value is None or not np.isfinite(value):
-            return label
-        return f"{label} - RMS: {value:.3e} {unit}"
-
     def _make_figure(self):
-        cfg = self.cfg
-        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for RA and DEC residuals.")
-            fig, axs = self.fig, self.ax
-
-        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
+        unit = self.unit
 
         # One tidy frame: standard columns + residual/weight/sigma + unit columns.
-        frame = analysis_frame(self.access, unit=unit, scan=False, normalized=False)
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
+        frame = self._frame(unit=unit, scan=False, normalized=False)
 
         first_col = f"residual_first_rad_{unit}"
         second_col = f"residual_second_rad_{unit}"
@@ -411,18 +318,10 @@ class Residuals(Plot):
                 f"cannot plot residuals in unit '{unit}'."
             )
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
-        colors = plt.get_cmap(cmap)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+        colors, marker_size, marker_types = self._styling()
 
         for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
@@ -452,21 +351,8 @@ class Residuals(Plot):
                 label=self._rms_label(label, rms(second), unit),
             )
 
-        target_name = "target"
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            target_name = str(frame["observed_object"].dropna().iloc[0])
-
-        title_ra = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension")
-        title_dec = _cfg_get(plot_cfg, "titles", "dec", default="Declination")
-        suptitle = _cfg_get(plot_cfg, "titles", "suptitle", default="Residuals for {target_name}")
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=target_name)
-        except Exception:
-            pass
-
-        axs[0].set_title(title_ra)
-        axs[1].set_title(title_dec)
+        axs[0].set_title(_cfg_get(plot_cfg, "titles", "ra", default="Right Ascension"))
+        axs[1].set_title(_cfg_get(plot_cfg, "titles", "dec", default="Declination"))
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default=f"Residual [{unit}]")
         axs[0].set_ylabel(y_label)
         axs[1].set_ylabel(y_label)
@@ -482,29 +368,15 @@ class Residuals(Plot):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-
-        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        fig.suptitle(suptitle)
+        self._legend(axs[0])
+        self._legend(axs[1])
+        fig.suptitle(self._suptitle(frame, "suptitle", "Residuals for {target_name}"))
         fig.set_tight_layout(True)
 
         return fig, axs
 
 
-class ResidualsScan(Plot):
+class ResidualsScan(ResidualPlot):
     """Plot along-scan (AL) and across-scan (AC) residuals, grouped by a column.
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` and plots the
@@ -524,97 +396,21 @@ class ResidualsScan(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by``, ``axes.unit`` and ``include_rejected`` are read from here.
     access : ObservationAccess
-        The access layer whose derived frame is plotted.  Positional shorthand:
-        ``ResidualsScan(cfg, access)``.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures`` (e.g.
-        ``"prefit_residuals_spice_scan"``).  When ``None`` the snake_case class
-        name is used.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the scatter series by.  ``None``
-        (default) falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    unit : str | None
-        Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.  ``None``
-        (default) uses the figure config's ``axes.unit`` (itself defaulting to
-        ``"arcsec"``).
-    fig : plt.Figure | None
-        An optional pre-existing figure.  Must be provided together with ``ax``.
-    ax : plt.Axes | None
-        An optional pre-existing axes (a length-2 sequence, AL then AC).  Must be
-        provided together with ``fig``.
-    include_rejected : bool
-        Whether to plot rows that outlier rejection removed.  Defaults to
-        ``False``.
+        The access layer whose derived frame is plotted.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = None,
-        group_by: str | list[str] | None = None,
-        unit: str | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.use_figure_name = use_figure_name
-        self.access = access
-        self.group_by = group_by
-        self.unit = unit
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
-    @staticmethod
-    def _rms_label(label: str, value: float, unit: str) -> str:
-        """Render a cluster's legend entry with its RMS."""
-        if value is None or not np.isfinite(value):
-            return label
-        return f"{label} - RMS: {value:.3e} {unit}"
-
     def _make_figure(self):
-        cfg = self.cfg
-        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharex=True)
 
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharex=True)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for AL and AC residuals.")
-            fig, axs = self.fig, self.ax
-
-        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
+        unit = self.unit
 
         # One tidy frame with the scan-frame columns added by the access layer.
-        frame = analysis_frame(self.access, unit=unit, scan=True, normalized=False)
+        frame = self._frame(unit=unit, scan=True, normalized=False)
         al_col = f"residual_along_scan_rad_{unit}"
         ac_col = f"residual_across_scan_rad_{unit}"
         has_angle = "scan_angle" in frame.columns and frame["scan_angle"].notna().any()
@@ -626,21 +422,11 @@ class ResidualsScan(Plot):
         # Only rows with a scan angle belong in the scan frame; a mixed collection
         # (Gaia plus other observatories) keeps the Gaia rows and drops the rest.
         frame = frame.loc[frame["scan_angle"].notna()]
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
-        colors = plt.get_cmap(cmap)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+        colors, marker_size, marker_types = self._styling()
 
         for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
@@ -670,23 +456,8 @@ class ResidualsScan(Plot):
                 label=self._rms_label(label, rms(across), unit),
             )
 
-        target_name = "target"
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            target_name = str(frame["observed_object"].dropna().iloc[0])
-
-        title_al = _cfg_get(plot_cfg, "titles", "al", default="Along-scan")
-        title_ac = _cfg_get(plot_cfg, "titles", "ac", default="Across-scan")
-        suptitle = _cfg_get(
-            plot_cfg, "titles", "suptitle_scan", default="Scan Residuals for {target_name}"
-        )
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=target_name)
-        except Exception:
-            pass
-
-        axs[0].set_title(title_al)
-        axs[1].set_title(title_ac)
+        axs[0].set_title(_cfg_get(plot_cfg, "titles", "al", default="Along-scan"))
+        axs[1].set_title(_cfg_get(plot_cfg, "titles", "ac", default="Across-scan"))
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default=f"Residual [{unit}]")
         axs[0].set_ylabel(y_label)
         axs[1].set_ylabel(y_label)
@@ -702,29 +473,17 @@ class ResidualsScan(Plot):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-
-        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        fig.suptitle(suptitle)
+        self._legend(axs[0])
+        self._legend(axs[1])
+        fig.suptitle(
+            self._suptitle(frame, "suptitle_scan", "Scan Residuals for {target_name}")
+        )
         fig.set_tight_layout(True)
 
         return fig, axs
 
 
-class NormalizedResiduals(Plot):
+class NormalizedResiduals(ResidualPlot):
     """Plot per-observation normalized residuals, grouped by a column.
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` and plots the
@@ -748,95 +507,24 @@ class NormalizedResiduals(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by`` and ``include_rejected`` are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures`` (e.g.
-        ``"postfit_normalized_residuals"``).  When ``None`` the snake_case class
-        name is used.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the scatter series by.  ``None``
-        (default) falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    fig : plt.Figure | None
-        An optional pre-existing figure.  Must be provided together with ``ax``.
-    ax : plt.Axes | None
-        An optional pre-existing axes (a length-2 sequence, first then second).
-        Must be provided together with ``fig``.
-    include_rejected : bool
-        Whether to plot rows that outlier rejection removed.  Defaults to
-        ``False``.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = None,
-        group_by: str | list[str] | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.use_figure_name = use_figure_name
-        self.access = access
-        self.group_by = group_by
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
-    @staticmethod
-    def _rms_label(label: str, value: float) -> str:
-        """Render a cluster's legend entry with its RMS(z)."""
-        if value is None or not np.isfinite(value):
-            return label
-        return f"{label} - RMS(z): {value:.3f}"
-
     def _make_figure(self):
-        cfg = self.cfg
-        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for the two residual components.")
-            fig, axs = self.fig, self.ax
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         # The normalized columns come from the analysis frame.
-        frame = analysis_frame(self.access, unit=None, scan=False, normalized=True)
+        frame = self._frame(unit=None, scan=False, normalized=True)
         # Scanning-instrument rows (a finite scan_angle, e.g. Gaia) are not shown
         # here: their RA/Dec normalization ignores the intra-scan correlation and
         # is better handled by NormalizedResidualScan, which whitens.
         if "scan_angle" in frame.columns:
             frame = frame.loc[frame["scan_angle"].isna()]
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
         if frame.empty:
             raise ValueError(
                 "NormalizedResiduals has no rows to plot: every observation carries a "
@@ -847,18 +535,10 @@ class NormalizedResiduals(Plot):
             if column not in frame.columns:
                 raise ValueError(f"Analysis frame has no '{column}' column.")
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
-        colors = plt.get_cmap(cmap)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+        colors, marker_size, marker_types = self._styling()
 
         for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
@@ -894,23 +574,8 @@ class NormalizedResiduals(Plot):
             ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
             ax.axhline(-1.0, color="grey", linestyle="--", linewidth=0.8)
 
-        target_name = "target"
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            target_name = str(frame["observed_object"].dropna().iloc[0])
-
-        title_first = _cfg_get(plot_cfg, "titles", "ra", default="Right Ascension")
-        title_second = _cfg_get(plot_cfg, "titles", "dec", default="Declination")
-        suptitle = _cfg_get(
-            plot_cfg, "titles", "suptitle", default="Normalized Residuals for {target_name}"
-        )
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=target_name)
-        except Exception:
-            pass
-
-        axs[0].set_title(title_first)
-        axs[1].set_title(title_second)
+        axs[0].set_title(_cfg_get(plot_cfg, "titles", "ra", default="Right Ascension"))
+        axs[1].set_title(_cfg_get(plot_cfg, "titles", "dec", default="Declination"))
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Normalized residual [$\\sigma$]")
         axs[0].set_ylabel(y_label)
         axs[1].set_ylabel(y_label)
@@ -928,29 +593,17 @@ class NormalizedResiduals(Plot):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-
-        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        fig.suptitle(suptitle)
+        self._legend(axs[0])
+        self._legend(axs[1])
+        fig.suptitle(
+            self._suptitle(frame, "suptitle", "Normalized Residuals for {target_name}")
+        )
         fig.set_tight_layout(True)
 
         return fig, axs
 
 
-class NormalizedResidualScan(Plot):
+class NormalizedResidualScan(ResidualPlot):
     """Plot per-set Cholesky-whitened along/across-scan residuals for Gaia.
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` and, for each
@@ -980,71 +633,11 @@ class NormalizedResidualScan(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by`` and ``include_rejected`` are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures`` (e.g.
-        ``"postfit_normalized_residuals_scan"``).  When ``None`` the snake_case
-        class name is used.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the scatter series by.  ``None``
-        (default) falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    fig : plt.Figure | None
-        An optional pre-existing figure.  Must be provided together with ``ax``.
-    ax : plt.Axes | None
-        An optional pre-existing axes (a length-2 sequence, AL then AC).  Must be
-        provided together with ``fig``.
-    include_rejected : bool
-        Whether to plot rows that outlier rejection removed.  Defaults to
-        ``False``.
     """
-
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = None,
-        group_by: str | list[str] | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.use_figure_name = use_figure_name
-        self.access = access
-        self.group_by = group_by
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
-    @staticmethod
-    def _rms_label(label: str, value: float) -> str:
-        """Render a cluster's legend entry with its RMS(z)."""
-        if value is None or not np.isfinite(value):
-            return label
-        return f"{label} - RMS(z): {value:.3f}"
 
     def _whitened_set(
         self, set_index: int, rows: pd.DataFrame, al_col: str, ac_col: str
@@ -1092,22 +685,13 @@ class NormalizedResidualScan(Plot):
         return epochs, z_al, z_ac
 
     def _make_figure(self):
-        cfg = self.cfg
-        plot_cfg = _cfg_get(cfg.figures, self.use_figure_name, default=None)
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for AL and AC residuals.")
-            fig, axs = self.fig, self.ax
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         # Scan-frame residuals live in the analysis frame; whitening needs the
         # set weight matrix, so the residue columns are read per set below.
-        frame = analysis_frame(self.access, unit=None, scan=True, normalized=False)
+        frame = self._frame(unit=None, scan=True, normalized=False)
         al_col = "residual_along_scan_rad"
         ac_col = "residual_across_scan_rad"
         has_angle = "scan_angle" in frame.columns and frame["scan_angle"].notna().any()
@@ -1118,21 +702,11 @@ class NormalizedResidualScan(Plot):
             )
 
         group_frame = frame.loc[frame["scan_angle"].notna()]
-        if not self.include_rejected and "rejected" in group_frame.columns:
-            group_frame = group_frame.loc[~group_frame["rejected"].astype(bool)]
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in group_frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(group_frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(group_frame, group_cols)
 
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
-        colors = plt.get_cmap(cmap)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+        colors, marker_size, marker_types = self._styling()
 
         for index, (key, cluster) in enumerate(
             group_frame.groupby(group_cols, dropna=False, sort=True)
@@ -1198,26 +772,8 @@ class NormalizedResidualScan(Plot):
             ax.axhline(1.0, color="grey", linestyle="--", linewidth=0.8)
             ax.axhline(-1.0, color="grey", linestyle="--", linewidth=0.8)
 
-        target_name = "target"
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            target_name = str(frame["observed_object"].dropna().iloc[0])
-
-        title_al = _cfg_get(plot_cfg, "titles", "al", default="Along-scan")
-        title_ac = _cfg_get(plot_cfg, "titles", "ac", default="Across-scan")
-        suptitle = _cfg_get(
-            plot_cfg,
-            "titles",
-            "suptitle_scan",
-            default="Normalized Scan Residuals for {target_name}",
-        )
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=target_name)
-        except Exception:
-            pass
-
-        axs[0].set_title(title_al)
-        axs[1].set_title(title_ac)
+        axs[0].set_title(_cfg_get(plot_cfg, "titles", "al", default="Along-scan"))
+        axs[1].set_title(_cfg_get(plot_cfg, "titles", "ac", default="Across-scan"))
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="Normalized residual [$\\sigma$]")
         axs[0].set_ylabel(y_label)
         axs[1].set_ylabel(y_label)
@@ -1235,23 +791,13 @@ class NormalizedResidualScan(Plot):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-
-        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        fig.suptitle(suptitle)
+        self._legend(axs[0])
+        self._legend(axs[1])
+        fig.suptitle(
+            self._suptitle(
+                frame, "suptitle_scan", "Normalized Scan Residuals for {target_name}"
+            )
+        )
         fig.set_tight_layout(True)
 
         return fig, axs

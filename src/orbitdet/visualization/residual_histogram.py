@@ -12,13 +12,11 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from omegaconf import DictConfig
 from scipy import stats
 
-from orbitdet.analysis import ObservationAccess, analysis_frame
 from orbitdet.analysis.distribution import density_histogram, normality_test
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
-from orbitdet.visualization.residuals import _cfg_get
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 
 logger = logging.getLogger(__name__)
 
@@ -32,97 +30,14 @@ def _shapiro_label(statistic: float, p_value: float) -> str:
     return f"Shapiro-Wilk W={statistic:.4f}, p={p_value:.3e}"
 
 
-class _HistogramBase(Plot):
+class _HistogramBase(ResidualPlot):
     """Shared plumbing for the residual histograms."""
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = None,
-        group_by: str | list[str] | None = None,
-        unit: str | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.access = access
-        self.use_figure_name = use_figure_name
-        self.group_by = group_by
-        self.unit = unit
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _plot_cfg(self):
-        """Return the figure config block for this plot."""
-        return _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
-    def _frame(self, unit: str, scan: bool):
-        """Return the analysis frame, filtered to the rows this plot should show."""
-        frame = analysis_frame(self.access, unit=unit, scan=scan, normalized=False)
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
-        return frame
-
-    def _target_name(self, frame) -> str:
-        """Return the observed object's name for the suptitle, or ``"target"``."""
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            return str(frame["observed_object"].dropna().iloc[0])
-        return "target"
-
-    def _suptitle(self, plot_cfg, frame, key: str, default: str) -> str:
-        """Resolve and format the suptitle."""
-        suptitle = _cfg_get(plot_cfg, "titles", key, default=default)
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=self._target_name(frame))
-        except Exception:
-            pass
-        return suptitle
-
-    def _legend(self, ax: plt.Axes, plot_cfg) -> None:
-        """Apply the configured legend layout to an axes."""
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-        ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-
-    def _styling(self, plot_cfg):
+    def _styling(self):
         """Return ``(colors, n_bins)`` from the figure config."""
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
+        cmap = _cfg_get(self.cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)
-        n_bins = int(_cfg_get(plot_cfg, "styling", "n_bins", default=30))
+        n_bins = int(_cfg_get(self.cfg, "styling", "n_bins", default=30))
         return colors, n_bins
 
 
@@ -137,44 +52,19 @@ class ResidualHistogram(_HistogramBase):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by``, ``axes.unit`` and ``include_rejected`` are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``.  Defaults
-        to ``"residual_histogram"``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the histograms by.  ``None`` (default)
-        falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    unit : str | None
-        Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.  ``None``
-        (default) uses the figure config's ``axes.unit`` (itself defaulting to
-        ``"arcsec"``).
-    fig, ax : optional
-        A pre-existing figure and a length-2 axes sequence (RA then Dec).
-    include_rejected : bool
-        Whether to include rows that outlier rejection removed.
     """
 
-    def __init__(self, *args, use_figure_name: str | None = "residual_histogram", **kwargs):
-        super().__init__(*args, use_figure_name=use_figure_name, **kwargs)
-
     def _make_figure(self):
-        plot_cfg = self._plot_cfg()
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=False)
 
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=False)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for RA and Dec residuals.")
-            fig, axs = self.fig, self.ax
-
-        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
-        frame = self._frame(unit, scan=False)
+        unit = self.unit
+        frame = self._frame(unit=unit, scan=False, normalized=False)
 
         first_col = f"residual_first_rad_{unit}"
         second_col = f"residual_second_rad_{unit}"
@@ -184,15 +74,10 @@ class ResidualHistogram(_HistogramBase):
                 f"cannot plot residuals in unit '{unit}'."
             )
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        colors, n_bins = self._styling(plot_cfg)
+        colors, n_bins = self._styling()
         bell_curve_color = _cfg_get(plot_cfg, "styling", "bell_curve_color", default="red")
         bell_curve_lw = float(_cfg_get(plot_cfg, "styling", "bell_curve_lw", default=1.5))
 
@@ -261,12 +146,10 @@ class ResidualHistogram(_HistogramBase):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        self._legend(axs[0], plot_cfg)
-        self._legend(axs[1], plot_cfg)
+        self._legend(axs[0])
+        self._legend(axs[1])
         fig.suptitle(
-            self._suptitle(
-                plot_cfg, frame, "suptitle", "Residual Histograms for {target_name}"
-            )
+            self._suptitle(frame, "suptitle", "Residual Histograms for {target_name}")
         )
         fig.set_tight_layout(True)
         return fig, axs
@@ -284,40 +167,19 @@ class ResidualScanHistogram(_HistogramBase):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by``, ``axes.unit`` and ``include_rejected`` are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``.  Defaults
-        to ``"residual_histogram"``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the histograms by.
-    unit : str | None
-        Display unit for the residual axis: ``"arcsec"`` or ``"mas"``.
-    fig, ax : optional
-        A pre-existing figure and a length-2 axes sequence (AL then AC).
-    include_rejected : bool
-        Whether to include rows that outlier rejection removed.
     """
 
-    def __init__(self, *args, use_figure_name: str | None = "residual_histogram", **kwargs):
-        super().__init__(*args, use_figure_name=use_figure_name, **kwargs)
-
     def _make_figure(self):
-        plot_cfg = self._plot_cfg()
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=False)
 
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=False)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for AL and AC residuals.")
-            fig, axs = self.fig, self.ax
-
-        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
-        frame = self._frame(unit, scan=True)
+        unit = self.unit
+        frame = self._frame(unit=unit, scan=True, normalized=False)
 
         al_col = f"residual_along_scan_rad_{unit}"
         ac_col = f"residual_across_scan_rad_{unit}"
@@ -329,15 +191,10 @@ class ResidualScanHistogram(_HistogramBase):
             )
         frame = frame.loc[frame["scan_angle"].notna()]
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        colors, n_bins = self._styling(plot_cfg)
+        colors, n_bins = self._styling()
         fit_color = _cfg_get(plot_cfg, "styling", "fit_color", default="red")
         fit_lw = float(_cfg_get(plot_cfg, "styling", "fit_lw", default=1.5))
         mean_color = _cfg_get(plot_cfg, "styling", "mean_color", default="black")
@@ -414,11 +271,10 @@ class ResidualScanHistogram(_HistogramBase):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        self._legend(axs[0], plot_cfg)
-        self._legend(axs[1], plot_cfg)
+        self._legend(axs[0])
+        self._legend(axs[1])
         fig.suptitle(
             self._suptitle(
-                plot_cfg,
                 frame,
                 "suptitle_scan_hist",
                 "Scan Residual Histograms for {target_name}",

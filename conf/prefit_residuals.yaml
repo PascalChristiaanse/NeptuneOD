@@ -1,0 +1,42 @@
+# @package _global_
+
+# Generation config for the pre-fit residual stage.
+#
+# This is the config ``scripts/prefit_residuals.py`` runs with by default, so
+# the stage works with no arguments:
+#
+#     python scripts/prefit_residuals.py
+#
+# It deliberately composes NO figure configs.  Figures are separate rules with
+# their own config files under ``conf/figures/``, so editing a figure title
+# cannot invalidate this stage.
+#
+# It is small on purpose: one NSDB dataset (nm0017, 54 photographic
+# observations of Triton, 1986-1993), the light pre-fit dynamical model, and the
+# classical kernel set.  It exists to make the stage debuggable in seconds.
+
+defaults:
+  - /collection: minimal_for_testing
+  - /dynamics: prefit
+  - /kernels: classical
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Pre-fit residuals are evaluated against the SPICE ephemeris, so the
+# propagator's integrated result is not needed here.
+propagation:
+  set_integrated_result: false
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — a window that comfortably brackets the nm0017 observations.
+start_date: 1985-1-1T12:00:00
+end_date: 1995-1-1T12:00:00
+initial_epoch: 1989-08-25T12:00:00

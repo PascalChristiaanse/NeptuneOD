@@ -2,11 +2,13 @@ from .base import Plot
 from .covariance_ellipses import CovarianceEllipses
 from .dependent_variable import DependentVariable
 from .dependent_variable_differenced import DifferencedDependentVariables
+from .estimation_base import EstimationPlot
 from .gaia_transit_errors import GaiaTransitErrorComponents
 from .parameter_correlation_heatmap import ParameterCorrelationHeatmap
 from .parameter_history_per_iteration import ParameterHistoryPerIteration
 from .propagated_formal_errors_cartesian import PropagatedFormalErrorsCartesian
 from .propagated_formal_errors_rsw import PropagatedFormalErrorsRSW
+from .residual_base import ResidualPlot
 from .residual_histogram import ResidualHistogram, ResidualScanHistogram
 from .residual_psd import ResidualsPSD
 from .residual_qq import ResidualQQ
@@ -15,6 +17,7 @@ from .residual_scatter import ResidualScatter
 from .residuals import NormalizedResiduals, NormalizedResidualScan, Residuals, ResidualsScan
 from .RSW_distance import RSWDistance
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
+from .simulation_base import ArrayPlot, SimulationPlot
 from .state_history_3d import StateHistory3D
 from .validation import (
     CombinationComparison,
@@ -33,6 +36,10 @@ from .whitened_residuals import (
 
 __all__ = [
     "Plot",
+    "ResidualPlot",
+    "EstimationPlot",
+    "SimulationPlot",
+    "ArrayPlot",
     "CombinationComparison",
     "CovarianceEllipses",
     "DependentVariable",

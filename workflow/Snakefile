@@ -1,0 +1,27 @@
+"""Central Snakemake file for reproducing from the Thesis.
+
+Build one chapter::
+
+    snakemake --snakefile workflow/Snakefile all_chapter_3 --cores 4
+
+Build up to (and including) one stage, across every chapter that uses it::
+
+    snakemake --snakefile workflow/Snakefile --until prefit_residuals --cores 4
+"""
+
+from pathlib import Path
+
+configfile: "workflow/config.yaml"
+
+PYTHON = config["python"]
+RESULTS_ROOT = Path(config["results_root"])
+
+# Automatically grab all chapter Snakefiles
+for _chapter in sorted(Path(workflow.basedir, "chapters").glob("*.smk")):
+    include: str(_chapter)
+
+
+rule all:
+    input:
+        rules.all_chapter_3.input,
+

@@ -200,14 +200,14 @@ def main(cfg: DictConfig):
     access.refresh()
     _log_access_summary(access, "prefit_spice")
     # Wrt spice
-    Residuals(cfg, access, "prefit_residuals_spice", group_by="source_set_id").plot()
-    ResidualScatter(cfg, access, group_by="observatory_code").plot()
-    ResidualHistogram(cfg, access, group_by="observable_type").plot()
+    Residuals(cfg.figures.prefit_residuals_spice, access).plot()
+    ResidualScatter(cfg.figures.residual_scatter, access).plot()
+    ResidualHistogram(cfg.figures.residual_histogram, access).plot()
 
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
     if _has_gaia_observations(access):
-        ResidualsScan(cfg, access, use_figure_name="prefit_residuals_spice_scan").plot()
+        ResidualsScan(cfg.figures.prefit_residuals_spice_scan, access).plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
     # NB: the normalized-residual figures are produced later, after weighting has
@@ -333,33 +333,29 @@ def main(cfg: DictConfig):
     access.refresh()
     _log_access_summary(access, "prefit_prop")
 
-    Residuals(cfg, access, "prefit_residuals_prop").plot()
+    Residuals(cfg.figures.prefit_residuals_prop, access).plot()
     # Normalized RA/Dec residuals for all rows without a scan angle (no scan
     # rotation).  Scanning rows (Gaia) are excluded because their RA/Dec
     # normalization ignores the intra-scan correlation; NormalizedResidualScan
     # whitens them instead.  The plot itself filters to the non-scan rows.
     if _has_non_scan_observations(access):
-        NormalizedResiduals(cfg, access, use_figure_name="prefit_normalized_residuals").plot()
+        NormalizedResiduals(cfg.figures.prefit_normalized_residuals, access).plot()
     else:
         logger.info("No non-Gaia observations found; skipping pre-fit normalized residual plot.")
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
     if _has_gaia_observations(access):
-        ResidualsScan(cfg, access, use_figure_name="prefit_residuals_spice_scan").plot()
-        NormalizedResidualScan(
-            cfg, access, use_figure_name="prefit_normalized_residuals_scan"
-        ).plot()
+        ResidualsScan(cfg.figures.prefit_residuals_spice_scan, access).plot()
+        NormalizedResidualScan(cfg.figures.prefit_normalized_residuals_scan, access).plot()
     else:
         logger.info("No Gaia observations found; skipping pre-fit scan residual plot.")
     # Plot orbit on 3d plot
-    StateHistory3D(cfg, prefit_prop.propagation_results).plot()
+    StateHistory3D(cfg.figures.state_history_3d, prefit_prop.propagation_results).plot()
     # RSW distance for the pre-fit propagation
     RSWDistance(
-        cfg,
+        cfg.figures.prefit_rsw,
         prefit_prop.propagation_results,
         dep_vars[0],
-        central_body="Neptune",
-        use_figure_name="prefit_rsw",
     ).plot()
 
     logger.info("Pre-fit residuals computed and plotted successfully.")
@@ -515,38 +511,34 @@ def main(cfg: DictConfig):
     access.refresh()
     _log_access_summary(access, "postfit")
 
-    Residuals(cfg, access, "postfit_residuals").plot()
+    Residuals(cfg.figures.postfit_residuals, access).plot()
     # plt.show()
     # Normalized RA/Dec residuals for all rows without a scan angle (no scan
     # rotation).  Scanning rows (Gaia) are excluded because their RA/Dec
     # normalization ignores the intra-scan correlation; NormalizedResidualScan
     # whitens them instead.  The plot itself filters to the non-scan rows.
     if _has_non_scan_observations(access):
-        NormalizedResiduals(cfg, access, use_figure_name="postfit_normalized_residuals").plot()
+        NormalizedResiduals(cfg.figures.postfit_normalized_residuals, access).plot()
     else:
         logger.info("No non-Gaia observations found; skipping post-fit normalized residual plot.")
     # Scan-frame residuals are only meaningful for Gaia observations (they carry the
     # archived position_angle_scan), so restrict the plot to the Gaia set.
     if _has_gaia_observations(access):
-        ResidualsScan(cfg, access, use_figure_name="postfit_residuals_scan").plot()
-        NormalizedResidualScan(
-            cfg, access, use_figure_name="postfit_normalized_residuals_scan"
-        ).plot()
+        ResidualsScan(cfg.figures.postfit_residuals_scan, access).plot()
+        NormalizedResidualScan(cfg.figures.postfit_normalized_residuals_scan, access).plot()
         # Whitened-residual diagnostics.  Whitening is only unique up to an
         # orthogonal rotation, so these three plots make the choice explicit:
         # the 2-D scatter of the whitened pair, the symmetric (ZCA) whitening
         # that spreads the correlation evenly, and the per-observation
         # Mahalanobis distance, which is invariant to the choice of factor.
-        WhitenedResidualScatter(
-            cfg, access, use_figure_name="postfit_whitened_residual_scatter"
-        ).plot()
+        WhitenedResidualScatter(cfg.figures.postfit_whitened_residual_scatter, access).plot()
         SymmetricWhitenedResiduals(
-            cfg, access, use_figure_name="postfit_symmetric_whitened_residuals"
+            cfg.figures.postfit_symmetric_whitened_residuals, access
         ).plot()
-        MahalanobisResiduals(cfg, access, use_figure_name="postfit_mahalanobis_residuals").plot()
+        MahalanobisResiduals(cfg.figures.postfit_mahalanobis_residuals, access).plot()
         # Gaia random/systematic error split from the transit structure.  Gaia
         # only: the metric needs the scan frame and the intra-transit sampling.
-        GaiaTransitErrorComponents(cfg, access).plot()
+        GaiaTransitErrorComponents(cfg.figures.gaia_transit_error_components, access).plot()
     else:
         logger.info("No Gaia observations found; skipping post-fit scan residual plot.")
 
@@ -572,22 +564,24 @@ def main(cfg: DictConfig):
     #############################################################################
     logger.info("Plotting figures...")
 
-    ResidualQQ(cfg, access).plot()
-    ResidualScatter(cfg, access).plot()
-    ResidualHistogram(cfg, access).plot()
-    ResidualRMSPerIteration(cfg, estimation_output).plot()
-    ParameterCorrelationHeatmap(cfg, estimation_output).plot()
-    ParameterHistoryPerIteration(cfg, estimation_output).plot()
+    ResidualQQ(cfg.figures.residual_qq, access).plot()
+    ResidualScatter(cfg.figures.residual_scatter, access).plot()
+    ResidualHistogram(cfg.figures.residual_histogram, access).plot()
+    ResidualRMSPerIteration(cfg.figures.residual_rms_per_iteration, estimation_output).plot()
+    ParameterCorrelationHeatmap(cfg.figures.parameter_correlation_heatmap, estimation_output).plot()
+    ParameterHistoryPerIteration(
+        cfg.figures.parameter_history_per_iteration, estimation_output
+    ).plot()
     try:
-        CovarianceEllipses(cfg, estimation_output, bodies, ctx).plot()
+        CovarianceEllipses(
+            cfg.figures.covariance_ellipses, estimation_output, bodies, ctx
+        ).plot()
     except Exception as e:
         logger.warning("Failed to plot covariance ellipses: %s", e)
     RSWDistance(
-        cfg,
+        cfg.figures.postfit_rsw,
         final_result.propagation_results,
         dep_vars[0],
-        central_body="Neptune",
-        use_figure_name="postfit_rsw",
     ).plot()
 
     # ====================================================================
@@ -636,8 +630,10 @@ def main(cfg: DictConfig):
         fe_rsw[i] = np.sqrt(np.diag(cov_rsw))
 
     logger.info("Plotting propagated formal errors ...")
-    PropagatedFormalErrorsCartesian(cfg, epochs, formal_errors).plot()
-    PropagatedFormalErrorsRSW(cfg, epochs, fe_rsw).plot()
+    PropagatedFormalErrorsCartesian(
+        cfg.figures.propagated_formal_errors_cartesian, epochs, formal_errors
+    ).plot()
+    PropagatedFormalErrorsRSW(cfg.figures.propagated_formal_errors_rsw, epochs, fe_rsw).plot()
     logger.info("Propagated formal errors plotted.")
 
     # Compute RSW position differences at covariance epochs for uncertainty-vs-distance plot
@@ -652,7 +648,9 @@ def main(cfg: DictConfig):
         rsw_at_cov_epochs[i] = rot_matrix @ rel_pos
     rsw_sigma = fe_rsw[:, :3]
 
-    RSWDistanceWithUncertainty(cfg, epochs, rsw_at_cov_epochs, rsw_sigma).plot()
+    RSWDistanceWithUncertainty(
+        cfg.figures.RSW_distance_with_uncertainty, epochs, rsw_at_cov_epochs, rsw_sigma
+    ).plot()
     logger.info("RSW distance with uncertainty envelopes plotted.")
     # from matplotlib import pyplot as plt
     # plt.show()

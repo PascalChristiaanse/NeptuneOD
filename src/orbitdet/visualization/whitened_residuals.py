@@ -37,10 +37,10 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig
 
-from orbitdet.analysis import ObservationAccess, Whitening, analysis_frame, rms
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
+from orbitdet.analysis import Whitening, rms
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 from orbitdet.visualization.residuals import (
     _configure_datetime_axis,
     _seconds_since_j2000_to_datetimes,
@@ -55,71 +55,15 @@ __all__ = [
 ]
 
 
-def _cfg_get(cfg, *keys, default=None):
-    """Read a nested config value, returning ``default`` when any key is missing."""
-    node = cfg
-    for key in keys:
-        if node is None:
-            return default
-        try:
-            node = node[key]
-        except (KeyError, TypeError, IndexError):
-            return default
-    return default if node is None else node
-
-
-class _WhitenedPlotBase(Plot):
+class _WhitenedPlotBase(ResidualPlot):
     """Shared plumbing for the whitened-residual plots.
 
-    Resolves the figure config, the clustering columns, the scan-frame rows and the
-    per-set whitening, so the concrete plots only differ in what they draw.
+    Resolves the clustering columns, the scan-frame rows and the per-set
+    whitening, so the concrete plots only differ in what they draw.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = None,
-        group_by: str | list[str] | None = None,
-        method: str = "cholesky",
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.access = access
-        self.use_figure_name = use_figure_name
-        self.group_by = group_by
-        self.method = method
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
-
-    # -- Configuration --------------------------------------------------
-
-    def _plot_cfg(self):
-        """Return the figure config block for this plot."""
-        return _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
+    #: Whitening factor used by this plot (``"cholesky"`` or ``"symmetric"``).
+    method: str = "cholesky"
 
     # -- Data -----------------------------------------------------------
 
@@ -131,7 +75,7 @@ class _WhitenedPlotBase(Plot):
         ValueError
             If the frame carries no scan angle, so there is nothing to whiten.
         """
-        frame = analysis_frame(self.access, unit=None, scan=True, normalized=False)
+        frame = self._frame(unit=None, scan=True, normalized=False)
         al_col = "residual_along_scan_rad"
         ac_col = "residual_across_scan_rad"
         has_angle = "scan_angle" in frame.columns and frame["scan_angle"].notna().any()
@@ -140,10 +84,7 @@ class _WhitenedPlotBase(Plot):
                 f"{self.__class__.__name__} requires scan angles, but the frame carries no "
                 "scan_angle (the source did not record a position_angle_scan)."
             )
-        frame = frame.loc[frame["scan_angle"].notna()]
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
-        return frame
+        return frame.loc[frame["scan_angle"].notna()]
 
     def _whitened_set(
         self, rows: pd.DataFrame, al_col: str, ac_col: str
@@ -219,46 +160,6 @@ class _WhitenedPlotBase(Plot):
                 continue
             yield label, np.concatenate(epoch_chunks), np.vstack(z_chunks)
 
-    def _target_name(self, frame: pd.DataFrame) -> str:
-        """Return the observed object's name for the suptitle, or ``"target"``."""
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            return str(frame["observed_object"].dropna().iloc[0])
-        return "target"
-
-    def _suptitle(self, plot_cfg, frame: pd.DataFrame, default: str) -> str:
-        """Resolve and format the suptitle."""
-        suptitle = _cfg_get(plot_cfg, "titles", "suptitle", default=default)
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=self._target_name(frame))
-        except Exception:
-            pass
-        return suptitle
-
-    def _legend(self, ax: plt.Axes, plot_cfg) -> None:
-        """Apply the configured legend layout to an axes."""
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-        ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-
-    def _styling(self, plot_cfg):
-        """Return ``(colors, marker_size, marker_types)`` from the figure config."""
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
-        colors = plt.get_cmap(cmap)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
-        return colors, marker_size, marker_types
-
 
 class WhitenedResidualScatter(_WhitenedPlotBase):
     """2-D scatter of the two whitened residual components per observation.
@@ -275,39 +176,25 @@ class WhitenedResidualScatter(_WhitenedPlotBase):
         The Hydra experiment configuration.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the scatter series by.
-    method : str
-        ``"cholesky"`` (default) or ``"symmetric"`` whitening.
-    fig, ax : optional
-        A pre-existing figure and axes to draw into.
-    include_rejected : bool
-        Whether to plot rows that outlier rejection removed.
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by`` and ``include_rejected`` are read from here.
+    access : ObservationAccess
+        The access layer whose derived frame is plotted.
     """
 
     def _make_figure(self):
-        plot_cfg = self._plot_cfg()
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27)
-
-        if self.fig is None and self.ax is None:
-            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        else:
-            fig, ax = self.fig, self.ax
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27, 8.27)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
         frame = self._scan_frame()
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        colors, marker_size, marker_types = self._styling(plot_cfg)
+        colors, marker_size, marker_types = self._styling()
 
         for index, (label, _epochs, z) in enumerate(self._grouped_whitened(frame, group_cols)):
             color = colors(index % colors.N)
@@ -346,7 +233,7 @@ class WhitenedResidualScatter(_WhitenedPlotBase):
         )
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
-        ax.set_title(self._suptitle(plot_cfg, frame, "Whitened Residuals for {target_name}"))
+        ax.set_title(self._suptitle(frame, "suptitle", "Whitened Residuals for {target_name}"))
 
         hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default="z1")
         hover_y_label = _cfg_get(plot_cfg, "axes", "hover_y_label", default="z2")
@@ -354,7 +241,7 @@ class WhitenedResidualScatter(_WhitenedPlotBase):
             hover_x_label, hover_y_label, datetime_x=False
         )
 
-        self._legend(ax, plot_cfg)
+        self._legend(ax)
         fig.set_tight_layout(True)
         return fig, ax
 
@@ -373,33 +260,22 @@ class SymmetricWhitenedResiduals(_WhitenedPlotBase):
     does not depend on the whitening factor at all.
     """
 
-    def __init__(self, *args, method: str = "symmetric", **kwargs):
+    def __init__(self, *args, **kwargs):
         # This plot is defined by its whitening method; ignore any other choice.
-        super().__init__(*args, method=method, **kwargs)
+        super().__init__(*args, **kwargs)
+
+    method = "symmetric"
 
     def _make_figure(self):
-        plot_cfg = self._plot_cfg()
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for the two whitened components.")
-            fig, axs = self.fig, self.ax
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         frame = self._scan_frame()
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        colors, marker_size, marker_types = self._styling(plot_cfg)
+        colors, marker_size, marker_types = self._styling()
 
         for index, (label, epochs, z) in enumerate(self._grouped_whitened(frame, group_cols)):
             color = colors(index % colors.N)
@@ -445,10 +321,10 @@ class SymmetricWhitenedResiduals(_WhitenedPlotBase):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        self._legend(axs[0], plot_cfg)
-        self._legend(axs[1], plot_cfg)
+        self._legend(axs[0])
+        self._legend(axs[1])
         fig.suptitle(
-            self._suptitle(plot_cfg, frame, "Symmetric Whitened Residuals for {target_name}")
+            self._suptitle(frame, "suptitle", "Symmetric Whitened Residuals for {target_name}")
         )
         fig.set_tight_layout(True)
         return fig, axs
@@ -469,26 +345,15 @@ class MahalanobisResiduals(_WhitenedPlotBase):
     """
 
     def _make_figure(self):
-        plot_cfg = self._plot_cfg()
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-
-        if self.fig is None and self.ax is None:
-            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        else:
-            fig, ax = self.fig, self.ax
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
         frame = self._scan_frame()
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        colors, marker_size, marker_types = self._styling(plot_cfg)
+        colors, marker_size, marker_types = self._styling()
 
         for index, (label, epochs, z) in enumerate(self._grouped_whitened(frame, group_cols)):
             color = colors(index % colors.N)
@@ -525,8 +390,8 @@ class MahalanobisResiduals(_WhitenedPlotBase):
         ax.format_coord = _make_hover_formatter(hover_x_label, hover_y_label)
 
         ax.set_title(
-            self._suptitle(plot_cfg, frame, "Mahalanobis Residuals for {target_name}")
+            self._suptitle(frame, "suptitle", "Mahalanobis Residuals for {target_name}")
         )
-        self._legend(ax, plot_cfg)
+        self._legend(ax)
         fig.set_tight_layout(True)
         return fig, ax

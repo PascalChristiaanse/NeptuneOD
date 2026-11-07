@@ -7,6 +7,11 @@
 global_frame_origin: "SSB"
 global_frame_orientation: "J2000"
 
+# Bodies not listed under `bodies_to_create` fall back to the default SPICE
+# settings, which is what the pre-fit model wants: it only overrides the
+# ephemerides it needs to control.
+use_default_body_settings: true
+
 # Environment settings
 bodies_to_propagate:
   Triton:

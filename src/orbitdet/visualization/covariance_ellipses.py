@@ -6,7 +6,7 @@ from tudatpy.dynamics import environment as env
 from tudatpy.estimation import estimation_analysis as est_an
 
 from orbitdet.reproducibility import RuntimeContext
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.estimation_base import EstimationPlot, _cfg_get
 
 
 def _get_inertial_state_at_epoch(
@@ -81,8 +81,25 @@ def _rotate_covariance_to_rsw(covariance: np.ndarray, inertial_state: np.ndarray
     return rotation_n @ covariance @ rotation_n.T
 
 
-class CovarianceEllipses(Plot):
-    """Plot a grid of pairwise uncertainty ellipses from the estimation covariance matrix."""
+class CovarianceEllipses(EstimationPlot):
+    """Plot a grid of pairwise uncertainty ellipses from the estimation covariance matrix.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        Supported keys: ``rotate_to_rsw``, ``body_name``, ``central_body_name``,
+        ``parameter_names``, ``n_sigma``, ``confidence``, ``figure.width``,
+        ``figure.height``.
+    estimation_output : est_an.EstimationOutput
+        The estimation output whose covariance matrix is plotted.
+    bodies : env.SystemOfBodies
+        The system of bodies, used to define the RSW frame when rotating.
+    ctx : RuntimeContext
+        The runtime context, providing the reference epoch for the RSW frame.
+    """
+
+    requires_environment = True
 
     def __init__(
         self,
@@ -91,86 +108,28 @@ class CovarianceEllipses(Plot):
         bodies: env.SystemOfBodies,
         ctx: RuntimeContext,
     ):
-        super().__init__(cfg)
-        self.estimation_output = estimation_output
+        super().__init__(cfg, estimation_output)
         self.bodies = bodies
         self.ctx = ctx
 
     def _make_figure(self):
-        cfg = self.cfg
+        plot_cfg = self.cfg
         estimation_output = self.estimation_output
         bodies = self.bodies
         ctx = self.ctx
-
-        """
-        Plots a grid of pairwise uncertainty ellipses from the estimation covariance matrix.
-
-        Parameters
-        ----------
-        cfg : DictConfig
-            Configuration containing optional 'covariance_ellipses' settings.
-            Supported keys:
-                rotate_to_rsw : bool
-                    Whether to rotate the covariance to RSW frame (default True).
-                    Only the first 6 parameters (Cartesian state) are rotated; all
-                    other parameters (GM, gravity field coefficients, etc.) remain unchanged.
-                body_name : str
-                    Name of the body whose state defines the RSW frame (default "Triton").
-                central_body_name : str
-                    Name of the central body (default "Neptune").
-                parameter_names : list of str
-                    Names for each parameter. Defaults to RSW frame names for the first
-                    6 parameters; additional parameters use auto-generated names.
-                n_sigma : float
-                    Number of sigmas for ellipse scaling (default 1.0).
-                figure : dict
-                    'width' and 'height' per subplot.
-                confidence : bool
-                    Whether to annotate ellipses with confidence percentage (default False).
-
-        estimation_output : est_an.EstimationOutput
-            The output of the estimation process containing the covariance matrix.
-        bodies : SystemOfBodies
-            The system of bodies (used to get the state for RSW rotation).
-        ctx : RuntimeContext
-            Runtime context providing the epoch for state evaluation.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-            The figure object.
-        axes : np.ndarray
-            Array of axes objects.
-        """
-        plot_cfg = cfg.get("covariance_ellipses", {})
 
         covariance = estimation_output.covariance
         n_params = covariance.shape[0]
 
         # Default parameter names: RSW frame
-        default_names = [
-            "R",
-            "S",
-            "W",
-            "v_R",
-            "v_S",
-            "v_W",
-        ]
-        parameter_names = plot_cfg.get("parameter_names", default_names)
-
-        # Extend or truncate parameter_names to match matrix size
-        if len(parameter_names) < n_params:
-            parameter_names = list(parameter_names) + [
-                f"p{i}" for i in range(len(parameter_names), n_params)
-            ]
-        else:
-            parameter_names = parameter_names[:n_params]
+        default_names = ["R", "S", "W", "v_R", "v_S", "v_W"]
+        parameter_names = self._parameter_names(n_params, default_names)
 
         # Optionally rotate to RSW frame
-        rotate_to_rsw = plot_cfg.get("rotate_to_rsw", True)
+        rotate_to_rsw = _cfg_get(plot_cfg, "rotate_to_rsw", default=True)
         if rotate_to_rsw:
-            body_name = plot_cfg.get("body_name", "Triton")
-            central_body_name = plot_cfg.get("central_body_name", "Neptune")
+            body_name = _cfg_get(plot_cfg, "body_name", default="Triton")
+            central_body_name = _cfg_get(plot_cfg, "central_body_name", default="Neptune")
             inertial_state = _get_inertial_state_at_epoch(
                 bodies, body_name, central_body_name, ctx.start_epoch
             )
@@ -180,16 +139,16 @@ class CovarianceEllipses(Plot):
 
         # Extract formal errors (1-sigma) from diagonal
 
-        n_sigma = plot_cfg.get("n_sigma", 1.0)
-        confidence = plot_cfg.get("confidence", False)
+        n_sigma = _cfg_get(plot_cfg, "n_sigma", default=1.0)
+        confidence = _cfg_get(plot_cfg, "confidence", default=False)
 
         # Number of pairwise subplots: n_params choose 2
         n_pairs = n_params * (n_params - 1) // 2
         n_cols = min(3, n_pairs)
         n_rows = (n_pairs + n_cols - 1) // n_cols if n_pairs > 0 else 1
 
-        subplot_width = plot_cfg.get("figure", {}).get("width", 4.0)
-        subplot_height = plot_cfg.get("figure", {}).get("height", 4.0)
+        subplot_width = _cfg_get(plot_cfg, "figure", "width", default=4.0)
+        subplot_height = _cfg_get(plot_cfg, "figure", "height", default=4.0)
         fig, axes = plt.subplots(
             n_rows,
             n_cols,

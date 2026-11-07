@@ -2,27 +2,12 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig
 from tudatpy.dynamics import propagation as prop
 from tudatpy.dynamics import propagation_setup as prop_setup
 
 from orbitdet.utility import create_dependent_variable_dictionary
-from orbitdet.visualization.base import Plot, _make_hover_formatter
-
-
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.simulation_base import SimulationPlot, _cfg_get
 
 
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000):
@@ -39,16 +24,31 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
-class DifferencedDependentVariables(Plot):
+class DifferencedDependentVariables(SimulationPlot):
     """Plot the difference in a dependent variable between a reference result and one
     or more comparison results.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+    reference_result : prop.SimulationResults
+        The reference propagation result.
+    comparison_results : list[prop.SimulationResults]
+        The propagation results to compare against the reference.
+    reference_dependent_variable : SingleDependentVariableSaveSettings
+        The dependent variable to extract from the reference result.
+    comparison_dependent_variables : list[SingleDependentVariableSaveSettings]
+        The dependent variables to extract from the comparison results.
+    comparison_names : list[str] | None
+        Optional legend names for the comparison results.
     """
 
     def __init__(
         self,
-        cfg: DictConfig,
-        reference_result: prop.SimulationResults,
-        comparison_results: list[prop.SimulationResults],
+        cfg,
+        reference_result,
+        comparison_results: list,
         reference_dependent_variable: (
             prop_setup.dependent_variable.SingleDependentVariableSaveSettings
         ),
@@ -57,37 +57,20 @@ class DifferencedDependentVariables(Plot):
         ],
         comparison_names: list[str] | None = None,
     ):
-        super().__init__(cfg)
-        self.reference_result = reference_result
+        super().__init__(cfg, reference_result)
+        self.reference_result = self.result
         self.comparison_results = comparison_results
         self.reference_dependent_variable = reference_dependent_variable
         self.comparison_dependent_variables = comparison_dependent_variables
         self.comparison_names = comparison_names
 
     def _make_figure(self):
-        cfg = self.cfg
+        plot_cfg = self.cfg
         reference_result = self.reference_result
         comparison_results = self.comparison_results
         reference_dependent_variable = self.reference_dependent_variable
         comparison_dependent_variables = self.comparison_dependent_variables
         comparison_names = self.comparison_names
-
-        """Plot the difference in a dependent variable between a reference result and one
-        or more comparison results.
-
-        Args:
-            cfg: Configuration dictionary for plotting settings.
-            reference_result (SimulationResults): The reference SimulationResults object.
-            comparison_results (list[SimulationResults]): A list of SimulationResults objects
-                to compare against the reference.
-            reference_dependent_variable (SingleDependentVariableSaveSettings): The dependent
-                variable to extract from the reference result.
-            comparison_dependent_variables (list[SingleDependentVariableSaveSettings]): A list
-                of dependent variables to extract from the comparison results.
-            comparison_names (list[str] | None, optional)): Optional list of names for the
-                comparison results, used in the legend. If not provided, default names will
-                be generated.
-        """
 
         # Check if result objects are of the correct type
         if not issubclass(reference_result.__class__, prop.SimulationResults):
@@ -191,11 +174,7 @@ class DifferencedDependentVariables(Plot):
         number_of_plots = difference_dicts[0][reference_dv_dict.time_history[0]].size
 
         # Load plotting configuration
-        plot_cfg = _cfg_get(cfg, "dependent_variable_differenced", default=None)
-        if plot_cfg is None:
-            plot_cfg = cfg
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=10)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=5 * number_of_plots)
+        fig_w, fig_h = self._figure_size(10, 5 * number_of_plots)
 
         fig, axes = plt.subplots(number_of_plots, 1, figsize=(fig_w, fig_h))
 

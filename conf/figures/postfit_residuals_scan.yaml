@@ -1,3 +1,4 @@
+plotter: "ResidualsScan"
 output_file: "postfit_residuals_scan.pdf"
 figure:
   width: 16.54

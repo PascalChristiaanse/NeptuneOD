@@ -4,7 +4,7 @@ import os
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
@@ -87,9 +87,9 @@ def main(cfg: DictConfig):
     logger.info("Pre-fit residuals computed successfully.")
 
     access = ObservationAccess.build(observations, standard_frame)
-    residuals_psd = ResidualsPSD(cfg, access, 30, cfg.figures.residuals_psd)
+    residuals_psd = ResidualsPSD(OmegaConf.select(cfg, "figures.residuals_psd", default={}), access)
     fig_psd, ax_psd = residuals_psd._make_figure()
-    residuals = Residuals(cfg, access)
+    residuals = Residuals(OmegaConf.select(cfg, "figures.residuals", default={}), access)
     fig, ax = residuals._make_figure()
 
     # add line on y axis at date of voyager 2 closest approach to neptune,

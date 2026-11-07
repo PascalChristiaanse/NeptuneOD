@@ -8,22 +8,8 @@ from tudatpy.dynamics import propagation as prop
 from tudatpy.dynamics import propagation_setup as prop_setup
 
 from orbitdet.utility import create_dependent_variable_dictionary
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
-
-
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.simulation_base import SimulationPlot, _cfg_get
 
 
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000):
@@ -40,9 +26,19 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
-class RSWDistance(Plot):
+class RSWDistance(SimulationPlot):
     """Decompose the relative position vector between two bodies into its Radial (R),
     Transverse (S), and Cross-track (W) components in the RSW frame.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``central_body`` is read from here (default ``"Neptune"``).
+    result : prop.SimulationResults
+        The propagation result to plot.
+    position_dependent_variable : SingleDependentVariableSaveSettings
+        The relative-position dependent variable to decompose.
     """
 
     def __init__(
@@ -52,30 +48,15 @@ class RSWDistance(Plot):
         position_dependent_variable: (
             prop_setup.dependent_variable.SingleDependentVariableSaveSettings
         ),
-        central_body: str = "Neptune",
-        use_figure_name: str | None = None,
     ):
-        super().__init__(cfg, name=use_figure_name or _snake_case(self.__class__.__name__))
-        self.result = result
+        super().__init__(cfg, result)
         self.position_dependent_variable = position_dependent_variable
-        self.central_body = central_body
-        # Config block to read styling from. Defaults to the legacy
-        # ``RSW_distance`` block; callers can point it at a per-plot block
-        # (e.g. ``prefit_rsw`` / ``postfit_rsw``) which also names the output.
-        self.use_figure_name = use_figure_name or "RSW_distance"
 
     def _make_figure(self):
-        cfg = self.cfg
-        result = self.result
+        plot_cfg = self.cfg
+        sim_results = self.result
         position_dependent_variable = self.position_dependent_variable
-        central_body = self.central_body
-
-        # Accept either a SimulationResults directly or an object with a
-        # .propagation_results attribute (e.g. EstimationOutput)
-        if hasattr(result, "propagation_results"):
-            sim_results = result.propagation_results
-        else:
-            sim_results = result
+        central_body = _cfg_get(plot_cfg, "central_body", default="Neptune")
 
         dep_var_dict = create_dependent_variable_dictionary(sim_results)
 
@@ -129,16 +110,7 @@ class RSWDistance(Plot):
 
         rsw_norm = np.linalg.norm(rsw_components, axis=1)
 
-        plot_cfg = None
-        if self.use_figure_name:
-            # Prefer the per-figure block under ``cfg.figures.<use_figure_name>``
-            # (matching the Residuals convention), falling back to a top-level
-            # ``cfg.<use_figure_name>`` block.
-            plot_cfg = _cfg_get(cfg, "figures", self.use_figure_name, default=None)
-            if plot_cfg is None:
-                plot_cfg = _cfg_get(cfg, self.use_figure_name, default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=12)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8)
+        fig_w, fig_h = self._figure_size(12, 8)
 
         titles = {
             "r": _cfg_get(plot_cfg, "titles", "r", default="Radial (R)"),

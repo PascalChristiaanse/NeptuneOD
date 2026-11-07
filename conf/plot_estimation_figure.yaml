@@ -1,0 +1,38 @@
+# @package _global_
+
+# Config for ``scripts/plot_estimation_figure.py``.
+#
+# The script draws exactly one estimation figure per run from a serialized
+# ``EstimationOutput``.  Which figure, and which artifact to read, are passed as
+# overrides by the Snakemake rules:
+#
+#     python scripts/plot_estimation_figure.py \
+#         figure=parameter_correlation_heatmap \
+#         estimation_output=results/.../estimation_output.tudat
+#
+# The figure's own styling lives in ``conf/figures/<figure>.yaml`` and is
+# composed in by the rule that draws it, not here.
+
+defaults:
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Which figure to draw.  Must be a key of ``FIGURE_BUILDERS`` in
+# ``scripts/plot_estimation_figure.py``.
+figure: "parameter_correlation_heatmap"
+
+# The figure's own styling file.  Merged into ``cfg.figures.<figure>`` by the
+# script, so each figure's config stays next to the rule that draws it.
+figure_config: "conf/figures/parameter_correlation_heatmap.yaml"
+
+# Artifact to read.  Written by the estimation stage.
+estimation_output: "results/pipeline/chapter_3/estimation_output.tudat"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

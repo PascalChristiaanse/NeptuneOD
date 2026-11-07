@@ -32,12 +32,11 @@ from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
-from omegaconf import DictConfig
 
 from orbitdet.analysis import ObservationAccess, analysis_frame
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 from orbitdet.visualization.residuals import (
-    _cfg_get,
     _configure_datetime_axis,
     _rad_to_unit,
     _seconds_since_j2000_to_datetimes,
@@ -242,7 +241,7 @@ def _scan_frame_residuals(access: ObservationAccess, include_rejected: bool = Fa
     return epochs, al, ac
 
 
-class GaiaTransitErrorComponents(Plot):
+class GaiaTransitErrorComponents(ResidualPlot):
     """Plot the Gaia random/systematic error components of the scan-frame residuals.
 
     One panel per scan-frame component (along-scan ``AL``, across-scan ``AC``).
@@ -257,47 +256,27 @@ class GaiaTransitErrorComponents(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``axes.unit``, ``include_rejected`` and ``transit_gap_seconds`` are read
+        from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    transit_gap_seconds : float, optional
-        Epoch gap (seconds) above which a new transit starts.  Defaults to the
-        figure config's ``transit_gap_seconds`` or
-        :data:`DEFAULT_TRANSIT_GAP_SECONDS`.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``.  When
-        ``None`` the snake_case class name is used.
-    include_rejected : bool
-        Whether to include rows that outlier rejection removed.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        transit_gap_seconds: float | None = None,
-        use_figure_name: str | None = "gaia_transit_error_components",
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.access = access
-        self.transit_gap_seconds = transit_gap_seconds
-        self.use_figure_name = use_figure_name
-        self.include_rejected = include_rejected
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
+    @property
+    def transit_gap_seconds(self) -> float:
+        """Epoch gap (seconds) above which a new transit starts, from the config."""
+        return float(
+            _cfg_get(
+                self.cfg,
+                "transit_gap_seconds",
+                default=DEFAULT_TRANSIT_GAP_SECONDS,
+            )
+        )
 
     def components(self) -> TransitErrorComponents:
         """Compute the pooled transit error components across all scan rows."""
-        plot_cfg = _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
         gap = self.transit_gap_seconds
-        if gap is None:
-            gap = float(
-                _cfg_get(
-                    plot_cfg,
-                    "transit_gap_seconds",
-                    default=DEFAULT_TRANSIT_GAP_SECONDS,
-                )
-            )
 
         at_scan = _scan_frame_residuals(self.access, self.include_rejected)
         if at_scan is None:
@@ -310,9 +289,8 @@ class GaiaTransitErrorComponents(Plot):
         return compute_transit_error_components(epochs, al, ac, gap_seconds=gap)
 
     def _make_figure(self):
-        plot_cfg = _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size(8.27 * 2, 8.27 * 2 / 2)
         unit = _cfg_get(plot_cfg, "axes", "unit", default="mas")
         cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
         colors = plt.get_cmap(cmap)

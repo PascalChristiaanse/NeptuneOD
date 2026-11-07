@@ -21,19 +21,18 @@ defaults:
   - /figures/prefit_residuals_spice@figures.prefit_residuals_spice
   - /figures/prefit_residuals_prop@figures.prefit_residuals_prop
   - /figures/postfit_residuals@figures.postfit_residuals
-  - /figures/residual_histogram
-  - /figures/residual_qq
-  - /figures/residual_scatter
-  - /figures/parameter_correlation_heatmap
-  - /figures/parameter_history_per_iteration
-  - /figures/covariance_ellipses
-  - /figures/RSW_distance
-  - /figures/prefit_rsw
-  - /figures/postfit_rsw
-  - /figures/propagated_formal_errors_cartesian
-  - /figures/propagated_formal_errors_rsw
-  - /figures/RSW_distance_with_uncertainty
-
+  - /figures/residual_histogram@figures.residual_histogram
+  - /figures/residual_qq@figures.residual_qq
+  - /figures/residual_scatter@figures.residual_scatter
+  - /figures/parameter_correlation_heatmap@figures.parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration@figures.parameter_history_per_iteration
+  - /figures/covariance_ellipses@figures.covariance_ellipses
+  - /figures/RSW_distance@figures.RSW_distance
+  - /figures/prefit_rsw@figures.prefit_rsw
+  - /figures/postfit_rsw@figures.postfit_rsw
+  - /figures/propagated_formal_errors_cartesian@figures.propagated_formal_errors_cartesian
+  - /figures/propagated_formal_errors_rsw@figures.propagated_formal_errors_rsw
+  - /figures/RSW_distance_with_uncertainty@figures.RSW_distance_with_uncertainty
 seed: 42
 
 # Hydra settings

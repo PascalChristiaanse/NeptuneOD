@@ -79,55 +79,47 @@ def main(cfg: DictConfig):
     filter_outcomes = bool(getattr(cfg.bodies_to_create.Gaia.ephemeris, "filter_outcomes", False))
     gaia_query = GaiaQuery()
     gaia_query.retrieve_data(source_ids=source_ids, filter_outcomes=filter_outcomes)
-    observation_epochs = gaia_query.observation_table["epoch"].to_numpy()
 
     fig_diff_kep, data_diff_kep = DifferencedDependentVariables(
-        cfg,
+        cfg.figures.dependent_variable_differenced,
         result.propagation_results,
         [result.propagation_results],
         dep_vars[0],
         [dep_vars[1]],
-        epochs=observation_epochs,
-        scatter=True,
     ).plot()
 
     # ── Plot RSW decomposition ──
     from orbitdet.visualization import RSWDistance
 
     fig_rsw, data_rsw = RSWDistance(
-        cfg,
+        cfg.figures.RSW_distance,
         result.propagation_results,
         dep_vars[2],
-        epochs=observation_epochs,
-        scatter=True,
     ).plot()
 
     # ── Plot dependent variables ──
     from orbitdet.visualization import DependentVariable
 
     fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
-        cfg, result.propagation_results, dep_vars[0]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[0]
     ).plot()
     fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
-        cfg, result.propagation_results, dep_vars[1]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[1]
     ).plot()
     fig_dep_relpos, axes_dep_relpos = DependentVariable(
-        cfg, result.propagation_results, dep_vars[2]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[2]
     ).plot()
     fig_dep_relvel, axes_dep_relvel = DependentVariable(
-        cfg, result.propagation_results, dep_vars[3]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[3]
     ).plot()
 
     # -- Plot RSW distance
     from orbitdet.visualization import RSWDistance
 
     RSWDistance(
-        cfg,
+        cfg.figures.RSW_distance,
         result.propagation_results,
         dep_vars[2],
-        central_body="SSB",
-        epochs=observation_epochs,
-        scatter=True,
     ).plot()
 
     # Save all figures to the output directory

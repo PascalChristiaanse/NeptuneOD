@@ -29,7 +29,7 @@ Artifacts written into the Hydra run directory:
 
 Together these two files are enough to rebuild an
 :class:`~orbitdet.analysis.ObservationAccess`, which is what the figure rules
-in ``scripts/plot_figure.py`` do.  Nothing is recomputed there.
+in ``scripts/plot_residuals_figure.py`` do.  Nothing is recomputed there.
 
 The stage is self-contained: it furnishes SPICE itself, because kernel state is
 process-local and cannot be handed to another process.

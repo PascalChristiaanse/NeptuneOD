@@ -35,10 +35,10 @@ rule prefit_residuals_spice:
     input:
         f"{STAGE}/observations.tudat",
         f"{STAGE}/standard_frame.parquet",
-        python_dependencies("scripts/plot_figure.py"),
-        hydra_dependencies("conf/plot_figure.yaml"),
+        python_dependencies("scripts/plot_residuals_figure.py"),
+        hydra_dependencies("conf/plot_residuals_figure.yaml"),
         "conf/figures/prefit_residuals_spice.yaml",
-        "scripts/plot_figure.py",
+        "scripts/plot_residuals_figure.py",
 
     output:
         f"{STAGE}/prefit_residuals_spice.pdf",
@@ -48,7 +48,7 @@ rule prefit_residuals_spice:
 
     shell:
         """
-        {PYTHON} scripts/plot_figure.py \
+        {PYTHON} scripts/plot_residuals_figure.py \
             hydra.run.dir={STAGE} \
             figure=prefit_residuals_spice \
             figure_config=conf/figures/prefit_residuals_spice.yaml \
@@ -64,9 +64,9 @@ rule residual_scatter:
     input:
         f"{STAGE}/observations.tudat",
         f"{STAGE}/standard_frame.parquet",
-        "scripts/plot_figure.py",
-        python_dependencies("scripts/plot_figure.py"),
-        hydra_dependencies("conf/plot_figure.yaml"),
+        "scripts/plot_residuals_figure.py",
+        python_dependencies("scripts/plot_residuals_figure.py"),
+        hydra_dependencies("conf/plot_residuals_figure.yaml"),
         "conf/figures/residual_scatter.yaml",
 
     output:
@@ -77,7 +77,7 @@ rule residual_scatter:
 
     shell:
         """
-        {PYTHON} scripts/plot_figure.py \
+        {PYTHON} scripts/plot_residuals_figure.py \
             hydra.run.dir={STAGE} \
             figure=residual_scatter \
             figure_config=conf/figures/residual_scatter.yaml \
@@ -93,9 +93,9 @@ rule residual_histogram:
     input:
         f"{STAGE}/observations.tudat",
         f"{STAGE}/standard_frame.parquet",
-        "scripts/plot_figure.py",
-        python_dependencies("scripts/plot_figure.py"),
-        hydra_dependencies("conf/plot_figure.yaml"),
+        "scripts/plot_residuals_figure.py",
+        python_dependencies("scripts/plot_residuals_figure.py"),
+        hydra_dependencies("conf/plot_residuals_figure.yaml"),
         "conf/figures/residual_histogram.yaml",
 
     output:
@@ -106,7 +106,7 @@ rule residual_histogram:
 
     shell:
         """
-        {PYTHON} scripts/plot_figure.py \
+        {PYTHON} scripts/plot_residuals_figure.py \
             hydra.run.dir={STAGE} \
             figure=residual_histogram \
             figure_config=conf/figures/residual_histogram.yaml \

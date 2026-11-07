@@ -16,7 +16,7 @@ figure:
 # canonical two-series pair, distinguishable under all common forms of colour
 # vision deficiency.  Available: okabe_ito, tol_bright, tol_muted, tab10, black.
 styling:
-  palette: "tol_bright"
+  palette: "tol_muted"
 # The legend is drawn inside one panel, so it cannot clip the x-axis labels.
 legend:
   panel: "top_right"    # top_left | top_right | bottom_left | bottom_right

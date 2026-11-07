@@ -7,11 +7,11 @@
 # overrides by the Snakemake rules:
 #
 #     python scripts/plot_estimation_figure.py \
-#         figure=parameter_correlation_heatmap \
+#         figure_config=conf/figures/parameter_correlation_heatmap.yaml \
 #         estimation_output=results/.../estimation_output.tudat
 #
-# The figure's own styling lives in ``conf/figures/<figure>.yaml`` and is
-# composed in by the rule that draws it, not here.
+# The figure's name is the stem of ``figure_config``, so there is no separate
+# ``figure`` key to keep in sync.
 
 defaults:
   - /logging: default
@@ -25,12 +25,8 @@ seed: 42
 # plt.show().  Set true to always show, false to never show.
 # figure_show: false
 
-# Which figure to draw.  Must be a key of ``FIGURE_BUILDERS`` in
-# ``scripts/plot_estimation_figure.py``.
-figure: "parameter_correlation_heatmap"
-
-# The figure's own styling file.  Merged into ``cfg.figures.<figure>`` by the
-# script, so each figure's config stays next to the rule that draws it.
+# The figure's own config file.  Its stem is the figure's name, and it carries
+# the plotter, the styling and the artifact paths.
 figure_config: "conf/figures/parameter_correlation_heatmap.yaml"
 
 # Artifact to read.  Written by the estimation stage.

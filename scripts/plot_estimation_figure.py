@@ -22,6 +22,7 @@ config, exactly as the propagation stages do.
 """
 
 import logging
+from pathlib import Path
 
 import hydra
 from _figure_common import (
@@ -77,7 +78,9 @@ def _load_estimation_output(cfg: DictConfig) -> est_an.EstimationOutput:
 def main(cfg: DictConfig):
     select_matplotlib_backend()
 
-    figure_name = cfg.figure
+    # The figure's name is the stem of its config file, so a rule only has to
+    # name the file.  There is no global ``figure`` key to keep in sync.
+    figure_name = Path(cfg.figure_config).stem
 
     cfg = attach_figure_config(cfg, figure_name)
     figure_cfg = cfg.figures[figure_name]

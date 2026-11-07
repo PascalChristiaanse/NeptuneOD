@@ -6,15 +6,14 @@
 # artifacts to read, are passed as overrides by the Snakemake rules:
 #
 #     python scripts/plot_residuals_figure.py \
-#         figure=residual_scatter \
+#         figure_config=conf/figures/residual_scatter.yaml \
 #         observations=results/.../observations.tudat \
 #         standard_frame=results/.../standard_frame.parquet
 #
-# The defaults below let it run with no arguments at all, against the artifacts
-# the toy ``prefit_residuals`` stage writes.
-#
-# The figure's own styling lives in ``conf/figures/<figure>.yaml`` and is
-# composed in by the rule that draws it, not here.
+# The figure's name is the stem of ``figure_config``, so there is no separate
+# ``figure`` key to keep in sync.  The defaults below let it run with no
+# arguments at all, against the artifacts the toy ``prefit_residuals`` stage
+# writes.
 
 defaults:
   - /logging: default
@@ -28,12 +27,8 @@ seed: 42
 # plt.show().  Set true to always show, false to never show.
 # figure_show: false
 
-# Which figure to draw.  Must be a key of ``FIGURE_BUILDERS`` in
-# ``scripts/plot_residuals_figure.py``.
-figure: "prefit_residuals_spice"
-
-# The figure's own styling file.  Merged into ``cfg.figures.<figure>`` by the
-# script, so each figure's config stays next to the rule that draws it.
+# The figure's own config file.  Its stem is the figure's name, and it carries
+# the plotter, the styling and the artifact paths.
 figure_config: "conf/figures/prefit_residuals_spice.yaml"
 
 # Artifacts to read.  Both are written by the ``prefit_residuals`` stage.

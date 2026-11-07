@@ -44,6 +44,7 @@ live in their own scripts (``plot_estimation_figure.py`` and
 """
 
 import logging
+from pathlib import Path
 
 import hydra
 import pandas as pd
@@ -130,7 +131,9 @@ def _load_access(cfg: DictConfig) -> ObservationAccess:
 def main(cfg: DictConfig):
     select_matplotlib_backend()
 
-    figure_name = cfg.figure
+    # The figure's name is the stem of its config file, so a rule only has to
+    # name the file.  There is no global ``figure`` key to keep in sync.
+    figure_name = Path(cfg.figure_config).stem
 
     cfg = attach_figure_config(cfg, figure_name)
     figure_cfg = cfg.figures[figure_name]

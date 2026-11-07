@@ -50,7 +50,6 @@ rule prefit_residuals_spice:
         """
         {PYTHON} scripts/plot_residuals_figure.py \
             hydra.run.dir={STAGE} \
-            figure=prefit_residuals_spice \
             figure_config=conf/figures/prefit_residuals_spice.yaml \
             observations={STAGE}/observations.tudat \
             standard_frame={STAGE}/standard_frame.parquet \
@@ -79,7 +78,6 @@ rule residual_scatter:
         """
         {PYTHON} scripts/plot_residuals_figure.py \
             hydra.run.dir={STAGE} \
-            figure=residual_scatter \
             figure_config=conf/figures/residual_scatter.yaml \
             observations={STAGE}/observations.tudat \
             standard_frame={STAGE}/standard_frame.parquet \
@@ -108,7 +106,6 @@ rule residual_histogram:
         """
         {PYTHON} scripts/plot_residuals_figure.py \
             hydra.run.dir={STAGE} \
-            figure=residual_histogram \
             figure_config=conf/figures/residual_histogram.yaml \
             observations={STAGE}/observations.tudat \
             standard_frame={STAGE}/standard_frame.parquet \
@@ -165,7 +162,6 @@ rule rsw_prop_two_poles:
         """
         {PYTHON} scripts/plot_simulation_figure.py \
             hydra.run.dir={STAGE} \
-            figure=rsw_prop_two_poles \
             figure_config=conf/figures/rsw_prop_two_poles.yaml \
             +simulation_results=[{STAGE}/pole_sweep/Pole_Model_Jacobson2009/propagation_result.tudat,{STAGE}/pole_sweep/IAU2015/propagation_result.tudat] \
             > {log} 2>&1
@@ -195,7 +191,6 @@ rule trajectory_rsw_difference:
         """
         {PYTHON} scripts/plot_simulation_figure.py \
             hydra.run.dir={STAGE} \
-            figure=trajectory_rsw_difference \
             figure_config=conf/figures/trajectory_rsw_difference.yaml \
             simulation_result={STAGE}/pole_sweep/Pole_Model_Jacobson2009/propagation_result.tudat \
             +simulation_results=[{STAGE}/pole_sweep/IAU2015/propagation_result.tudat] \

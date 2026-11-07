@@ -4,17 +4,25 @@ Loads a serialized :class:`~tudatpy.dynamics.propagation.SimulationResults` and
 draws exactly one figure from it.  No propagation is re-run; the state history
 and dependent-variable history are read straight off the artifact.
 
-Runnable standalone::
+Runnable standalone, against the toy default config::
+
+    python scripts/plot_simulation_figure.py
+
+or as a Snakemake rule, which passes the figure's own config and the artifact
+it should read::
 
     python scripts/plot_simulation_figure.py \\
-        figure=state_history_3d \\
-        figure_config=conf/figures/state_history_3d.yaml \\
-        simulation_result=results/pipeline/chapter_3/final_propagation_result.tudat
+        hydra.run.dir=results/<stage> \\
+        figure_config=conf/figures/<figure>.yaml \\
+        simulation_result=results/<stage>/propagation_result.tudat
 
-or as a Snakemake rule, which passes the same overrides.
+There is no global figure registry: the figure's name is the stem of the config
+file it is given, and everything the figure needs (plotter, styling, artifact
+paths) lives in that one file.  ``conf/plot_simulation_figure.yaml`` is only the
+toy default that lets the script run with no arguments at all.
 
-The figure is written to ``<hydra.run.dir>/<figure name>.pdf`` plus a ``.fig``
-pickle for interactive inspection.
+The figure is written to ``<hydra.run.dir>/<output_file stem>.pdf`` plus a
+``.fig`` pickle for interactive inspection.
 
 Dependent-variable figures
 --------------------------
@@ -55,6 +63,7 @@ stage) with the keys ``epochs``, ``formal_errors``, ``formal_errors_rsw``,
 """
 
 import logging
+from pathlib import Path
 
 import hydra
 import numpy as np
@@ -206,7 +215,9 @@ def _build_array_figure(plotter_name: str, figure_cfg: DictConfig, arrays: dict)
 def main(cfg: DictConfig):
     select_matplotlib_backend()
 
-    figure_name = cfg.figure
+    # The figure's name is the stem of its config file, so a rule only has to
+    # name the file.  There is no global ``figure`` key to keep in sync.
+    figure_name = Path(cfg.figure_config).stem
 
     cfg = attach_figure_config(cfg, figure_name)
     figure_cfg = cfg.figures[figure_name]

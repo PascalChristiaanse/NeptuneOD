@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -132,8 +133,45 @@ def resolve_builder(registry: dict, figure_cfg):
     return builder
 
 
-def show_or_serve() -> None:
-    """Show the figure interactively, or log the WebAgg URL when headless."""
+def running_under_snakemake() -> bool:
+    """Whether this process was launched by a Snakemake job.
+
+    Snakemake does not export a marker variable of its own, so detection uses
+    the two signals that are actually available:
+
+    * ``SNAKEMAKE_*`` environment variables, in case a future version adds one;
+    * a non-tty stdout.  Every rule in this project redirects the stage's output
+      to its log file (``> {log} 2>&1``), so a job's stdout is never a terminal
+      while an interactive run's is.
+
+    The second signal is the one that fires today.  It is also why a manually
+    piped run is treated as non-interactive, which is the desired behaviour:
+    there is no display to show a figure on.
+    """
+    if any(key.startswith("SNAKEMAKE_") for key in os.environ):
+        return True
+    return not sys.stdout.isatty()
+
+
+def show_or_serve(cfg: DictConfig | None = None) -> None:
+    """Show the figure interactively, or log where to find it.
+
+    A figure is only shown when the run is interactive.  Under Snakemake the
+    figure has already been written to the run directory, and blocking on
+    ``plt.show()`` would hang the job until the window is closed.
+
+    ``figure_show`` in the run config overrides the detection: ``true`` always
+    shows, ``false`` never does.
+    """
+    override = None if cfg is None else cfg.get("figure_show")
+    if override is not None:
+        if not bool(override):
+            logger.info("figure_show is false; not opening the figure.")
+            return
+    elif running_under_snakemake():
+        logger.info("Non-interactive run; not opening the figure.")
+        return
+
     backend = plt.get_backend().lower()
     if backend == "webagg":
         logger.info("Open the interactive plot at http://localhost:8988")
@@ -151,6 +189,7 @@ __all__ = [
     "attach_figure_config",
     "output_dir",
     "resolve_builder",
+    "running_under_snakemake",
     "select_matplotlib_backend",
     "show_or_serve",
 ]

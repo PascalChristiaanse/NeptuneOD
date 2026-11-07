@@ -22,6 +22,12 @@ defaults:
 
 seed: 42
 
+# Whether to open the figure interactively after writing it.  Left unset, the
+# script decides: it shows the figure only when the run is interactive, so a
+# Snakemake job (whose stdout is redirected to its log) never blocks on
+# plt.show().  Set true to always show, false to never show.
+# figure_show: false
+
 # Which figure to draw.  Must be a key of ``FIGURE_BUILDERS`` in
 # ``scripts/plot_residuals_figure.py``.
 figure: "prefit_residuals_spice"

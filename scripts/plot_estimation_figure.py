@@ -101,7 +101,7 @@ def main(cfg: DictConfig):
         builder(figure_cfg, estimation_output).plot()
     logger.info("Figure '%s' written to %s", figure_name, output_dir())
 
-    show_or_serve()
+    show_or_serve(cfg)
 
 
 if __name__ == "__main__":

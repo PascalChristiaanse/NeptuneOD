@@ -1,4 +1,4 @@
-"""Central Snakemake file for reproducing from the Thesis.
+"""Central Snakemake file for reproducing the thesis pipeline.
 
 Build one chapter::
 
@@ -7,6 +7,13 @@ Build one chapter::
 Build up to (and including) one stage, across every chapter that uses it::
 
     snakemake --snakefile workflow/Snakefile --until prefit_residuals --cores 4
+
+Both forms are wired as launch targets in ``.vscode/launch.json``.
+
+Adding a chapter
+----------------
+Drop a new ``workflow/chapters/<name>.smk`` in place.  It is picked up
+automatically; no edit to this file is needed.
 """
 
 from pathlib import Path

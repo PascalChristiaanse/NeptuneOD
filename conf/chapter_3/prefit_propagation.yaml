@@ -1,0 +1,47 @@
+# @package _global_
+
+# Config for propagating pre-fit for Atanas' chapter 4 figure 1.
+
+defaults:
+  - /dynamics: jacobson2009
+  - /kernels: jacobson2009
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# The integrated result must be kept: the propagated body's ephemeris is built
+# from it, and the dependent variables are evaluated against it.
+propagation:
+  set_integrated_result: true
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — the window the classical Triton state is propagated over.
+start_date: 1963-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+initial_epoch: 2006-01-01T12:00:00
+
+# Dependent variables saved with the propagation, in this order.  The order is
+# what the figure rules index into with ``dependent_variable_index``, so append
+# new entries at the end rather than inserting them.
+#
+# Supported ``type`` values: keplerian_state, relative_position, relative_velocity.
+dependent_variables:
+  - type: keplerian_state
+    body: "Triton Spice"
+    central_body: "Neptune"
+  - type: keplerian_state
+    body: "Triton"
+    central_body: "Neptune"
+  - type: relative_position
+    body: "Triton Spice"
+    secondary_body: "Triton"
+  - type: relative_velocity
+    body: "Triton Spice"
+    secondary_body: "Triton"

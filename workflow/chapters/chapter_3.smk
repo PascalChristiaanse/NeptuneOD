@@ -42,8 +42,7 @@ rule rsw_prop_two_poles:
             pole_model=POLE_MODELS,
         ),
         python_dependencies("scripts/plot_simulation_figure.py"),
-        hydra_dependencies("conf/plot_simulation_figure.yaml"),
-        "conf/chapter_3/fig_rsw_prop_two_poles.yaml",
+        hydra_dependencies("conf/chapter_3/fig_rsw_prop_two_poles.yaml"),
 
     output:
         f"{STAGE}/rsw_prop_two_poles.pdf",

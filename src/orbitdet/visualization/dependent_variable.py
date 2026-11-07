@@ -2,27 +2,11 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig
-from tudatpy.dynamics import propagation as prop
 from tudatpy.dynamics import propagation_setup as prop_setup
 
 from orbitdet.utility import create_dependent_variable_dictionary
-from orbitdet.visualization.base import Plot, _make_hover_formatter
-
-
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.simulation_base import SimulationPlot, _cfg_get
 
 
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000):
@@ -39,32 +23,35 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
-class DependentVariable(Plot):
-    """Plot a dependent variable from a propagation result."""
+class DependentVariable(SimulationPlot):
+    """Plot a dependent variable from a propagation result.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+    result : prop.SimulationResults
+        The propagation result to plot.
+    dependent_variable : SingleDependentVariableSaveSettings
+        The dependent variable to plot.
+    """
 
     def __init__(
         self,
-        cfg: DictConfig,
-        result: prop.SimulationResults,
+        cfg,
+        result,
         dependent_variable: prop_setup.dependent_variable.SingleDependentVariableSaveSettings,
     ):
-        super().__init__(cfg)
-        self.result = result
+        super().__init__(cfg, result)
         self.dependent_variable = dependent_variable
 
     def _make_figure(self):
-        cfg = self.cfg
-        result = self.result
+        plot_cfg = self.cfg
+        sim_results = self.result
         dependent_variable = self.dependent_variable
 
-        # Check if result object is of the correct type
-        if not issubclass(result.__class__, prop.SimulationResults):
-            raise TypeError(
-                f"result must be of (derived) type 'SimulationResults'. Got {type(result)}."
-            )
-
         # Create dependent variable dictionary
-        dependent_variable_dict = create_dependent_variable_dictionary(result)
+        dependent_variable_dict = create_dependent_variable_dictionary(sim_results)
 
         # Check if dependent variable is available in results object
         try:
@@ -82,9 +69,7 @@ class DependentVariable(Plot):
         number_of_plots = value_dict[dependent_variable_dict.time_history[0]].size
 
         # Load plotting configuration
-        plot_cfg = _cfg_get(cfg, "dependent_variable", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=10)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=5 * number_of_plots)
+        fig_w, fig_h = self._figure_size(10, 5 * number_of_plots)
 
         fig, axes = plt.subplots(number_of_plots, 1, figsize=(fig_w, fig_h))
 

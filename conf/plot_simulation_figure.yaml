@@ -15,6 +15,7 @@
 # composed in by the rule that draws it, not here.
 
 defaults:
+  - /kernels: classical
   - /logging: default
   - _self_
 
@@ -30,7 +31,7 @@ figure_config: "conf/figures/state_history_3d.yaml"
 
 # Artifact to read for the result-driven figures.  Written by the propagation
 # (or estimation) stage.
-simulation_result: "results/pipeline/chapter_3/final_propagation_result.tudat"
+simulation_result: "results/pipeline/chapter_3/propagation_result.tudat"
 
 # Artifact to read for the array-driven figures (propagated formal errors and
 # the RSW distance with uncertainty).  Written by the estimation stage.

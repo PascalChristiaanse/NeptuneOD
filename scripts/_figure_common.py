@@ -49,6 +49,37 @@ def select_matplotlib_backend() -> None:
         matplotlib.use("WebAgg", force=True)
 
 
+def apply_figure_style(cfg: DictConfig, figure_cfg: DictConfig | None = None) -> str:
+    """Apply the journal style named by the figure config, or the default.
+
+    The style is read from ``figure_cfg.style`` (the figure's own block) and
+    falls back to :data:`~orbitdet.visualization.style.DEFAULT_STYLE`.  It is
+    applied once per process, before any figure is built, so every figure in a
+    run shares one typographic style.
+
+    Parameters
+    ----------
+    cfg : DictConfig
+        The run configuration, consulted for a top-level ``figure_style``.
+    figure_cfg : DictConfig, optional
+        The figure's own config block, whose ``style`` key takes precedence.
+
+    Returns
+    -------
+    str
+        The style name that was applied.
+    """
+    from orbitdet.visualization.style import apply_style
+
+    style = None
+    if figure_cfg is not None:
+        style = figure_cfg.get("style")
+    if style is None:
+        style = cfg.get("figure_style")
+
+    return apply_style(style)
+
+
 def attach_figure_config(cfg: DictConfig, figure_name: str) -> DictConfig:
     """Merge the figure's own config file into ``cfg.figures.<figure_name>``.
 
@@ -97,9 +128,7 @@ def resolve_builder(registry: dict, figure_cfg):
         )
     builder = registry.get(plotter_name)
     if builder is None:
-        raise ValueError(
-            f"Unknown plotter '{plotter_name}'. Available: {sorted(registry)}."
-        )
+        raise ValueError(f"Unknown plotter '{plotter_name}'. Available: {sorted(registry)}.")
     return builder
 
 
@@ -118,6 +147,7 @@ def output_dir() -> str:
 
 
 __all__ = [
+    "apply_figure_style",
     "attach_figure_config",
     "output_dir",
     "resolve_builder",

@@ -25,6 +25,7 @@ import logging
 
 import hydra
 from _figure_common import (
+    apply_figure_style,
     attach_figure_config,
     output_dir,
     resolve_builder,
@@ -81,6 +82,10 @@ def main(cfg: DictConfig):
     cfg = attach_figure_config(cfg, figure_name)
     figure_cfg = cfg.figures[figure_name]
     builder = resolve_builder(FIGURE_BUILDERS, figure_cfg)
+
+    # The journal style must be applied before any figure is built, so it runs
+    # once the figure's own config (which may name a style) is merged in.
+    apply_figure_style(cfg, figure_cfg)
 
     # ``initialize`` writes the run metadata and freezes the config, so it runs
     # after the figure config has been merged in.

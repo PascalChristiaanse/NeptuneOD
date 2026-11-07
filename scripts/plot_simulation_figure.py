@@ -24,6 +24,20 @@ config: an index into the result's ``ordered_dependent_variable_settings`` (the
 same order the propagation saved them in).  This keeps the script free of any
 hard-coded body names.
 
+``differenced_dependent_variables`` plots the difference between two dependent
+variables of the *same* result: ``dependent_variable_index`` is the reference
+and ``comparison_dependent_variable_index`` the subtrahend.  That is how the
+propagated Triton state is differenced against the SPICE ephemeris without a
+second propagation.
+
+SPICE kernels
+-------------
+``create_dependent_variable_dictionary`` builds a degenerate system of bodies to
+resolve each variable's shape, which reads body radii from the kernel pool.  The
+script therefore furnishes the kernels named by ``cfg.kernels`` before drawing
+anything; without them the dependent-variable figures fail with
+``BODY10_RADII could not be found``.
+
 Plotter selection
 -----------------
 Each figure config names its plotter class with a ``plotter`` key (e.g.
@@ -45,6 +59,7 @@ import logging
 import hydra
 import numpy as np
 from _figure_common import (
+    apply_figure_style,
     attach_figure_config,
     output_dir,
     resolve_builder,
@@ -54,13 +69,17 @@ from _figure_common import (
 from omegaconf import DictConfig
 from tudatpy.dynamics import propagation as prop
 
+from orbitdet.data import KernelManager
 from orbitdet.reproducibility import enforce_initialization, initialize
 from orbitdet.utility import load_tudat_object
 from orbitdet.visualization import (
     DependentVariable,
+    DifferencedDependentVariables,
     PropagatedFormalErrorsCartesian,
     PropagatedFormalErrorsRSW,
     RSWDistance,
+    RSWDistanceComparison,
+    RSWDistanceDifference,
     RSWDistanceWithUncertainty,
     StateHistory3D,
 )
@@ -75,7 +94,10 @@ logger = logging.getLogger(__name__)
 FIGURE_BUILDERS = {
     "StateHistory3D": StateHistory3D,
     "DependentVariable": DependentVariable,
+    "DifferencedDependentVariables": DifferencedDependentVariables,
     "RSWDistance": RSWDistance,
+    "RSWDistanceComparison": RSWDistanceComparison,
+    "RSWDistanceDifference": RSWDistanceDifference,
     "PropagatedFormalErrorsCartesian": PropagatedFormalErrorsCartesian,
     "PropagatedFormalErrorsRSW": PropagatedFormalErrorsRSW,
     "RSWDistanceWithUncertainty": RSWDistanceWithUncertainty,
@@ -91,12 +113,55 @@ ARRAY_PLOTTERS = {
 #: Plotters that plot a single dependent variable selected by index.
 DEPENDENT_VARIABLE_PLOTTERS = {"DependentVariable", "RSWDistance"}
 
+#: Plotters that difference two dependent variables of the same result.
+DIFFERENCED_PLOTTERS = {"DifferencedDependentVariables"}
+
+#: Plotters that overlay several results, read from ``cfg.simulation_results``.
+MULTI_RESULT_PLOTTERS = {"RSWDistanceComparison"}
+
+#: Plotters that subtract comparison results from a reference result.  The
+#: reference is ``cfg.simulation_result``; the comparisons are
+#: ``cfg.simulation_results``.
+DIFFERENCE_PLOTTERS = {"RSWDistanceDifference"}
+
 
 def _load_result(cfg: DictConfig) -> prop.SimulationResults:
-    """Load the serialized simulation result named by ``cfg.simulation_result``."""
+    """Load the serialized simulation result named by ``cfg.simulation_result``.
+
+    The propagation stage saves a :class:`SingleArcSimulationResults`, which is
+    a subclass of :class:`SimulationResults`.  TudatPy's ``load_from_binary``
+    checks the concrete type, so the subclass must be named explicitly.
+    """
     path = cfg.simulation_result
     logger.info("Loading simulation result from %s", path)
-    return load_tudat_object(prop.SimulationResults, path)
+    return load_tudat_object(prop.SingleArcSimulationResults, path)
+
+
+def _load_results(cfg: DictConfig) -> list[prop.SimulationResults]:
+    """Load every result named by ``cfg.simulation_results``, in order."""
+    paths = list(cfg.simulation_results)
+    if not paths:
+        raise ValueError("cfg.simulation_results is empty; nothing to overlay.")
+    results = []
+    for path in paths:
+        logger.info("Loading simulation result from %s", path)
+        results.append(load_tudat_object(prop.SingleArcSimulationResults, path))
+    return results
+
+
+def _furnish_kernels(cfg: DictConfig) -> None:
+    """Furnish SPICE before any dependent-variable figure is drawn.
+
+    ``create_dependent_variable_dictionary`` builds a degenerate system of
+    bodies to resolve each variable's shape, which reads body radii from the
+    kernel pool.  Without kernels furnished it fails with
+    ``BODY10_RADII could not be found``.  Loading is cheap and idempotent, so it
+    runs for every figure rather than only the ones that need it.
+    """
+    logger.info("Furnishing SPICE kernels...")
+    km: KernelManager = KernelManager(cfg)
+    km.download_all_kernels()
+    km.furnish()
 
 
 def _load_formal_errors(cfg: DictConfig) -> dict:
@@ -148,20 +213,71 @@ def main(cfg: DictConfig):
     builder = resolve_builder(FIGURE_BUILDERS, figure_cfg)
     plotter_name = figure_cfg.plotter
 
+    # The journal style must be applied before any figure is built, so it runs
+    # once the figure's own config (which may name a style) is merged in.
+    apply_figure_style(cfg, figure_cfg)
+
     # ``initialize`` writes the run metadata and freezes the config, so it runs
     # after the figure config has been merged in.
     initialize(cfg)
+
+    _furnish_kernels(cfg)
 
     logger.info("Plotting figure '%s'...", figure_name)
     if plotter_name in ARRAY_PLOTTERS:
         arrays = _load_formal_errors(cfg)
         _build_array_figure(plotter_name, figure_cfg, arrays).plot()
+    elif plotter_name in MULTI_RESULT_PLOTTERS:
+        # Several results overlaid on one figure.  The labels come from the
+        # figure config so the rule stays free of model names.
+        results = _load_results(cfg)
+        index = int(figure_cfg.get("dependent_variable_index", 0))
+        dependent_variable = _select_dependent_variable(results[0], index)
+        labels = figure_cfg.get("labels")
+        builder(
+            figure_cfg,
+            results,
+            dependent_variable,
+            list(labels) if labels is not None else None,
+        ).plot()
+    elif plotter_name in DIFFERENCE_PLOTTERS:
+        # One reference result minus one or more comparison results.  The
+        # reference is ``simulation_result``; the comparisons are
+        # ``simulation_results``.
+        reference = _load_result(cfg)
+        comparisons = _load_results(cfg)
+        index = int(figure_cfg.get("dependent_variable_index", 0))
+        dependent_variable = _select_dependent_variable(reference, index)
+        labels = figure_cfg.get("labels")
+        builder(
+            figure_cfg,
+            reference,
+            comparisons,
+            dependent_variable,
+            list(labels) if labels is not None else None,
+        ).plot()
     else:
         result = _load_result(cfg)
         if plotter_name in DEPENDENT_VARIABLE_PLOTTERS:
             index = int(figure_cfg.get("dependent_variable_index", 0))
             dependent_variable = _select_dependent_variable(result, index)
             builder(figure_cfg, result, dependent_variable).plot()
+        elif plotter_name in DIFFERENCED_PLOTTERS:
+            # Both variables come from the same result: the reference is one
+            # saved dependent variable, the comparison is another.  This is how
+            # the propagated Triton state is differenced against the SPICE
+            # ephemeris without a second propagation.
+            reference_index = int(figure_cfg.get("dependent_variable_index", 0))
+            comparison_index = int(figure_cfg.get("comparison_dependent_variable_index", 1))
+            reference_dv = _select_dependent_variable(result, reference_index)
+            comparison_dv = _select_dependent_variable(result, comparison_index)
+            builder(
+                figure_cfg,
+                result,
+                [result],
+                reference_dv,
+                [comparison_dv],
+            ).plot()
         else:
             builder(figure_cfg, result).plot()
     logger.info("Figure '%s' written to %s", figure_name, output_dir())

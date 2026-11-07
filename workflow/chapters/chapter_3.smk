@@ -143,8 +143,7 @@ rule propagate_trajectory_pole_sweep:
             > {log} 2>&1
         """
 
-
-rule trajectory_rsw_comparison:
+rule rsw_prop_two_poles:
     """RSW separation for every pole model, overlaid on one figure."""
 
     input:
@@ -152,23 +151,22 @@ rule trajectory_rsw_comparison:
             f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
             pole_model=POLE_MODELS,
         ),
-        "scripts/plot_simulation_figure.py",
         python_dependencies("scripts/plot_simulation_figure.py"),
         hydra_dependencies("conf/plot_simulation_figure.yaml"),
-        "conf/figures/trajectory_rsw_comparison.yaml",
+        "conf/figures/rsw_prop_two_poles.yaml",
 
     output:
-        f"{STAGE}/trajectory_rsw_comparison.pdf",
+        f"{STAGE}/rsw_prop_two_poles.pdf",
 
     log:
-        f"{STAGE}/trajectory_rsw_comparison.log",
+        f"{STAGE}/rsw_prop_two_poles.log",
 
     shell:
         """
         {PYTHON} scripts/plot_simulation_figure.py \
             hydra.run.dir={STAGE} \
-            figure=trajectory_rsw_comparison \
-            figure_config=conf/figures/trajectory_rsw_comparison.yaml \
+            figure=rsw_prop_two_poles \
+            figure_config=conf/figures/rsw_prop_two_poles.yaml \
             +simulation_results=[{STAGE}/pole_sweep/Pole_Model_Jacobson2009/propagation_result.tudat,{STAGE}/pole_sweep/IAU2015/propagation_result.tudat] \
             > {log} 2>&1
         """
@@ -220,5 +218,5 @@ rule all_chapter_3:
             f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
             pole_model=POLE_MODELS,
         ),
-        f"{STAGE}/trajectory_rsw_comparison.pdf",
+        f"{STAGE}/rsw_prop_two_poles.pdf",
         f"{STAGE}/trajectory_rsw_difference.pdf",

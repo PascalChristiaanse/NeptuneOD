@@ -3,7 +3,7 @@ plotter: "RSWDistanceComparison"
 # relative_position(Triton Spice, Triton) in the order declared in
 # conf/chapter_3/prefit_propagation.yaml.
 dependent_variable_index: 2
-output_file: "trajectory_rsw_comparison.pdf"
+output_file: "rsw_prop_two_poles.pdf"
 central_body: "Neptune"
 # One legend entry per entry in cfg.simulation_results, in the same order.
 labels:
@@ -28,7 +28,7 @@ titles:
   s: "Transverse (S)"
   w: "Cross-track (W)"
   norm: "L2 Norm of RSW"
-  suptitle: "RSW Separation of {body1} w.r.t. {body2} (centered on {central_body})"
+  suptitle: "RSW Separation of {body2} w.r.t. {body1} (centered on {central_body})"
 axes:
   x_label: "Epoch"
   # Display unit for the RSW components: "m" or "km".

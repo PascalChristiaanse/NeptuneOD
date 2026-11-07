@@ -1,0 +1,44 @@
+# @package _global_
+
+# Config for ``scripts/plot_simulation_figure.py``.
+#
+# The script draws exactly one propagation figure per run from a serialized
+# ``SimulationResults`` (or, for the formal-error figures, from an ``.npz``
+# archive of pre-computed arrays).  Which figure, and which artifact to read,
+# are passed as overrides by the Snakemake rules:
+#
+#     python scripts/plot_simulation_figure.py \
+#         figure=state_history_3d \
+#         simulation_result=results/.../final_propagation_result.tudat
+#
+# The figure's own styling lives in ``conf/figures/<figure>.yaml`` and is
+# composed in by the rule that draws it, not here.
+
+defaults:
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Which figure to draw.  Must be a key of ``FIGURE_BUILDERS`` in
+# ``scripts/plot_simulation_figure.py``.
+figure: "state_history_3d"
+
+# The figure's own styling file.  Merged into ``cfg.figures.<figure>`` by the
+# script, so each figure's config stays next to the rule that draws it.
+figure_config: "conf/figures/state_history_3d.yaml"
+
+# Artifact to read for the result-driven figures.  Written by the propagation
+# (or estimation) stage.
+simulation_result: "results/pipeline/chapter_3/final_propagation_result.tudat"
+
+# Artifact to read for the array-driven figures (propagated formal errors and
+# the RSW distance with uncertainty).  Written by the estimation stage.
+formal_errors: "results/pipeline/chapter_3/propagated_formal_errors.npz"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

@@ -1,11 +1,11 @@
 # @package _global_
 
-# Config for ``scripts/plot_figure.py``.
+# Config for ``scripts/plot_residuals_figure.py``.
 #
-# The script draws exactly one figure per run.  Which figure, and which
+# The script draws exactly one residual figure per run.  Which figure, and which
 # artifacts to read, are passed as overrides by the Snakemake rules:
 #
-#     python scripts/plot_figure.py \
+#     python scripts/plot_residuals_figure.py \
 #         figure=residual_scatter \
 #         observations=results/.../observations.tudat \
 #         standard_frame=results/.../standard_frame.parquet
@@ -23,7 +23,7 @@ defaults:
 seed: 42
 
 # Which figure to draw.  Must be a key of ``FIGURE_BUILDERS`` in
-# ``scripts/plot_figure.py``.
+# ``scripts/plot_residuals_figure.py``.
 figure: "prefit_residuals_spice"
 
 # The figure's own styling file.  Merged into ``cfg.figures.<figure>`` by the

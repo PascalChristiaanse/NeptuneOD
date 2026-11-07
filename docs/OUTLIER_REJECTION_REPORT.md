@@ -69,7 +69,7 @@ This is the canonical, active outlier-rejection mechanism in the OD pipeline.
 
 ```python
 arcsec_to_rad = np.pi / (180.0 * 3600.0)
-upper_bound = 1.5            # arcseconds
+upper_bound = 1.5  # arcseconds
 upper_bound_rad = upper_bound * arcsec_to_rad
 ```
 
@@ -79,12 +79,14 @@ The threshold is **1.5 arcseconds**, converted to radians. Any observation whose
 
 ```python
 outlier_filter = observations_processing.observation_filter(
-    observations_processing.ObservationFilterType.residual_filtering,
-    upper_bound_rad)
+    observations_processing.ObservationFilterType.residual_filtering, upper_bound_rad
+)
 
 opposite_outlier_filter = observations_processing.observation_filter(
     observations_processing.ObservationFilterType.residual_filtering,
-    upper_bound_rad, use_opposite_condition=True)
+    upper_bound_rad,
+    use_opposite_condition=True,
+)
 ```
 
 - `outlier_filter` — keeps observations with residual **below** the threshold (the accepted set).
@@ -94,7 +96,8 @@ opposite_outlier_filter = observations_processing.observation_filter(
 
 ```python
 observation_single_set_current_filtered = estimation.observations.create_filtered_observation_set(
-    observation_single_set_current, outlier_filter)
+    observation_single_set_current, outlier_filter
+)
 ```
 
 `create_filtered_observation_set()` returns a new observation set containing only the accepted observations.
@@ -127,9 +130,13 @@ if epoch_filter_dict is not None and set_id in epoch_filter_dict:
     if np.shape(epoch_filter_dict[set_id])[0] != 0:
         epoch_filter = observations_processing.observation_filter(
             observations_processing.ObservationFilterType.epochs_filtering,
-            epoch_filter_dict[set_id])
-        observation_single_set_current_filtered = estimation.observations.create_filtered_observation_set(
-            observation_single_set_current_filtered, epoch_filter)
+            epoch_filter_dict[set_id],
+        )
+        observation_single_set_current_filtered = (
+            estimation.observations.create_filtered_observation_set(
+                observation_single_set_current_filtered, epoch_filter
+            )
+        )
 ```
 
 - `epoch_filter_dict` maps `set_id` → list of exact epochs to remove.
@@ -149,7 +156,8 @@ The rejected epochs are **always tracked**, regardless of which filters are acti
 ```python
 epochs_all = observation_single_set_current.observation_times
 residual_filtered_set = estimation.observations.create_filtered_observation_set(
-    observation_single_set_current, outlier_filter)
+    observation_single_set_current, outlier_filter
+)
 epochs_filtered = residual_filtered_set.observation_times
 epochs_rejected_current = [t for t in epochs_all if t not in epochs_filtered]
 epochs_rejected[set_id] = [t.to_float() for t in epochs_rejected_current]
@@ -176,8 +184,11 @@ This is the **older** mechanism used during the raw NSDC data-processing stage (
 ### 6.2 Threshold
 
 ```python
-outlier_indices = [i for i, nested_list in enumerate(diflist)
-                   if any(abs(x) > 25 for x, mean, std_dev in zip(nested_list, means, stddevs))]
+outlier_indices = [
+    i
+    for i, nested_list in enumerate(diflist)
+    if any(abs(x) > 25 for x, mean, std_dev in zip(nested_list, means, stddevs))
+]
 ```
 
 - **Hardcoded threshold: 25** (in the residual units, effectively arcseconds).
@@ -207,8 +218,8 @@ This is a **coarse, file-level** filter applied during data preparation. It excl
 
 ```python
 too_mean = (df2["mean_RA"].abs() > max_mean_ra) | (df2["mean_DEC"].abs() > max_mean_dec)
-too_std  = (df2["std_RA"] > max_std_ra) | (df2["std_DEC"] > max_std_dec)
-exclude  = too_mean | too_std
+too_std = (df2["std_RA"] > max_std_ra) | (df2["std_DEC"] > max_std_dec)
+exclude = too_mean | too_std
 ```
 
 A file is excluded if **either** its mean RA/DEC residual exceeds `max_mean` **or** its std RA/DEC exceeds `max_std`.
@@ -253,7 +264,7 @@ Saves the rejected epochs to `residuals_rejected_epochs.json` for every run:
 
 ```python
 output_file = out_dir / "residuals_rejected_epochs.json"
-with open(output_file, 'w') as f:
+with open(output_file, "w") as f:
     json.dump(epochs_rejected, f, indent=2)
 ```
 

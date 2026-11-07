@@ -532,9 +532,7 @@ def main(cfg: DictConfig):
         # that spreads the correlation evenly, and the per-observation
         # Mahalanobis distance, which is invariant to the choice of factor.
         WhitenedResidualScatter(cfg.figures.postfit_whitened_residual_scatter, access).plot()
-        SymmetricWhitenedResiduals(
-            cfg.figures.postfit_symmetric_whitened_residuals, access
-        ).plot()
+        SymmetricWhitenedResiduals(cfg.figures.postfit_symmetric_whitened_residuals, access).plot()
         MahalanobisResiduals(cfg.figures.postfit_mahalanobis_residuals, access).plot()
         # Gaia random/systematic error split from the transit structure.  Gaia
         # only: the metric needs the scan frame and the intra-transit sampling.
@@ -573,9 +571,7 @@ def main(cfg: DictConfig):
         cfg.figures.parameter_history_per_iteration, estimation_output
     ).plot()
     try:
-        CovarianceEllipses(
-            cfg.figures.covariance_ellipses, estimation_output, bodies, ctx
-        ).plot()
+        CovarianceEllipses(cfg.figures.covariance_ellipses, estimation_output, bodies, ctx).plot()
     except Exception as e:
         logger.warning("Failed to plot covariance ellipses: %s", e)
     RSWDistance(

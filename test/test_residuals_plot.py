@@ -65,9 +65,7 @@ def _access():
         reference_point="673",
     )
     set_b = _set([3.0], np.array([[5e-6, 6e-6]]), np.ones((1, 2)), reference_point="689")
-    frame = build_frame(
-        [_record("673", 1.0), _record("673", 2.0), _record("689", 3.0)]
-    )
+    frame = build_frame([_record("673", 1.0), _record("673", 2.0), _record("689", 3.0)])
     frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0, 0.0, 1.0]
     collection = obs.ObservationCollection([set_a, set_b])
     return ObservationAccess.build(collection, frame)

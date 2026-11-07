@@ -56,9 +56,7 @@ class TestBuildTritonEph2020StateHistory:
         np.testing.assert_allclose(first[3:, 0], [1.0, 2.0, 3.0])
 
     def test_decimation_subsamples(self, tmp_path):
-        rows = [
-            f"2000-01-01 0{h}:00:00,{h}.0,0.0,0.0,0.0,0.0,0.0" for h in range(6)
-        ]
+        rows = [f"2000-01-01 0{h}:00:00,{h}.0,0.0,0.0,0.0,0.0,0.0" for h in range(6)]
         sample = _write_sample(tmp_path / "TritonEph2020", rows)
 
         full = build_triton_eph_2020_state_history(sample, decimation=1)

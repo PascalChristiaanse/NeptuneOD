@@ -305,7 +305,7 @@ Today's dispatcher keys on a **fused type string** (`absolute_absolute_CCD_nsdb`
 With a standard frame, dispatch should key on the **columns actually present** plus a small normalised enum:
 
 ```python
-dispatch_key = (observable_kind, coordinate_kind)   # e.g. ("absolute", "radec"), ("relative", "xy")
+dispatch_key = (observable_kind, coordinate_kind)  # e.g. ("absolute", "radec"), ("relative", "xy")
 ```
 with `type` reduced to a normalised enum produced by `preprocessing/nsdb/`. That collapses 15+ fused strings onto ~4 registered factories and removes the typo sensitivity. `partition_by_sections`-style grouping (already in `observations/grouping/`) is unaffected.
 

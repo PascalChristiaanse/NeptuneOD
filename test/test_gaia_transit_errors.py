@@ -97,9 +97,7 @@ def test_nan_observations_dropped_and_sorted():
 
 
 def test_empty_input():
-    components = compute_transit_error_components(
-        np.array([]), np.array([]), np.array([])
-    )
+    components = compute_transit_error_components(np.array([]), np.array([]), np.array([]))
     assert components.epochs.size == 0
     assert np.isnan(components.random_sigma_al)
     assert np.isnan(components.systematic_sigma_al)

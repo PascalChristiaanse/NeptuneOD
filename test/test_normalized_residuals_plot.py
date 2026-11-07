@@ -66,9 +66,7 @@ def _cfg(**residuals_cfg):
 class TestNormalizedResiduals:
     def _access(self):
         # Two non-scanning observatories (scan_angle NaN).
-        set_a = _set(
-            [1.0, 2.0], np.array([[2e-6, 4e-6], [6e-6, 8e-6]]), np.ones((2, 2)), "673"
-        )
+        set_a = _set([1.0, 2.0], np.array([[2e-6, 4e-6], [6e-6, 8e-6]]), np.ones((2, 2)), "673")
         set_b = _set([3.0], np.array([[3e-6, 9e-6]]), np.ones((1, 2)), "689")
         frame = build_frame([_record(1.0), _record(2.0), _record(3.0, station="689")])
         frame[OBSERVATION_SET_INDEX_COLUMN] = [0.0, 0.0, 1.0]

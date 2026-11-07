@@ -4,7 +4,7 @@ Snakemake's ``code`` rerun trigger tracks the rule definition and the file named
 by ``script:``, but it does **not** follow Hydra ``defaults`` lists. A rule that
 reads ``config/plotting.yaml`` therefore stays "up to date" when
 ``config/style/journal.yaml`` -- selected by that file's ``defaults`` list --
-changes. 
+changes.
 
 :func:`hydra_dependencies` closes that gap::
 
@@ -248,9 +248,7 @@ def hydra_dependencies(
             continue
 
         try:
-            defaults_list, repository = _compose_defaults(
-                config_root, config_name, overrides or ()
-            )
+            defaults_list, repository = _compose_defaults(config_root, config_name, overrides or ())
         except Exception as exc:  # Hydra raises several unrelated types
             errors.append(f"  root={config_root}: {type(exc).__name__}: {exc}")
             continue

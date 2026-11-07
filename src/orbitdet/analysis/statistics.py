@@ -508,8 +508,7 @@ def mahalanobis(residuals, *, weight_matrix=None, sigmas=None) -> float:
     sigmas = np.asarray(sigmas, dtype="float64").ravel()
     if sigmas.size != residuals.size:
         raise ValueError(
-            f"Sigma vector size {sigmas.size} does not match residual vector size "
-            f"{residuals.size}."
+            f"Sigma vector size {sigmas.size} does not match residual vector size {residuals.size}."
         )
     good = np.isfinite(residuals) & np.isfinite(sigmas) & (sigmas > 0.0)
     if not np.any(good):

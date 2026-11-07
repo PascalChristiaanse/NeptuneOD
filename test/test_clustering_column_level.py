@@ -42,9 +42,7 @@ class TestPartitionByColumn:
         assert clusters[1].indices.tolist() == [2]
 
     def test_first_appearance_order_is_preserved(self):
-        clusters = partition_by_column(
-            np.array(["b", "a", "b", "a"]), "s1", column="kind"
-        )
+        clusters = partition_by_column(np.array(["b", "a", "b", "a"]), "s1", column="kind")
         assert [c.metadata["value"] for c in clusters] == ["b", "a"]
 
     def test_cluster_ids_are_slugified(self):

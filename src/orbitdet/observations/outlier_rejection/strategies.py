@@ -151,9 +151,7 @@ class EpochFilterOutlier(OutlierStrategy):
         tolerance_seconds: float = DEFAULT_EPOCH_TOLERANCE_SECONDS,
     ):
         if tolerance_seconds < 0:
-            raise ValueError(
-                f"tolerance_seconds must be non-negative, got {tolerance_seconds}"
-            )
+            raise ValueError(f"tolerance_seconds must be non-negative, got {tolerance_seconds}")
         self._epochs_to_remove = list(epochs_to_remove or [])
         self._tolerance_seconds = float(tolerance_seconds)
         logger.debug(
@@ -238,9 +236,7 @@ class EpochFilterOutlier(OutlierStrategy):
         )
         return filtered_set, metadata
 
-    def _resolve_epochs(
-        self, epochs_all: list[float]
-    ) -> tuple[list[float], list[float]]:
+    def _resolve_epochs(self, epochs_all: list[float]) -> tuple[list[float], list[float]]:
         """Map configured epochs onto the set's actual epochs.
 
         Returns

@@ -204,7 +204,7 @@ def test_missing_package_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     python_graph._root_dir.cache_clear()
 
     with pytest.raises(PythonDependencyError, match="not importable"):
-        python_graph._root_dir('definitely_not_installed_pkg')
+        python_graph._root_dir("definitely_not_installed_pkg")
 
     python_graph._root_dir.cache_clear()
 

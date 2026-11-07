@@ -293,10 +293,6 @@ def python_dependencies(entrypoint: str) -> list[str]:
     for name in list(modules):
         modules.update(_ancestor_packages(name))
 
-    files = {
-        path
-        for name in modules
-        if (path := _module_to_file(name, roots)) is not None
-    }
+    files = {path for name in modules if (path := _module_to_file(name, roots)) is not None}
 
     return sorted(_display_path(path) for path in files)

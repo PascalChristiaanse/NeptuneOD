@@ -80,10 +80,7 @@ def test_deduplicates_shared_configs(tmp_path: Path) -> None:
     root = tmp_path / "config"
     _write(
         root / "top.yaml",
-        "defaults:\n"
-        "  - /shared@a\n"
-        "  - /shared@b\n"
-        "  - _self_\n",
+        "defaults:\n  - /shared@a\n  - /shared@b\n  - _self_\n",
     )
     _write(root / "shared.yaml", "value: 1\n")
 

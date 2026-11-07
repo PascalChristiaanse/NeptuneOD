@@ -94,9 +94,7 @@ def block_sigmas(weight_matrix, block_size: int = 2) -> np.ndarray:
     weight_matrix = _symmetrize(weight_matrix)
     size = weight_matrix.shape[0]
     if size % block_size:
-        raise ValueError(
-            f"Matrix size {size} is not a multiple of block_size {block_size}."
-        )
+        raise ValueError(f"Matrix size {size} is not a multiple of block_size {block_size}.")
 
     sigmas = np.empty(size, dtype="float64")
     for start in range(0, size, block_size):

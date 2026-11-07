@@ -679,7 +679,6 @@ def compute_normalized_coefficients(J2: float, J4: float) -> tuple[np.ndarray, n
     return Cbar, Sbar
 
 
-
 def _setup_gravity_neptune_jacobson2009(
     cfg: DictConfig, body_settings: env_setup.BodyListSettings
 ) -> None:

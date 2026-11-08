@@ -1,7 +1,7 @@
 # Logging Architecture Review & Redesign — `solve_least_squares.py`
 
 **Status:** Investigation complete, design proposed, work packages ready to schedule
-**Scope:** `scripts/solve_least_squares.py`, `src/orbitdet/reproducibility/*`, `conf/logging/*`, `conf/sweep/*`, Hydra/Submitit/Aim interaction
+**Scope:** `scripts/solve_least_squares.py`, `src/orbitdet/reproducibility/*`, `conf/logging/*`, `conf/sweep/*`, Hydra/Submitit interaction
 **Date:** 2026-09-24
 
 ---
@@ -25,15 +25,11 @@ file-descriptor `dup2`), each of which re-injects captured text back into the
 4. **Submitit job logs land in an inconsistent, flat folder** because
    `submitit_folder` is overridden to `${hydra.sweep.dir}` (dropping the
    plugin's default `/%j`), mixing all jobs' `.out`/`.err` into one directory.
-5. **Aim is asked to capture terminal logs itself** (`capture_terminal_logs=True`),
-   duplicating the other three mechanisms and feeding large terminal-log chunks
-   into RocksDB — aggravating the already-documented Aim compaction/disk-write
-   storm.
 
 The recommendation is a **full replacement of the ad-hoc capture stack with a
 single, standard `logging.config.dictConfig` pipeline** built from stdlib
-building blocks (`QueueHandler`/`QueueListener`, `RotatingFileHandler`) plus one
-small, well-behaved Aim handler. All four current capture mechanisms are removed.
+building blocks (`QueueHandler`/`QueueListener`, `RotatingFileHandler`). All
+current capture mechanisms are removed.
 Native/C++ output (tudatpy) is handled by *tee-to-file only* — never re-injected
 into `logging`.
 
@@ -45,10 +41,6 @@ into `logging`.
 
 ```mermaid
 graph TD
-    subgraph "Python layer (stream.write patching)"
-        A["Aim Run(capture_terminal_logs=True)<br/>patches sys.stdout.write / sys.stderr.write"]
-    end
-
     subgraph "Python logging"
         L["logging.getLogger(__name__)"] --> H1["Hydra console handler<br/>EXT://SYS.STDOUT"]
         L --> H2["Hydra file handler<br/>output_dir/job.name.log"]
@@ -64,15 +56,13 @@ graph TD
     SO -->|dup2 intercepted by| F1
     F1 -->|os.write to original fd| TERM["terminal / Slurm .out"]
     L2 --> L
-    A -->|buffers + ships to RocksDB| AIM[("Aim repo")]
 ```
 
 | # | Mechanism | Where | Level | What it does | Re-injected into `logging`? |
 |---|-----------|-------|-------|--------------|-----------------------------|
 | 1 | Hydra `job_logging` (default) | installed by `@hydra.main` before `main()` | stream + fd | console → **stdout**; file → `{output_dir}/{job.name}.log` | n/a (is the logging system) |
 | 2 | `FdCapture` | `runtime.py` L46–155, started in `initialize()` L335–338 | raw **fd** `dup2` | dup2 fd1/fd2 into a pipe, reader thread echoes to original fd **and** re-logs every complete line as logger `FDCapture` | **Yes** |
-| 3 | `Aim Run(capture_terminal_logs=True)` | `aim.py` L76 | Python `sys.stdout.write`/`sys.stderr.write` patch (global, class-level) | buffers lines, ships to Aim as terminal logs | No (goes to RocksDB) |
-| 4 | `tudatpy.util.redirect_std` | `solve_least_squares.py` L411 | raw **fd** `dup2(1/2)` | redirects fd1+fd2 to `estimation_progression.log` during estimation | No (goes to file), but **nests** over #2 |
+| 3 | `tudatpy.util.redirect_std` | `solve_least_squares.py` L411 | raw **fd** `dup2(1/2)` | redirects fd1+fd2 to `estimation_progression.log` during estimation | No (goes to file), but **nests** over #2 |
 
 ### 2.2 Effective behaviour today (verified against real run directories)
 
@@ -131,9 +121,8 @@ There are **no** `conf/hydra/job_logging/*` or `conf/hydra/hydra_logging/*`
 overrides anywhere in the repository — the stock Hydra configuration is in force.
 
 `scripts/solve_least_squares.py` has `@enforce_initialization` **commented out**
-(L206, "Disabled to support submitit multiprocessing"). Consequence: the Aim run
-is never tagged `completed`/`crashed` and is never explicitly finalised for this
-script (only `aim_add_tag`/`aim_finalize` live inside the decorator).
+(L206, "Disabled to support submitit multiprocessing"). Consequence: the run
+outcome is never recorded for this script.
 
 ---
 
@@ -246,23 +235,7 @@ Problems with the flat override:
 - Slurm array jobs (on DelftBlue, `%A_%a`) can collide with the PID-based ids
   used locally, producing overwrites.
 
-### 3.5 Aim terminal-log capture duplicates and bloats (medium)
-
-`aim_start_run()` constructs `Run(..., capture_terminal_logs=True)` (aim.py L76).
-Aim's `ResourceTracker._install_stream_patches()` **globally and class-level**
-monkey-patches `sys.stdout.write` / `sys.stderr.write`
-(`aim/ext/resource/tracker.py` L27–51). Consequences:
-
-- It is a **third** capture layer stacked on top of FdCapture + Hydra.
-- `_uninstall_stream_patches` is also global — under a joblib launcher where
-  several Hydra jobs share a process, two Aim runs can fight over the patches
-  (one run's cleanup restores a stale `write`).
-- Every captured line is shipped into the RocksDB-backed repo, contributing to
-  the compaction/disk-write storm documented in the Aim debugging notes. Aim
-  *already* receives the same content through the (to-be-built) logging handler;
-  terminal-log capture is pure duplication.
-
-### 3.6 Misc. correctness issues
+### 3.5 Misc. correctness issues
 
 | Issue | Location | Impact |
 |---|---|---|
@@ -270,7 +243,7 @@ monkey-patches `sys.stdout.write` / `sys.stderr.write`
 | Estimation log re-read and re-logged line-by-line *after* the run | solve_least_squares.py L417–436 | doubles log volume; logs the entire estimation history at `INFO` a second time |
 | `print()` in library code (`kernel.py` L73–80, `gaia_data.py` L401) | `src/orbitdet/**` | escapes `logging`, is captured (and duplicated) by FdCapture only |
 | `initialize_test_mode()` never configures logging or capture | runtime.py L344–372 | tests exercise a different logging path than production |
-| `enforce_initialization` disabled for the main script | solve_least_squares.py L206 | Aim run never finalised/tagged on this script; no guaranteed flush |
+| `enforce_initialization` disabled for the main script | solve_least_squares.py L206 | run outcome never recorded for this script; no guaranteed flush |
 | Root config sets `override hydra/launcher: joblib` but the sweep overrides to `submitit_local` | conf/config.yaml L11, conf/sweep L9 | two launchers, two log layouts |
 | `initialize()` called `setup_logging()` **after** the `_CONTEXT` cache check | runtime.py (pre-WP2) | under a launcher that reuses one interpreter (joblib), only the first job configured logging; later jobs wrote into the first job's files or produced none |
 
@@ -283,21 +256,17 @@ monkey-patches `sys.stdout.write` / `sys.stderr.write`
 1. **One logging pipeline.** Exactly one place configures logging
    (`logging.config.dictConfig`). No `basicConfig`. No runtime monkey-patching of
    `sys.stdout`/`sys.stderr`. No `dup2` re-injection into logging.
-2. **Loggers produce records; handlers own destinations.** Console, file, and Aim
-   are three *handlers* on the same root logger — not three capture mechanisms.
+2. **Loggers produce records; handlers own destinations.** Console and file are
+   *handlers* on the same root logger — not separate capture mechanisms.
 3. **Never block the application thread on I/O.** All handlers are fronted by a
    single `QueueHandler` → `QueueListener` (stdlib, recommended for
-   multi-threaded applications). A slow disk or a hung Aim socket cannot stall a
-   propagation run.
+   multi-threaded applications). A slow disk cannot stall a propagation run.
 4. **Native/C++ output is captured to a file, not re-logged.** tudatpy output is
    written to `estimation_progression.log` via `tudatpy.util.redirect_std`, then
-   consumed by reference (preserved on disk, attached to Aim). It never re-enters
-   `logging` as records.
+   consumed by reference (preserved on disk). It never re-enters `logging` as
+   records.
 5. **Log location is derived from Hydra's run identity**, so every run folder is
    self-contained and Submitit logs sit beside the job that produced them.
-6. **Aim is a first-class handler**, and terminal-log capture is disabled
-   (`capture_terminal_logs=False`) because the handler is the single source.
-
 ### 4.2 Target topology
 
 ```mermaid
@@ -309,10 +278,8 @@ graph LR
     QL --> C["StreamHandler → stdout<br/>level INFO"]
     QL --> E["StreamHandler → stderr<br/>level WARNING"]
     QL --> F["RotatingFileHandler<br/>run_dir/job.log"]
-    QL --> A["AimLogHandler<br/>→ run.track / aim.sdk LogRecord"]
 
     NATIVE["tudatpy / C++ prints"] -.->|"redirect_std context"| NF[["run_dir/estimation_progression.log"]]
-    NF -.->|"artifact reference only"| AIM[("Aim repo")]
 ```
 
 Stream split (this is what makes `.err` populate):
@@ -322,7 +289,6 @@ Stream split (this is what makes `.err` populate):
 | `console` | `ext://sys.stdout` | `INFO` | human progress; Slurm `.out` |
 | `console_err` | `ext://sys.stderr` | `WARNING` | **errors & tracebacks; Slurm `.err`** |
 | `file` | `RotatingFileHandler(run_dir/{job}.log)` | `DEBUG` (configurable) | complete record, per run |
-| `aim` | Aim run | `INFO` (configurable) | experiment tracking UI |
 
 ### 4.3 Proposed module layout
 
@@ -330,9 +296,9 @@ Replace `FdCapture` + `setup_logging` with a dedicated package. **As built (WP2 
 
 ```
 src/orbitdet/reproducibility/logging/
-├── __init__.py     # configure_logging(), shutdown_logging(), attach_aim_run(), get_logger()
-├── config.py       # LoggingSettings / AimSettings; build_sink_payload() → dictConfig payload
-├── handlers.py     # coerce_level(), MaxLevelFilter, AimLogHandler
+├── __init__.py     # configure_logging(), shutdown_logging(), get_logger()
+├── config.py       # LoggingSettings; build_sink_payload() → dictConfig payload
+├── handlers.py     # coerce_level(), MaxLevelFilter
 └── listener.py     # BoundedQueueListener (join_timeout-guarded QueueListener)
 ```
 
@@ -348,13 +314,9 @@ code it configures.
 
 ```python
 # src/orbitdet/reproducibility/logging/__init__.py
-def configure_logging(cfg: DictConfig, *, run_dir: Path, aim_run: Run | None) -> None:
+def configure_logging(cfg: DictConfig, *, run_dir: Path) -> None:
     """Install the single logging pipeline. Idempotent."""
     ...
-
-
-def attach_aim_handler(aim_run: Run) -> None:
-    """Attach (or re-point) the Aim handler once the Run exists."""
 
 
 def shutdown_logging() -> None:
@@ -362,22 +324,10 @@ def shutdown_logging() -> None:
 ```
 
 ```python
-# handlers.py
-class AimLogHandler(logging.Handler):
-    """Map logging records to Aim without blocking the caller.
-
-    Emits to the Aim run's log API on the QueueListener thread only.
-    Failures are counted and dropped, never raised.
-    """
-
-    def emit(self, record: logging.LogRecord) -> None: ...
-```
-
-```python
 # solve_least_squares.py (native estimation output)
 with redirect_std(str(estimation_log_path)):  # tudatpy helper
     estimation_output = estimator.perform_estimation(estimation_input)
-# estimation_progression.log is consumed by reference (Aim artifact)
+# estimation_progression.log is consumed by reference
 ```
 
 ### 4.5 Submitit layout (target)
@@ -422,32 +372,31 @@ tracebacks now reach fd 2 → Slurm `.err` populates for real. Keep Hydra's
 do not race the application handlers.
 
 ### R3 — Front all handlers with `QueueHandler`/`QueueListener`
-Eliminates any possibility of a propagation run blocking on disk or on Aim. This
+Eliminates any possibility of a propagation run blocking on disk. This
 is the stdlib-sanctioned pattern for mixed native/threaded workloads and directly
 addresses the HPC symptom class.
 
-### R4 — Aim as a logging handler; disable terminal-log capture
-Set `capture_terminal_logs=False` on `Run(...)`. Attach `AimLogHandler` after the
-run exists. One source of truth for Aim logs, no global `sys.stdout` patching, no
-RocksDB terminal-log bloat.
+### R4 — Keep the pipeline free of external sinks
+No experiment-tracking sink is attached to the logging pipeline. Logs stay in the
+console streams and the per-run files, so no global `sys.stdout` patching and no
+external write amplification.
 
 ### R5 — Restore per-job Submitit folders and keep `.err` separate
 `submitit_folder: ${hydra.sweep.dir}/.submitit/%j`, `stderr_to_stdout: false`.
-Optionally log `hydra.job.override_dirname` as a parameter on the Aim run so a
-job id can be traced back to its parameter combination.
+The per-job folder name already encodes `hydra.job.override_dirname`, so a job
+id can be traced back to its parameter combination.
 
 ### R6 — Re-enable outcome tagging & guaranteed finalisation
 Stop relying on the disabled `enforce_initialization`. Use a `try/finally` (or a
-context manager) in the Hydra entrypoint: tag the run `completed`/`crashed` and
-call `run.close()` on the way out, independent of the launcher. This removes the
-"run left running / logs unflushed" failure mode and makes crashes visible in Aim.
+context manager) in the Hydra entrypoint: record the run outcome and flush the
+logs on the way out, independent of the launcher. This removes the "logs
+unflushed" failure mode and makes crashes visible in the run log.
 
 ### R7 — Keep `redirect_std`, delete the log re-read
 Keep `with redirect_std(str(estimation_log_path)):` around the estimator call
 (it captures native line output to a file, and that file is consumed by
 reference). Remove the post-hoc "read `estimation_progression.log` and re-log
 every line" block (solve_least_squares.py) — it doubled volume for no benefit.
-Attach the artefact to Aim. Structured per-iteration metrics already go to Aim.
 
 ### R8 — Replace `print()` in library code with module loggers
 `src/orbitdet/data/kernel.py` and `src/orbitdet/data/gaia_data.py` contain
@@ -455,8 +404,8 @@ Attach the artefact to Aim. Structured per-iteration metrics already go to Aim.
 stop relying on capture.
 
 ### R9 — Logging parity for test mode
-`initialize_test_mode()` should install the same pipeline (console-only, no Aim,
-no file rotation) so tests exercise production code paths.
+`initialize_test_mode()` should install the same pipeline (console-only, no file
+rotation) so tests exercise production code paths.
 
 ---
 
@@ -484,8 +433,8 @@ path; WP7 is the validation gate.
 - Add `conf/hydra/job_logging/neptuneod.yaml` and
   `conf/hydra/hydra_logging/neptuneod.yaml`; wire them via the experiment
   defaults (`- override hydra/job_logging: neptuneod`).
-- Replace `runtime.setup_logging()` body with `configure_logging(cfg, run_dir,
-  aim_run=None)`; honour `cfg.logging.level`, `cfg.logging.file_level`,
+- Replace `runtime.setup_logging()` body with `configure_logging(cfg, run_dir)`;
+  honour `cfg.logging.level`, `cfg.logging.file_level`,
   `tudatpy_logging_level`, `muted_loggers`.
 - **Acceptance:** `logger.debug/info/warning/error` obey configured levels;
   `cfg.logging.level: WARNING` visibly reduces the file; the file format is the
@@ -509,8 +458,7 @@ path; WP7 is the validation gate.
 >   `configure_logging()`.
 > - **`BoundedQueueListener` replaces the stdlib `QueueListener`.** The stdlib
 >   `stop()` calls `thread.join()` with no timeout; a wedged sink (unreachable
->   network share, stopped Aim server, full disk) would hang interpreter
->   shutdown. The subclass bounds the join and exposes a `drained` flag.
+>   network share, full disk) would hang interpreter shutdown. The subclass bounds the join and exposes a `drained` flag.
 >
 > **Bug found and fixed while implementing WP2:** `initialize()` returned the
 > cached `_CONTEXT` *before* calling `setup_logging()`. Under a Hydra launcher
@@ -526,58 +474,10 @@ path; WP7 is the validation gate.
 > `gaia_eph_check.yaml`) that defined `logging` inline and therefore missed the
 > `job_logging: none` override.
 
-### WP3 — Aim as a logging handler ❗critical
-- Implement `AimLogHandler` (non-blocking, failure-tolerant, re-pointed via
-  `attach_aim_handler`).
-- Set `capture_terminal_logs=False` in `aim_start_run`.
-- Remove the per-line Aim metric logging boilerplate where the handler now covers
-  logs; keep `aim_log_metrics`/`aim_log_figure`/`aim_log_artifact_reference`.
-- **Acceptance:** Aim UI "Logs" tab shows structured records with logger name and
-  level; no gain in the Aim worker's per-process write rate versus a run with Aim
-  logs disabled (measure with the existing `scripts/debug_aim_disk_usage.py`
-  methodology); no global `sys.stdout` patch is installed by the SDK.
-
-**Est: 2 D. Depends on WP2.**
-
-> **Status: DONE (2026-09-24).** Delivered as a `logging.Handler` that writes to
-> Aim's own `__log_records` sequence.
->
-> - **Records are tracked explicitly** with `run.track(LogRecord(...))` rather
->   than via `Run.log_info`/`log_warning`/`log_error`. Two reasons, both verified
->   empirically: Aim's built-in helpers capture the *caller* frame for their
->   `logger_info`, which would record the handler's location for every message;
->   passing the stdlib record's `pathname`/`lineno` preserves the true call site.
->   The built-in helpers also call `self._checkins.check_in(..., block=level >
->   WARNING)`, which blocks on the run's progress tracker for every error — not
->   something a logging handler should do.
-> - **`attach_aim_run()`** re-points the handler at the live run. The pipeline is
->   configured before the Aim run exists (the run dir comes from Hydra), so the
->   handler starts detached and `initialize()` attaches it.
-> - **Failures are counted and reported at most `max_warnings` times** to stderr,
->   never raised. A stopped Aim server cannot break a propagation run or flood
->   the console.
->
-> **Bug found and fixed while implementing WP3:** `shutdown_logging()` originally
-> detached the Aim handler *before* stopping the queue listener. Records already
-> on the queue were then drained into a detached handler and silently lost.
-> `listener.stop()` now runs first (it drains), and detaching happens afterwards.
-> A test (`test_attach_aim_run_points_the_handler_at_the_run`) covers this.
->
-> **Verified end-to-end:** a real Hydra run produced all three records in the Aim
-> repo (`INFO`/`WARNING`/`ERROR` on `__log_records`), with zero `AimLogHandler
-> failed` messages. Confirmed via a correct comparison that
-> `sys.stdout.write` remains the stock `TextIOWrapper.write` — the earlier
-> "patched" reading was a false positive from comparing bound methods with `is`
-> (each attribute access creates a new bound-method object).
->
-> Note: `results/.aim` must be reindexed (`aim storage --repo results/.aim
-> reindex -y`) before the run and its logs appear in the Aim UI.
-
 ### WP4 — Submitit log placement & stderr separation (high)
 - Restore `submitit_folder: ${hydra.sweep.dir}/.submitit/%j` in
   `conf/sweep/params_x_data.yaml`; add `stderr_to_stdout: false` explicitly.
 - Add the same under `conf/config.yaml` for the single-run launcher.
-- Log `override_dirname` (and submitit job id, when available) onto the Aim run.
 - Clean up the pre-existing flat/`.submitit` inconsistency in `results/` (manual,
   or a one-shot migration script) so old runs are not misread.
 - **Acceptance:** after a 2-job multirun, each job's `.out`/`.err` sits under
@@ -594,25 +494,16 @@ path; WP7 is the validation gate.
 >   2-job submitit multirun: each job's `_log.out`/`_log.err` lands in
 >   `…/.submitit/<job_id>/`.
 > - A forced failure produced a **non-empty `.err` containing the full traceback**
->   (via `@enforce_initialization`, which had been disabled for this script) and
->   the Aim run was tagged `crashed`. Successful jobs are tagged `completed`.
-> - Aim runs now record `job_name`, `job_num`, `job_id` and `override_dirname`,
->   so a submitit job id can be traced back to its parameter combination.
+>   (via `@enforce_initialization`, which had been disabled for this script).
 >
 > **Two bugs found while implementing WP4:**
 >
-> 1. **`enforce_initialization` silently skipped tagging under submitit.** The
->    submitit launcher pickles the decorated function into the child process;
->    the wrapper's closure `__globals__` then points at a deserialized *copy* of
->    the `runtime` module, so reading `_CONTEXT` through it always saw `None` and
->    the `completed`/`crashed` tag was lost. The `finally` block now resolves the
->    module via `sys.modules[__name__]` at runtime, which is the genuine module
->    instance. Verified: a crashed submitit job is now tagged `crashed`, a
->    successful one `completed`.
-> 2. **`_job_identity` could raise** on non-`DictConfig` `hydra.job` nodes (it
->    relies on `OmegaConf.select`). It is now defensive (`_select_field` falls
->    back to `getattr`), matching its documented "never raises" contract. Tests
->    caught this.
+> 1. **`enforce_initialization` silently skipped its `finally` bookkeeping under
+>    submitit.** The submitit launcher pickles the decorated function into the
+>    child process; the wrapper's closure `__globals__` then points at a
+>    deserialized *copy* of the `runtime` module, so reading `_CONTEXT` through it
+>    always saw `None`. The `finally` block now resolves the module via
+>    `sys.modules[__name__]` at runtime, which is the genuine module instance.
 >
 > The literal `%j` directory some runs show under `.submitit/%j` is a submitit
 > creation quirk (it `mkdir`s the template before substitution); it is empty and
@@ -624,7 +515,6 @@ path; WP7 is the validation gate.
 - Replace `with redirect_std(...)` around the estimator with
   `with FdTee(1, run_dir/"estimation_native.log")` (and fd 2 if desired).
 - Delete the "re-read and re-log" block.
-- Attach the native log via `aim_log_artifact_reference`.
 - **Acceptance:** estimator output is captured to a file; the main run log is not
   duplicated; a stress test that writes >1 MiB of native output during an
   estimation-sized workload does not hang.
@@ -636,7 +526,7 @@ path; WP7 is the validation gate.
 > The `FdTee` implementation was developed, tested (10 tests) and wired in, but
 > then **removed again by decision**. Rationale: `redirect_std` simply captures
 > the estimator's line output to a file, and consuming that file by reference
-> (Aim artifact reference, per-run log) is sufficient. Keeping an extra tee
+> (per-run log) is sufficient. Keeping an extra tee
 > layer on top of it adds code and a reader thread for no practical benefit over
 > the existing, battle-tested `tudatpy` helper.
 >
@@ -647,7 +537,7 @@ path; WP7 is the validation gate.
 > - The post-hoc "re-read `estimation_progression.log` and re-log every line as
 >   `logger.info`" block is **deleted** — it duplicated the entire run log for
 >   no benefit. The file is consumed by reference: preserved on disk and
->   attached to Aim via `aim_log_artifact_reference`.
+>   preserved on disk.
 > - `estimation_progression.log` therefore behaves exactly as before for
 >   consumers that read it, with none of the doubling.
 >
@@ -663,8 +553,7 @@ path; WP7 is the validation gate.
   `solve_least_squares.py` (try/finally or context manager), independent of
   `enforce_initialization`.
 - **Acceptance:** `grep -rn "print(" src/orbitdet` returns only intentional
-  user-facing output (ideally none); a crashed run is tagged `crashed` in Aim and
-  its logs are flushed.
+  user-facing output (ideally none); a crashed run's logs are flushed.
 
 **Est: 1–2 D.**
 
@@ -677,16 +566,13 @@ path; WP7 is the validation gate.
 >   - `src/orbitdet/data/gaia_data.py` — removed the stray `print("hi")`,
 >     the per-file loader progress is `logger.info`, and `summary()` logs its
 >     report via `logger.info` so it participates in levels/rotation.
->   - The only remaining `print()` is the intentional one inside
->     `AimLogHandler._record_failure`, which must work even when the logging
->     pipeline itself is broken.
+>   - No `print()` calls remain in library code.
 > - `initialize_test_mode()` now installs the production pipeline with
 >   `configure_logging(None, run_dir=None)` (console-only: stdout split + queue,
->   no file, no Aim), so tests exercise the real handler wiring instead of a
->   separate `basicConfig` path.
-> - Outcome tagging for `solve_least_squares.py` was already delivered as part
->   of WP4 (re-enabling `@enforce_initialization` after the `sys.modules` fix);
->   verified `completed`/`crashed` tags under submitit.
+>   no file), so tests exercise the real handler wiring instead of a separate
+>   `basicConfig` path.
+> - Outcome handling for `solve_least_squares.py` was already delivered as part
+>   of WP4 (re-enabling `@enforce_initialization` after the `sys.modules` fix).
 
 ### WP7 — Validation on DelftBlue ❗gate
 - Add a soak test that stresses native output during a long estimation and runs
@@ -695,10 +581,8 @@ path; WP7 is the validation gate.
 - Run a full `sweep/params_x_data` multirun on the cluster:
   - no freeze across all jobs,
   - every `.err` correct and separate,
-  - every run folder self-contained,
-  - Aim logs present with no write-rate regression.
-- Add unit tests: level filtering, stdout/stderr split, queue flush on shutdown,
-  Aim handler fault tolerance.
+  - every run folder self-contained.
+- Add unit tests: level filtering, stdout/stderr split, queue flush on shutdown.
 - **Acceptance:** 100% of jobs complete; a deliberately crashed job yields a
   traceback in `.err`; soak test passes N iterations.
 
@@ -708,7 +592,7 @@ path; WP7 is the validation gate.
 
 ```mermaid
 graph LR
-    WP1 --> WP2 --> WP3 --> WP7
+    WP1 --> WP2 --> WP7
     WP2 --> WP5 --> WP7
     WP4 --> WP7
     WP2 --> WP6 --> WP7
@@ -725,8 +609,7 @@ stderr split (the two most impactful items) in the first 3–4 days.
 |---|---|
 | Removing FdCapture loses native (C++) output currently captured | `tudatpy.util.redirect_std` keeps capturing the estimator's output to a file (WP5 kept it); the re-log duplication was removed instead |
 | Queue listener drops records on hard crash (`os._exit`, SIGKILL) | `logging.shutdown()` + `QueueListener.stop()` in `finally`/`atexit`; tests assert flush-on-normal-exit |
-| Aim handler latency reappears under load | Handler runs on the listener thread, is failure-tolerant, and can be disabled via `cfg.logging.aim.enabled` |
-| Hydra's own `job_logging` override conflicts with the runtime pipeline | Keep Hydra's config console-only + quiet; the runtime adds file/Aim handlers once and is idempotent |
+| Hydra's own `job_logging` override conflicts with the runtime pipeline | Keep Hydra's config console-only + quiet; the runtime adds file handlers once and is idempotent |
 | Existing run directories become inconsistent with the new layout | Document the cutover; keep read-only tooling tolerant of both layouts; optional migration script in WP4 |
 
 ---
@@ -735,16 +618,11 @@ stderr split (the two most impactful items) in the first 3–4 days.
 
 1. **Rotation policy:** max size / backup count for the run log? (proposal:
    `10 MiB × 5`, compress backups).
-2. **Aim log volume:** log all levels to Aim, or `INFO`+ only? (proposal: `INFO`+,
-   configurable).
-3. **`stderr_to_stdout` on DelftBlue:** do site operators prefer a single merged
+2. **`stderr_to_stdout` on DelftBlue:** do site operators prefer a single merged
    stream? If so, `.err` separation is moot and WP4 reduces to folder placement
    plus a distinct `errors.log` file handler.
-4. **Slurm array jobs:** confirm whether the cluster runs sweeps as arrays
+3. **Slurm array jobs:** confirm whether the cluster runs sweeps as arrays
    (`%A_%a`) or as independent local jobs, to finalise the `%j` vs `%A_%a` choice.
-5. **Aim server availability during sweeps:** should the Aim handler buffer
-   offline and flush later, or fail soft and drop? (proposal: fail soft, count
-   drops, log once at `WARNING`).
 
 ---
 
@@ -752,12 +630,11 @@ stderr split (the two most impactful items) in the first 3–4 days.
 
 | Claim | Evidence |
 |---|---|
-| Four capture mechanisms | `runtime.py` L46–155; `aim.py` L76; `solve_least_squares.py` L411; Hydra `default.yaml` |
+| Three capture mechanisms | `runtime.py` L46–155; `solve_least_squares.py` L411; Hydra `default.yaml` |
 | `basicConfig` no-op | Log file contains Hydra format, not `basicConfig` format (`results/solve_least_squares/2d37969_dirty/2026-09-10_15-35-28/solve_least_squares.log`) |
 | `.err` lacks app errors | `same dir/*_log.err` contains only debugpy/conda/matplotlib warnings; `.out` has all `INFO` |
 | Flat submitit folder | `submitit_folder: ${hydra.sweep.dir}` in `conf/sweep/params_x_data.yaml`; flat `.err` files in run dirs |
 | Mixed submitit layouts | flat (`2d37969_dirty/2026-09-10_15-35-28/`) vs nested (`a145f82_dirty/2026-08-29_13-02-27/.submitit/`) |
-| Aim patches `sys.stdout` | `aim/ext/resource/tracker.py` L27–51 |
 | Deadlock path | `FdCapture._forward_output` L95 (`os.write` to original fd) + L66 (`logger.log`) + Hydra console handler `ext://sys.stdout` |
 
 ## Appendix B — Files touched by the redesign
@@ -766,7 +643,6 @@ stderr split (the two most impactful items) in the first 3–4 days.
 |---|---|
 | `src/orbitdet/reproducibility/runtime.py` | remove FdCapture stack (WP1); delegate `setup_logging` to the pipeline; configure logging before the context cache check (WP2) |
 | `src/orbitdet/reproducibility/logging/` (new) | `dictConfig` pipeline, handlers, `BoundedQueueListener` (WP2) |
-| `src/orbitdet/reproducibility/aim.py` | `capture_terminal_logs=False` read from `AimSettings` (WP3) |
 | `scripts/solve_least_squares.py` | drop `redirect_std` + log re-read; restore finalisation (WP5/WP6) |
 | `conf/logging/default.yaml` | levels, rotation, `override /hydra/job_logging: none` (WP2) |
 | `conf/generator/*.yaml` | use `/logging: default` instead of inline `logging:` (WP2) |

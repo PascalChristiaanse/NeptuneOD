@@ -6,14 +6,11 @@ Usage:
 
 import logging
 import os
-from pathlib import Path
 
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.dynamics import simulator as sim
 from tudatpy.estimation import observations as obs
@@ -24,8 +21,6 @@ from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact,
-    aim_log_metrics,
     enforce_initialization,
     initialize,
 )
@@ -84,9 +79,7 @@ def main(cfg: DictConfig):
     prop = get_propagator_settings(cfg, ctx, acc, integ, dependent_variables_to_save=[])
 
     # Create observations
-    observations, observation_models, standard_frame = create_observation_collection(
-        cfg, bodies
-    )
+    observations, observation_models, standard_frame = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     if prop.processing_settings.set_integrated_result:
@@ -107,38 +100,15 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
-    # Log metric summary of residuals to Aim
-    try:
-        residual_sets = observations.get_single_observation_sets()
-        concatenated = np.concatenate(
-            [np.asarray(obs_set.residuals).flatten() for obs_set in residual_sets]
-        )
-        if concatenated.size > 0:
-            aim_log_metrics(
-                {
-                    "residuals_rms": float(np.sqrt(np.mean(np.square(concatenated)))),
-                    "residuals_mean": float(np.mean(concatenated)),
-                    "residuals_max": float(np.abs(concatenated).max()),
-                    "num_observations": int(concatenated.size),
-                }
-            )
-            logger.info("Logged residual summary metrics to Aim.")
-    except Exception as exc:
-        logger.warning("Could not log residual summary metrics: %s", exc)
-
     access = ObservationAccess.build(observations, standard_frame)
-    Residuals(cfg, access).plot()
-    # ResidualsPSD(cfg, observations, 20, cfg.figures.residuals_psd).plot()
-    ResidualsScan(cfg, access).plot()
-    # ResidualScanHistogram(cfg.figures, observations).plot()
+    Residuals(OmegaConf.select(cfg, "figures.residuals", default={}), access).plot()
+    # ResidualsPSD(OmegaConf.select(cfg, "figures.residuals_psd", default={}), access).plot()
+    ResidualsScan(OmegaConf.select(cfg, "figures.residuals_scan", default={}), access).plot()
+    # ResidualScanHistogram(
+    #     OmegaConf.select(cfg, "figures.residual_histogram", default={}), access
+    # ).plot()
 
     logger.info("Pre-fit residuals plotted successfully.")
-
-    # Also log config.yaml as artifact for this run
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    config_path = output_dir / "config.yaml"
-    if config_path.exists():
-        aim_log_artifact(config_path)
 
     backend = plt.get_backend().lower()
     if backend == "agg" or "inline" in backend:
@@ -152,12 +122,11 @@ def main(cfg: DictConfig):
 
     # Observations get loaded correctly (manually verified)
     # Observation times get loaded correctly (manually verified)
-    # Gaia ephemeris gets loaded correctly (see aim run, manually verified, J2000 from SSB
+    # Gaia ephemeris gets loaded correctly (manually verified, J2000 from SSB
     # (as per config/gaia docs)https://gea.esac.esa.int/archive/documentation/FPR/chap_datamodel/
     # sec_dm_focused_product_release/ssec_dm_sso_observation.html)
 
     # Ephemeris doesnt seem to match up with literature
-    # (see aim runs favorites/gaiaprefitsresiduals 59fe499)
     # "systematics and refinement... yuan2025"
 
 

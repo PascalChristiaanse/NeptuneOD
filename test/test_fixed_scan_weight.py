@@ -99,9 +99,7 @@ class TestFixedScanBlockWeights:
         obs_set = _make_obs_set(np.zeros((1, 2)), epochs, dec=dec)
 
         s = FixedScanWeight(along_scan_sigma_mas=5.0, across_scan_sigma_mas=200.0)
-        blocks = s.compute_block_weights(
-            obs_set, _groups("Gaia", 1), "Gaia", view=_view([psi])
-        )
+        blocks = s.compute_block_weights(obs_set, _groups("Gaia", 1), "Gaia", view=_view([psi]))
         w = blocks[0]
 
         sigma_al = 5.0 * MAS_TO_RAD

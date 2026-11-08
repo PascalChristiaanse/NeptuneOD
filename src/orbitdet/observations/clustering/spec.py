@@ -244,8 +244,7 @@ def _build_column_level(
         values = view.column(str(column))
     except KeyError as exc:
         raise ValueError(
-            f"The 'column' clustering level names '{column}', which is not a "
-            f"standard-frame column."
+            f"The 'column' clustering level names '{column}', which is not a standard-frame column."
         ) from exc
     return partition_by_column(values, set_id, layer=layer, column=str(column))
 

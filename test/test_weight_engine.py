@@ -30,7 +30,6 @@ def _patch_links_receiver(monkeypatch):
     )
 
 
-
 def _default_strategy(engine):
     """The strategy a plan-driven engine applies to unmatched sets.
 
@@ -151,18 +150,20 @@ class TestWeightEngineFromConfig:
         """Descriptor form with inline strategy kwargs (no engine edit needed)."""
         cfg = OmegaConf.create(
             {
-                "default": {"strategy": {
-                    "type": "layered",
-                    "combine": "geometric",
-                    "layers": [
-                        {
-                            "level": "section",
-                            "mode": "fixed",
-                            "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
-                        },
-                        {"level": "timeframe", "mode": "rmse_descaled"},
-                    ],
-                }},
+                "default": {
+                    "strategy": {
+                        "type": "layered",
+                        "combine": "geometric",
+                        "layers": [
+                            {
+                                "level": "section",
+                                "mode": "fixed",
+                                "sigmas": {"pre_encounter": 1.0, "post_encounter": 4.0},
+                            },
+                            {"level": "timeframe", "mode": "rmse_descaled"},
+                        ],
+                    }
+                },
                 "clustering": {
                     "levels": [
                         {
@@ -433,16 +434,18 @@ class TestWeightEngineApply:
         """Fixed sigmas via the layered strategy (descriptor form)."""
         cfg = OmegaConf.create(
             {
-                "default": {"strategy": {
-                    "type": "layered",
-                    "layers": [
-                        {
-                            "level": "set",
-                            "mode": "fixed",
-                            "sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
-                        },
-                    ],
-                }},
+                "default": {
+                    "strategy": {
+                        "type": "layered",
+                        "layers": [
+                            {
+                                "level": "set",
+                                "mode": "fixed",
+                                "sigmas": {"689": {"ra": 0.15, "dec": 0.15}},
+                            },
+                        ],
+                    }
+                },
                 "clustering": {"levels": [{"type": "set"}]},
             }
         )
@@ -458,16 +461,18 @@ class TestWeightEngineApply:
 
         cfg = OmegaConf.create(
             {
-                "default": {"strategy": {
-                    "type": "layered",
-                    "layers": [
-                        {
-                            "level": "set",
-                            "mode": "fixed",
-                            "sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
-                        },
-                    ],
-                }},
+                "default": {
+                    "strategy": {
+                        "type": "layered",
+                        "layers": [
+                            {
+                                "level": "set",
+                                "mode": "fixed",
+                                "sigmas": {"689": {"ra": 0.1, "dec": 0.2}},
+                            },
+                        ],
+                    }
+                },
                 "clustering": {"levels": [{"type": "set"}]},
             }
         )
@@ -502,11 +507,13 @@ class TestWeightEngineBlockWeights:
 
         cfg = OmegaConf.create(
             {
-                "default": {"strategy": {
-                    "type": "fixed_scan",
-                    "along_scan_sigma_mas": 5.0,
-                    "across_scan_sigma_mas": 200.0,
-                }},
+                "default": {
+                    "strategy": {
+                        "type": "fixed_scan",
+                        "along_scan_sigma_mas": 5.0,
+                        "across_scan_sigma_mas": 200.0,
+                    }
+                },
                 "clustering": {"levels": [{"type": "set"}]},
             }
         )

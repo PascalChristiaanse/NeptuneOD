@@ -120,15 +120,15 @@ class TestMask:
         np.testing.assert_array_equal(mask, [True, True, False, False])
 
     def test_conjunction(self):
-        mask = compile_selection(
-            "data_source == 'nsdb' and observatory_code != '689'"
-        ).mask(_frame())
+        mask = compile_selection("data_source == 'nsdb' and observatory_code != '689'").mask(
+            _frame()
+        )
         np.testing.assert_array_equal(mask, [False, True, False, False])
 
     def test_disjunction(self):
-        mask = compile_selection(
-            "observatory_code == '689' or observatory_code == 'Gaia'"
-        ).mask(_frame())
+        mask = compile_selection("observatory_code == '689' or observatory_code == 'Gaia'").mask(
+            _frame()
+        )
         np.testing.assert_array_equal(mask, [True, False, True, False])
 
     def test_numeric_comparison(self):

@@ -4,8 +4,8 @@
 The stdlib :class:`logging.handlers.QueueListener` drains a queue on a daemon
 thread, but its :meth:`~logging.handlers.QueueListener.stop` calls
 ``thread.join()`` with no timeout. If a sink is wedged (a network share that has
-gone away, a full disk, a stopped Aim server) that join blocks forever and takes
-interpreter shutdown with it.
+gone away, a full disk) that join blocks forever and takes interpreter shutdown
+with it.
 
 :class:`BoundedQueueListener` keeps the stdlib behaviour but adds a timeout so
 shutdown can never hang: on timeout the listener is abandoned rather than waited

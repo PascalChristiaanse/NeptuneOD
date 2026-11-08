@@ -6,13 +6,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter, LogLocator
-from omegaconf import DictConfig
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 
-from orbitdet.analysis import ObservationAccess, analysis_frame
 from orbitdet.analysis.distribution import find_psd_peaks, lombscargle_psd, welch_psd
-from orbitdet.visualization.base import Plot, _snake_case
-from orbitdet.visualization.residuals import _cfg_get
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 
 display = os.environ.get("DISPLAY")
 is_headless_display = display == ":99" or display == "localhost:99" or display == "127.0.0.1:99"
@@ -45,10 +42,6 @@ TRITON_PERIOD_DAYS = 5.877
 
 # Number of frequency samples per decade for the Lomb-Scargle grid.
 DEFAULT_LOMB_FREQS_PER_DECADE = 200
-
-
-def _plot_config(cfg: DictConfig):
-    return cfg.get("residual_psd", {})
 
 
 def _parse_time_range(plot_cfg):
@@ -199,7 +192,7 @@ def _configure_psd_axis(
     ax.format_coord = functools.partial(_format_hover_coord, axes_cfg=axes_cfg)
 
 
-class ResidualsPSD(Plot):
+class ResidualsPSD(ResidualPlot):
     """Plot Welch or Lomb-Scargle PSD spectra of the residual signal.
 
     Consumes an :class:`~orbitdet.analysis.access.ObservationAccess` - the
@@ -211,65 +204,22 @@ class ResidualsPSD(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by``, ``include_rejected``, ``method`` and ``window_length_days``
+        are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    window_length_days : float
-        Welch segment length in days (ignored by the Lomb-Scargle method).
-    plot_cfg : DictConfig | dict
-        The figure configuration block (``cfg.figures.residuals_psd``).
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``, used for
-        the output file name.  Defaults to ``"residuals_psd"``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the spectra by.  ``None`` (default)
-        falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    include_rejected : bool
-        Whether to include rows that outlier rejection removed.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        window_length_days: float,
-        plot_cfg,
-        use_figure_name: str | None = "residuals_psd",
-        group_by: str | list[str] | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.access = access
-        self.window_length_days = window_length_days
-        self.plot_cfg = plot_cfg
-        self.use_figure_name = use_figure_name
-        self.group_by = group_by
-        self.include_rejected = include_rejected
-        self.name = use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
+    @property
+    def window_length_days(self) -> float:
+        """Welch segment length in days, from the config."""
+        return float(_cfg_get(self.cfg, "window_length_days", default=DEFAULT_WINDOW_LENGTH_DAYS))
 
     def _make_figure(self):
         window_length_days = self.window_length_days
-        plot_cfg = self.plot_cfg
+        plot_cfg = self.cfg
 
-        figure_cfg = plot_cfg.get("figure", {})
         styling_cfg = plot_cfg.get("styling", {})
         x_lim_cfg = plot_cfg.get("x_lim", plot_cfg.get("axes", {}).get("x_lim", {}))
         axes_cfg = plot_cfg.get("axes", {})
@@ -286,8 +236,7 @@ class ResidualsPSD(Plot):
         show_triton_period = bool(peak_cfg.get("show_triton_period", True))
         show_average_error = bool(peak_cfg.get("show_average_error", True))
 
-        fig_width = float(figure_cfg.get("width", DEFAULT_FIGURE_WIDTH))
-        fig_height = float(figure_cfg.get("height", DEFAULT_FIGURE_HEIGHT))
+        fig_width, fig_height = self._figure_size(cfg=plot_cfg)
         fig, axs = plt.subplots(2, 1, figsize=(fig_width, fig_height), sharex=True)
         colors = plt.get_cmap(styling_cfg.get("cmap", "tab20"))
         line_width = float(styling_cfg.get("line_width", 1.2))
@@ -299,17 +248,10 @@ class ResidualsPSD(Plot):
         max_frequency = 0.0
 
         # One tidy frame: standard columns + residual/weight/sigma columns.
-        frame = analysis_frame(self.access, unit=None, scan=False, normalized=False)
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
+        frame = self._frame(unit=None, scan=False, normalized=False)
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
         target_name = "target"
         if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:

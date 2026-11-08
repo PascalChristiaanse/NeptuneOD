@@ -32,8 +32,8 @@ dependencies:
   - beautifulsoup4
   # The NSDB descriptor parser builds its field grammar with pyparsing.
   - pyparsing
-  - aim
   - plotly
+  - grimp
   - joblib
   - platformdirs
 
@@ -42,5 +42,8 @@ dependencies:
     - astroquery>=0.4.8.dev9306
     - git+https://github.com/NASA-PDS/PyTrk234.git
     
+    # Plotting styles
+    - git+https://github.com/zachariahmilby/funky-fresh.git
+
     # Install orbitdet program
     - -e .

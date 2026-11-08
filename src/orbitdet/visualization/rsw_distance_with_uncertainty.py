@@ -2,24 +2,9 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig
 
-from orbitdet.visualization.base import Plot, _make_hover_formatter
-
-
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.simulation_base import ArrayPlot, _cfg_get
 
 
 def _seconds_since_j2000_to_datetimes(seconds_since_j2000):
@@ -36,7 +21,7 @@ def _configure_datetime_axis(ax: plt.Axes) -> None:
     ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
-class RSWDistanceWithUncertainty(Plot):
+class RSWDistanceWithUncertainty(ArrayPlot):
     """2x2 plot of the RSW position difference between estimated and spice trajectories
     with :math:`\\pm 1\\sigma` and :math:`\\pm 3\\sigma` uncertainty envelopes from the
     propagated covariance.
@@ -60,18 +45,17 @@ class RSWDistanceWithUncertainty(Plot):
 
     def __init__(
         self,
-        cfg: DictConfig,
+        cfg,
         epochs: np.ndarray,
         rsw_components: np.ndarray,
         rsw_sigma: np.ndarray,
     ):
-        super().__init__(cfg)
-        self.epochs = epochs
+        super().__init__(cfg, epochs)
         self.rsw_components = rsw_components
         self.rsw_sigma = rsw_sigma
 
     def _make_figure(self):
-        cfg = self.cfg
+        plot_cfg = self.cfg
         epochs = self.epochs
         rsw_components = self.rsw_components
         rsw_sigma = self.rsw_sigma
@@ -83,9 +67,7 @@ class RSWDistanceWithUncertainty(Plot):
         # Approximate 1-sigma uncertainty on the norm from quadrature sum
         sigma_norm = np.sqrt(np.sum(rsw_sigma**2, axis=1))
 
-        plot_cfg = _cfg_get(cfg, "RSW_distance_with_uncertainty", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=16.54)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=11.0)
+        fig_w, fig_h = self._figure_size()
 
         titles = {
             "r": _cfg_get(plot_cfg, "titles", "r", default="Radial (R)"),

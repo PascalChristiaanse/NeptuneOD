@@ -1,0 +1,25 @@
+plotter: "RSWDistance"
+# Index 2 is relative_position(Triton Spice, Triton) in the order declared in
+# ``conf/propagate_trajectory.yaml``.
+dependent_variable_index: 2
+output_file: "trajectory_rsw.pdf"
+central_body: "Neptune"
+figure:
+  paper_size: half_height
+# Line colours, cycled across the series.  A single colour keeps the eye on the
+# curve shape; add more entries to distinguish overlaid series.
+styling:
+  colors: ["black"]
+titles:
+  r: "Radial (R)"
+  s: "Transverse (S)"
+  w: "Cross-track (W)"
+  norm: "L2 Norm of RSW"
+  suptitle: "RSW Separation of {body1} w.r.t. {body2} (centered on {central_body})"
+axes:
+  x_label: "Epoch"
+  # Display unit for the RSW components: "m" or "km".
+  unit: "km"
+  y_label: "Distance [km]"
+  hover_x_label: "Epoch"
+  hover_y_label: "Distance [km]"

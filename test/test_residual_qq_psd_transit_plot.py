@@ -79,7 +79,7 @@ def _access(scan_angle=np.nan, n=12, spacing=1.0):
 
 
 def _cfg(name, **inner):
-    return OmegaConf.create({"figures": {name: inner}})
+    return OmegaConf.create(inner)
 
 
 class TestResidualQQ:
@@ -110,7 +110,7 @@ class TestResidualQQ:
 
     def test_group_by_argument_overrides_default(self):
         access = _access()
-        plot = ResidualQQ(_cfg("residual_qq"), access, group_by="source_set_id")
+        plot = ResidualQQ(_cfg("residual_qq", group_by="source_set_id"), access)
         fig, axs = plot._make_figure()
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
         assert "nm0001" in labels
@@ -118,7 +118,7 @@ class TestResidualQQ:
 
     def test_unknown_grouping_column_raises(self):
         access = _access()
-        plot = ResidualQQ(_cfg("residual_qq"), access, group_by="not_a_column")
+        plot = ResidualQQ(_cfg("residual_qq", group_by="not_a_column"), access)
         with pytest.raises(ValueError, match="not in the standard frame"):
             plot._make_figure()
 
@@ -126,9 +126,7 @@ class TestResidualQQ:
 class TestResidualsPSD:
     def test_two_panels_with_spectra(self):
         access = _access()
-        plot = ResidualsPSD(
-            _cfg("residuals_psd", method="lombscargle"), access, 30.0, _cfg("residuals_psd")
-        )
+        plot = ResidualsPSD(_cfg("residuals_psd", method="lombscargle"), access)
         fig, axs = plot._make_figure()
         assert len(axs) == 2
         assert len(axs[0].lines) > 0
@@ -136,8 +134,13 @@ class TestResidualsPSD:
 
     def test_welch_method_runs(self):
         access = _access()
-        cfg = _cfg("residuals_psd", method="welch", window={"type": "hamming"})
-        plot = ResidualsPSD(cfg, access, 5.0, cfg)
+        cfg = _cfg(
+            "residuals_psd",
+            method="welch",
+            window={"type": "hamming"},
+            window_length_days=5.0,
+        )
+        plot = ResidualsPSD(cfg, access)
         fig, axs = plot._make_figure()
         assert len(axs[0].lines) > 0
         plt.close(fig)
@@ -145,7 +148,7 @@ class TestResidualsPSD:
     def test_groups_by_observatory_default(self):
         access = _access()
         cfg = _cfg("residuals_psd", method="lombscargle")
-        plot = ResidualsPSD(cfg, access, 30.0, cfg)
+        plot = ResidualsPSD(cfg, access)
         fig, axs = plot._make_figure()
         labels = [t.get_text() for t in axs[0].get_legend().get_texts()]
         assert "673" in labels and "689" in labels
@@ -153,8 +156,8 @@ class TestResidualsPSD:
 
     def test_unknown_grouping_column_raises(self):
         access = _access()
-        cfg = _cfg("residuals_psd", method="lombscargle")
-        plot = ResidualsPSD(cfg, access, 30.0, cfg, group_by="not_a_column")
+        cfg = _cfg("residuals_psd", method="lombscargle", group_by="not_a_column")
+        plot = ResidualsPSD(cfg, access)
         with pytest.raises(ValueError, match="not in the standard frame"):
             plot._make_figure()
 

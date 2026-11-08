@@ -6,55 +6,26 @@ Plots the Cartesian position history (x, y, z) of a
 
 import matplotlib.pyplot as plt
 import numpy as np
-from omegaconf import DictConfig
-from tudatpy.dynamics import propagation as prop
 
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.simulation_base import SimulationPlot, _cfg_get
 
 
-def _cfg_get(cfg: DictConfig | dict | None, *keys, default=None):
-    cur = cfg
-    for k in keys:
-        if cur is None:
-            return default
-        try:
-            cur = cur.get(k)
-        except Exception:
-            try:
-                cur = cur[k]
-            except Exception:
-                return default
-    return default if cur is None else cur
-
-
-class StateHistory3D(Plot):
+class StateHistory3D(SimulationPlot):
     """Plot the Cartesian position history of a propagation result in 3D.
 
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration. Optional settings are read from the
-        ``state_history_3d`` block (see ``conf/figures/state_history_3d.yaml``).
+        The figure's own configuration block (``conf/figures/state_history_3d.yaml``).
     result : prop.SimulationResults
         The propagation result whose ``state_history`` is plotted. An object
         exposing a ``propagation_results`` attribute (e.g. an estimation output)
         is also accepted.
     """
 
-    def __init__(self, cfg: DictConfig, result: prop.SimulationResults):
-        super().__init__(cfg, name="state_history_3d")
-        self.result = result
-
     def _make_figure(self):
-        cfg = self.cfg
-        result = self.result
-
-        # Accept either a SimulationResults directly or an object with a
-        # .propagation_results attribute (e.g. EstimationOutput)
-        if hasattr(result, "propagation_results"):
-            sim_results = result.propagation_results
-        else:
-            sim_results = result
+        plot_cfg = self.cfg
+        sim_results = self.result
 
         state_history = sim_results.state_history
         if not state_history:
@@ -69,9 +40,7 @@ class StateHistory3D(Plot):
 
         positions = states[:, :3]
 
-        plot_cfg = _cfg_get(cfg, "state_history_3d", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=10)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8)
+        fig_w, fig_h = self._figure_size()
 
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default="x [m]")
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default="y [m]")

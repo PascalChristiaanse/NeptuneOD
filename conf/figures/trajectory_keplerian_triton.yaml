@@ -1,0 +1,31 @@
+plotter: "DependentVariable"
+# Index into the result's ordered dependent variables.  The propagation stage
+# saves them in the order declared in ``conf/propagate_trajectory.yaml``:
+#   0 keplerian_state(Triton Spice, Neptune)
+#   1 keplerian_state(Triton, Neptune)
+#   2 relative_position(Triton Spice, Triton)
+#   3 relative_velocity(Triton Spice, Triton)
+dependent_variable_index: 1
+output_file: "trajectory_keplerian_triton.pdf"
+figure:
+  width: 10
+  height: 15
+titles:
+  suptitle: "Propagated Keplerian State of {associated_body} w.r.t. {secondary_body}"
+axes:
+  x_label: "Epoch"
+  y_label:
+    - "Semi-major Axis [m]"
+    - "Eccentricity"
+    - "Inclination [rad]"
+    - "Argument of Periapsis [rad]"
+    - "RAAN [rad]"
+    - "True Anomaly [rad]"
+  hover_x_label: "Epoch"
+  hover_y_label:
+    - "Semi-major Axis [m]"
+    - "Eccentricity"
+    - "Inclination [rad]"
+    - "Argument of Periapsis [rad]"
+    - "RAAN [rad]"
+    - "True Anomaly [rad]"

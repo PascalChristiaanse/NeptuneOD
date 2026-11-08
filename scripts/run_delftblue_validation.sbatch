@@ -11,7 +11,7 @@
 #   2. .err file has WARNING and ERROR (not just noise).
 #   3. Crashed job's .err has the full traceback.
 #   4. Each job's logs are in its own .submitit/<job_id>/ folder.
-#   5. Aim run hash is printed (can be checked with aim reindex + get_run).
+#   5. The run log is written into the Hydra output directory.
 #
 # No freeze: the old FdCapture deadlock under srun (pipe-based stdout) is gone.
 # If this job hangs, the new logging pipeline still has a regression.
@@ -52,7 +52,7 @@ echo "=== Multirun exit code: ${EXIT_CODE} ==="
 find results -type d -name 'delftblue_validation' -print -quit | while read -r root; do
   echo "=== Result tree ==="
   find "$root" -maxdepth 5 -type f \( -name 'run.log' -o -name 'errors.log' -o \
-    -name '*_log.err' -o -name '*_log.out' -o -name '.aim_run_hash' \) | sort
+    -name '*_log.err' -o -name '*_log.out' \) | sort
 done
 
 # Print the diagnostic CHECK lines from the run logs.

@@ -163,16 +163,12 @@ class TestBuild:
         assert table["n_obs"].iloc[0] == 4
 
     def test_group_by_multiple_columns(self, simple_access):
-        table = WeightSummary(
-            simple_access, by=("source_set_id", "observatory_code")
-        )._build()
+        table = WeightSummary(simple_access, by=("source_set_id", "observatory_code"))._build()
         assert list(table.columns[:2]) == ["source_set_id", "observatory_code"]
         assert len(table) == 2
 
     def test_extra_columns_carried_through(self, simple_access):
-        table = WeightSummary(
-            simple_access, columns=("reference", "original_reduction")
-        )._build()
+        table = WeightSummary(simple_access, columns=("reference", "original_reduction"))._build()
         assert list(table["reference"]) == ["Source A", "Source B"]
         assert list(table["original_reduction"]) == ["none", "none"]
 

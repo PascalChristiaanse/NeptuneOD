@@ -104,8 +104,7 @@ def build_triton_eph_2020_state_history(
 
     time_system_suffix = f" {TRITON_EPH_2020_TIME_SYSTEM}"
     epochs = [
-        spice.convert_date_string_to_ephemeris_time(date + time_system_suffix)
-        for date in raw_dates
+        spice.convert_date_string_to_ephemeris_time(date + time_system_suffix) for date in raw_dates
     ]
 
     state_array = np.asarray(raw_states, dtype=float)

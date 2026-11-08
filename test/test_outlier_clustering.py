@@ -213,12 +213,13 @@ class TestGroupScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        clustering = OmegaConf.create({"levels": [{"type": "timeframe", 
-            "gap_threshold_hours": 4.0}]})
+        clustering = OmegaConf.create(
+            {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
+        )
         # Cluster ids are "<set>_tf_0000"/"<set>_tf_0001"; match the first night.
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-                        cluster_filter={"689_tf_0000"},
+            cluster_filter={"689_tf_0000"},
         )
         engine = OutlierEngine([scoped], clustering=clustering)
 
@@ -239,11 +240,12 @@ class TestGroupScopedApplication:
         obs_set.residuals = residuals
         collection = _make_collection([obs_set])
 
-        clustering = OmegaConf.create({"levels": [{"type": "timeframe", 
-            "gap_threshold_hours": 4.0}]})
+        clustering = OmegaConf.create(
+            {"levels": [{"type": "timeframe", "gap_threshold_hours": 4.0}]}
+        )
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-                        cluster_filter={"689_tf_0099"},  # does not exist
+            cluster_filter={"689_tf_0099"},  # does not exist
         )
         engine = OutlierEngine([scoped], clustering=clustering)
 
@@ -259,9 +261,7 @@ class TestGroupScopedApplication:
         obs_set.residuals = np.array([[9e-6, 9e-6], [9e-6, 9e-6]])
         collection = _make_collection([obs_set])
 
-        scoped = _ScopedStrategy(
-            _reject_above_strategy(1e-6), cluster_filter={"whatever"}
-        )
+        scoped = _ScopedStrategy(_reject_above_strategy(1e-6), cluster_filter={"whatever"})
         engine = OutlierEngine([scoped], clustering=None)
 
         _, summary = engine.apply(collection, MagicMock())
@@ -302,7 +302,7 @@ class TestSectionScopedApplication:
         )
         scoped = _ScopedStrategy(
             _reject_above_strategy(1e-6),
-                        cluster_filter={"pre_encounter"},
+            cluster_filter={"pre_encounter"},
         )
         engine = OutlierEngine([scoped], clustering=clustering)
 

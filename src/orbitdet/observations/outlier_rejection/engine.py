@@ -496,9 +496,7 @@ class OutlierEngine:
                 kwargs["epochs_to_remove"] = list(kwargs.pop("epochs"))
 
             strategy_instance = cls_strategy(**kwargs)
-            scoped_strategies.append(
-                _ScopedStrategy(strategy_instance, cluster_filter, selection)
-            )
+            scoped_strategies.append(_ScopedStrategy(strategy_instance, cluster_filter, selection))
 
         return cls(scoped_strategies, clustering=clustering)
 

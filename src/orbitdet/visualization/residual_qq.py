@@ -12,19 +12,17 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from omegaconf import DictConfig
 
-from orbitdet.analysis import ObservationAccess, analysis_frame
 from orbitdet.analysis.distribution import qq_points
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
-from orbitdet.visualization.residuals import _cfg_get
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["ResidualQQ"]
 
 
-class ResidualQQ(Plot):
+class ResidualQQ(ResidualPlot):
     """Q-Q plots of the RA and Dec residuals against a normal distribution.
 
     Each cluster (by default ``observatory_code``) contributes one series per
@@ -35,90 +33,24 @@ class ResidualQQ(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by`` and ``include_rejected`` are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``.  Defaults
-        to ``"residual_qq"``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the series by.  ``None`` (default)
-        falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    fig, ax : optional
-        A pre-existing figure and a length-2 axes sequence (RA then Dec).
-    include_rejected : bool
-        Whether to include rows that outlier rejection removed.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = "residual_qq",
-        group_by: str | list[str] | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.use_figure_name = use_figure_name or "residual_qq"
-        self.access = access
-        self.group_by = group_by
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
     def _make_figure(self):
-        plot_cfg = _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27 * 2)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27 * 2 / 2)
-
-        if self.fig is None and self.ax is None:
-            fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
-        else:
-            if len(self.ax) != 2:
-                raise ValueError("Expected two subplots for RA and Dec residuals.")
-            fig, axs = self.fig, self.ax
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size()
+        fig, axs = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
 
         # The Q-Q sample is standardized, so no unit conversion is needed.
-        frame = analysis_frame(self.access, unit=None, scan=False, normalized=False)
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
+        frame = self._frame(unit=None, scan=False, normalized=False)
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
-        cmap = _cfg_get(plot_cfg, "styling", "cmap", default="tab10")
-        colors = plt.get_cmap(cmap)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+        colors, marker_size, marker_types = self._styling()
 
         for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             color = colors(index % colors.N)
@@ -176,35 +108,9 @@ class ResidualQQ(Plot):
         axs[0].format_coord = fmt
         axs[1].format_coord = fmt
 
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
+        self._legend(axs[0])
+        self._legend(axs[1])
 
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-
-        axs[0].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-        axs[1].legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
-
-        target_name = "target"
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            target_name = str(frame["observed_object"].dropna().iloc[0])
-        suptitle = _cfg_get(
-            plot_cfg, "titles", "suptitle", default="Residual Q-Q Plot for {target_name}"
-        )
-        try:
-            if isinstance(suptitle, str):
-                suptitle = suptitle.format(target_name=target_name)
-        except Exception:
-            pass
-
-        fig.suptitle(suptitle)
+        fig.suptitle(self._suptitle(frame, "suptitle", "Residual Q-Q Plot for {target_name}"))
         fig.set_tight_layout(True)
         return fig, axs

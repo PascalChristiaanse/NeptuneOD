@@ -920,8 +920,9 @@ class GaiaArchiveWeight(WeightStrategy):
             weights_ra_arr = np.full(n_obs, w_ra)
             weights_dec_arr = np.full(n_obs, w_dec)
         else:
-            ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(residuals_rad, tf_clusters, 
-                min_sigma_rad)
+            ra_id_v2_sigma, dec_id_v2_sigma = _id_v2_sigmas(
+                residuals_rad, tf_clusters, min_sigma_rad
+            )
             w_ra = 1.0 / ra_id_v2_sigma**2
             w_dec = 1.0 / dec_id_v2_sigma**2
             weights_ra_arr = np.full(n_obs, w_ra)
@@ -1089,12 +1090,8 @@ class GaiaComponentsWeight(WeightStrategy):
         systematic_scale_ac : float, optional
             Across-scan factor for the systematic covariance component.
         """
-        self.random_scale_al = self._resolve_scale(
-            "random_scale_al", random_scale_al, random_scale
-        )
-        self.random_scale_ac = self._resolve_scale(
-            "random_scale_ac", random_scale_ac, random_scale
-        )
+        self.random_scale_al = self._resolve_scale("random_scale_al", random_scale_al, random_scale)
+        self.random_scale_ac = self._resolve_scale("random_scale_ac", random_scale_ac, random_scale)
         self.systematic_scale_al = self._resolve_scale(
             "systematic_scale_al", systematic_scale_al, systematic_scale
         )
@@ -1760,5 +1757,3 @@ class FixedScanComponentsWeight(FixedScanWeight):
             *weight_matrix.shape,
         )
         return weights_array, df
-
-

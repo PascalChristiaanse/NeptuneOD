@@ -465,6 +465,110 @@ class TestGetDynamicalModel:
         with pytest.raises(RuntimeError, match="only defined for Neptune"):
             get_dynamical_model(config, mock_runtime_context, mock_bodies)
 
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_contributes_acceleration_false_is_not_a_perturber(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """A body flagged ``contributes_acceleration: false`` is a passive reference.
+
+        Such a body carries a gravity field so that dependent variables
+        evaluated against it use the right GM, but it must not act on anything.
+        Without the flag a reference twin of the propagated body (same
+        ephemeris, so zero separation) would produce a 0/0 point-mass
+        acceleration and the propagation would terminate with NaN.
+        """
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": {"type": "central"}},
+                    "Triton": {"gravity": {"type": "central"}},
+                    "Triton Spice": {
+                        "contributes_acceleration": False,
+                        "gravity": {
+                            "type": "central_explicit",
+                            "gravitational_parameter": 1.428495462910464e12,
+                        },
+                    },
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args.args[1]
+        assert "Triton Spice" not in accelerations["Triton"]
+        assert set(accelerations["Triton"]) == {"Neptune"}
+
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_contributes_acceleration_defaults_to_true(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """Omitting the flag keeps the body as a perturber."""
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": {"type": "central"}},
+                    "Triton": {"gravity": {"type": "central"}},
+                    "Sun": {"gravity": {"type": "central"}},
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args.args[1]
+        assert set(accelerations["Triton"]) == {"Neptune", "Sun"}
+
+    @patch("orbitdet.simulation.dynamics.prop_setup.create_acceleration_models")
+    def test_central_explicit_builds_point_mass_acceleration(
+        self, mock_create_accel, mock_runtime_context
+    ):
+        """``central_explicit`` is a real gravity model, not just a field.
+
+        It differs from ``central`` only in where the GM comes from, so it must
+        produce the same point-mass acceleration when the body does act.
+        """
+        config = OmegaConf.create(
+            {
+                "bodies_to_create": {
+                    "Neptune": {"gravity": {"type": "central"}},
+                    "Triton": {"gravity": {"type": "central"}},
+                    "Sun": {
+                        "gravity": {
+                            "type": "central_explicit",
+                            "gravitational_parameter": 1.32712440018e20,
+                        },
+                    },
+                },
+                "bodies_to_propagate": {
+                    "Triton": {
+                        "central_body": "Neptune",
+                    },
+                },
+            }
+        )
+        mock_bodies = MagicMock(spec=env.SystemOfBodies)
+        mock_create_accel.return_value = {"Triton": {"Neptune": []}}
+
+        get_dynamical_model(config, mock_runtime_context, mock_bodies)
+
+        accelerations = mock_create_accel.call_args.args[1]
+        assert set(accelerations["Triton"]) == {"Neptune", "Sun"}
+
     def test_propagate_body_not_in_creation_list_raises_error(self, mock_runtime_context):
         """Test that propagating undefined body raises RuntimeError."""
         config = OmegaConf.create(

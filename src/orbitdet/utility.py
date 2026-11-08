@@ -136,6 +136,50 @@ def save_tudat_object(obj: object, file_path: str | Path) -> Path:
     return path
 
 
+def load_tudat_object(cls: type, file_path: str | Path):
+    """Deserialize a TudatPy object from a binary ``.tudat`` file.
+
+    The inverse of :func:`save_tudat_object`.  TudatPy's ``load_from_binary``
+    appends the ``.tudat`` extension itself, so the path is passed through
+    unchanged: a file written as ``observations.tudat`` is loaded from
+    ``observations``.
+
+    Parameters
+    ----------
+    cls : type
+        The TudatPy class to deserialize, e.g.
+        :class:`~tudatpy.estimation.observations.ObservationCollection`.  The
+        loader is a static method on the class, so the class must be named
+        explicitly.
+    file_path : str | Path
+        Path to the file, with or without the ``.tudat`` extension.
+
+    Returns
+    -------
+    object
+        An instance of *cls*.
+
+    Raises
+    ------
+    TypeError
+        If *cls* does not provide a ``load_from_binary`` method.
+    FileNotFoundError
+        If no file exists at *file_path* (with or without the extension).
+    """
+    if not hasattr(cls, "load_from_binary"):
+        raise TypeError(f"Class {cls.__name__} does not provide a native load_from_binary method.")
+
+    path = Path(file_path)
+    # TudatPy appends the extension itself, so hand it the stem.
+    if path.suffix == ".tudat":
+        path = path.with_suffix("")
+
+    if not path.with_suffix(".tudat").is_file() and not path.is_file():
+        raise FileNotFoundError(f"No serialized object found at {file_path}")
+
+    return cls.load_from_binary(str(path))
+
+
 #: Seconds per unit for :func:`parse_duration_to_seconds`. Month and year use
 #: their mean Gregorian lengths (365.2425 days per year, 12 months per year),
 #: so a duration such as ``"6 months"`` maps to a deterministic number of

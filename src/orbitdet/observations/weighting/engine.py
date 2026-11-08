@@ -291,9 +291,7 @@ class WeightEngine:
             weights_df["source_name"] = _view_value(view, "reference", set_id)
             weights_df["dataset_id"] = _view_value(view, "source_set_id", set_id)
             weights_df["observatory_code"] = _view_value(view, "observatory_code", set_id)
-            ra_type, dec_type = _coordinate_type_label(
-                _view_value(view, "coordinate_kind", "")
-            )
+            ra_type, dec_type = _coordinate_type_label(_view_value(view, "coordinate_kind", ""))
             weights_df["ra_type"] = ra_type
             weights_df["dec_type"] = dec_type
 

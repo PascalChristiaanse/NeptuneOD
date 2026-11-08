@@ -69,7 +69,7 @@ def _access():
 
 
 def _cfg(**scatter_cfg):
-    return OmegaConf.create({"figures": {"residual_scatter": scatter_cfg}})
+    return OmegaConf.create(scatter_cfg)
 
 
 class TestResidualScatter:
@@ -95,7 +95,7 @@ class TestResidualScatter:
 
     def test_group_by_argument_overrides_default(self):
         access = _access()
-        plot = ResidualScatter(_cfg(), access, group_by="source_set_id")
+        plot = ResidualScatter(_cfg(group_by="source_set_id"), access)
         fig, ax = plot._make_figure()
         # Both sets share source_set_id "nm0001" -> a single series.
         assert len(ax.collections) == 1
@@ -110,7 +110,7 @@ class TestResidualScatter:
 
     def test_mas_unit(self):
         access = _access()
-        plot = ResidualScatter(_cfg(), access, unit="mas")
+        plot = ResidualScatter(_cfg(axes={"unit": "mas"}), access)
         fig, ax = plot._make_figure()
         offsets = ax.collections[0].get_offsets()
         # 1e-6 rad in mas = 1e-6 * ARCSEC * 1000.
@@ -137,7 +137,7 @@ class TestResidualScatter:
     def test_include_rejected_keeps_rows(self):
         access = _access()
         access.frame.loc[access.frame.index[0], "rejected"] = True
-        plot = ResidualScatter(_cfg(), access, include_rejected=True)
+        plot = ResidualScatter(_cfg(include_rejected=True), access)
         fig, ax = plot._make_figure()
         offsets = ax.collections[0].get_offsets()
         assert offsets[0, 0] == pytest.approx(1e-6 * ARCSEC, rel=1e-6)
@@ -145,11 +145,6 @@ class TestResidualScatter:
 
     def test_unknown_grouping_column_raises(self):
         access = _access()
-        plot = ResidualScatter(_cfg(), access, group_by="not_a_column")
+        plot = ResidualScatter(_cfg(group_by="not_a_column"), access)
         with pytest.raises(ValueError, match="not in the standard frame"):
             plot._make_figure()
-
-    def test_fig_and_ax_must_be_paired(self):
-        access = _access()
-        with pytest.raises(ValueError, match="Both fig and ax"):
-            ResidualScatter(_cfg(), access, fig=plt.figure())

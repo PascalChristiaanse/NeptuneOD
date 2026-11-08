@@ -162,9 +162,7 @@ class WeightSummary(Table):
     ):
         super().__init__(name or "weight_summary")
         if to_unit not in _UNIT_FACTOR:
-            raise ValueError(
-                f"Unknown unit '{to_unit}'; expected one of {sorted(_UNIT_FACTOR)}."
-            )
+            raise ValueError(f"Unknown unit '{to_unit}'; expected one of {sorted(_UNIT_FACTOR)}.")
         self.access = access
         self.weights = weights
         self.by = tuple(by)
@@ -238,9 +236,7 @@ class WeightSummary(Table):
 
             record["n_obs"] = int(len(group))
             record["ra_type"], record["dec_type"] = self._axis_labels(group)
-            record["ra_rms_arcsec"] = (
-                _rms(group["residual_first_rad"].to_numpy("float64")) * factor
-            )
+            record["ra_rms_arcsec"] = _rms(group["residual_first_rad"].to_numpy("float64")) * factor
             record["dec_rms_arcsec"] = (
                 _rms(group["residual_second_rad"].to_numpy("float64")) * factor
             )
@@ -352,8 +348,7 @@ class WeightSummary(Table):
             return ("", "")
         if len(kinds) > 1:
             logger.warning(
-                "WeightSummary: group spans several coordinate kinds %s; labelling "
-                "with the first.",
+                "WeightSummary: group spans several coordinate kinds %s; labelling with the first.",
                 sorted(str(k) for k in kinds),
             )
         return coordinate_axis_labels(str(kinds[0]))
@@ -506,8 +501,7 @@ def _constant_value(series: pd.Series, column: str):
     if len(distinct) == 1:
         return distinct[0]
     logger.warning(
-        "WeightSummary: column '%s' varies within a group (%d distinct values); "
-        "joining them.",
+        "WeightSummary: column '%s' varies within a group (%d distinct values); joining them.",
         column,
         len(distinct),
     )

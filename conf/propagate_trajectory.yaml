@@ -1,0 +1,60 @@
+# @package _global_
+
+# Generation config for the propagated-trajectory stage.
+#
+# This is the config ``scripts/propagate_trajectory.py`` runs with by default,
+# so the stage works with no arguments:
+#
+#     python scripts/propagate_trajectory.py
+#
+# It deliberately composes NO figure configs.  Figures are separate rules with
+# their own config files under ``conf/figures/``, so editing a figure title
+# cannot invalidate this stage.
+#
+# The stage propagates Triton around Neptune with the classical dynamical model
+# and saves the resulting ``SingleArcSimulationResults``.  Every trajectory
+# figure reads that one artifact.
+
+defaults:
+  - /dynamics: classical
+  - /kernels: classical
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# The integrated result must be kept: the propagated body's ephemeris is built
+# from it, and the dependent variables are evaluated against it.
+propagation:
+  set_integrated_result: true
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# Time settings — the window the classical Triton state is propagated over.
+start_date: 1975-1-1T12:00:00
+end_date: 2025-1-1T12:00:00
+initial_epoch: 1989-08-25 09:10:56.182745873928070 # Voyager 2 closest approach to Triton (TDB epoch)
+
+# Dependent variables saved with the propagation, in this order.  The order is
+# what the figure rules index into with ``dependent_variable_index``, so append
+# new entries at the end rather than inserting them.
+#
+# Supported ``type`` values: keplerian_state, relative_position, relative_velocity.
+dependent_variables:
+  - type: keplerian_state
+    body: "Triton Spice"
+    central_body: "Neptune"
+  - type: keplerian_state
+    body: "Triton"
+    central_body: "Neptune"
+  - type: relative_position
+    body: "Triton Spice"
+    secondary_body: "Triton"
+  - type: relative_velocity
+    body: "Triton Spice"
+    secondary_body: "Triton"

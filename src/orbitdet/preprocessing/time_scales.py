@@ -1,7 +1,7 @@
 """Timescale conversion to TDB seconds since the J2000 epoch.
 
 Observation sources record epochs in whatever timescale the observer used.
-This module maps all of them onto **TDB seconds since the J2000 epoch**, 
+This module maps all of them onto **TDB seconds since the J2000 epoch**,
 which is what TudatPy expects.
 
 Two corrections matter for historical data, and neither is applied by a naive
@@ -24,7 +24,7 @@ The astronomical day
 References
 ----------
 * Explanatory Supplement to the Astronomical Almanac, 3rd ed., ch. 2 (time
-  scales) and ch. 6 (the astronomical day and its 1925 changeover). 
+  scales) and ch. 6 (the astronomical day and its 1925 changeover).
 * IAU 2006 resolutions on TCG/TCB, for the ``TCB_to_TDB`` relation.
 """
 
@@ -776,7 +776,7 @@ def delta_t_seconds(epochs: np.ndarray) -> np.ndarray:
     a few other new functionalities that would require porting significant parts of OrbitDet.
     For the thesis, we will keep this implementation, but it should be removed once the TudatPy
     version is updated.
-    
+
     Args:
         epochs: Epochs as seconds since J2000 (nominally UT1).
 
@@ -840,4 +840,3 @@ def _as_float_array(epochs: pd.Series | np.ndarray | list[float]) -> np.ndarray:
     if isinstance(epochs, pd.Series):
         return epochs.to_numpy(dtype=float)
     return np.asarray(epochs, dtype=float)
-

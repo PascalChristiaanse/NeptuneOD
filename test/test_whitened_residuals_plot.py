@@ -76,4 +76,3 @@ class TestSymmetricWhitening:
         weight = _correlated_weight()
         whitening = Whitening.from_weight_matrix(weight, method="symmetric")
         assert whitening.is_block_diagonal
-

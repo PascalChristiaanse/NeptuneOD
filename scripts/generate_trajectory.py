@@ -69,7 +69,7 @@ def main(cfg: DictConfig):
     from orbitdet.visualization import DifferencedDependentVariables
 
     fig_diff_kep, data_diff_kep = DifferencedDependentVariables(
-        cfg,
+        cfg.figures.dependent_variable_differenced,
         result.propagation_results,
         [result.propagation_results],
         dep_vars[0],
@@ -80,7 +80,7 @@ def main(cfg: DictConfig):
     from orbitdet.visualization import RSWDistance
 
     fig_rsw, data_rsw = RSWDistance(
-        cfg,
+        cfg.figures.RSW_distance,
         result.propagation_results,
         dep_vars[2],
     ).plot()
@@ -89,25 +89,24 @@ def main(cfg: DictConfig):
     from orbitdet.visualization import DependentVariable
 
     fig_dep_spice_kep, axes_dep_spice_kep = DependentVariable(
-        cfg, result.propagation_results, dep_vars[0]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[0]
     ).plot()
     fig_dep_triton_kep, axes_dep_triton_kep = DependentVariable(
-        cfg, result.propagation_results, dep_vars[1]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[1]
     ).plot()
     fig_dep_relpos, axes_dep_relpos = DependentVariable(
-        cfg, result.propagation_results, dep_vars[2]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[2]
     ).plot()
     fig_dep_relvel, axes_dep_relvel = DependentVariable(
-        cfg, result.propagation_results, dep_vars[3]
+        cfg.figures.dependent_variable, result.propagation_results, dep_vars[3]
     ).plot()
 
     # Save all figures to the output directory
     output_dir = Path(HydraConfig.get().runtime.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # The Plot base class already saved each figure as a PDF, logged it to Aim
-    # as a static image, and attached the PDF as an artifact reference.
-    logger.info("Figures saved, logged to Aim, and artifacts attached by Plot base class.")
+    # The Plot base class already saved each figure as a PDF.
+    logger.info("Figures saved by Plot base class.")
 
 
 if __name__ == "__main__":

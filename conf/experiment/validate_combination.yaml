@@ -21,8 +21,7 @@ defaults:
   - /kernels: classical
   - /logging: default
   - _self_
-  - /figures/combination_comparison
-
+  - /figures/combination_comparison@figures.combination_comparison
 use_default_kernels: true
 
 seed: 42

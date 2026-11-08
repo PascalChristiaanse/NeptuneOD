@@ -462,6 +462,11 @@ class DifferencedDependentVariablesPerResult(SimulationPlot):
                 f"figure has {number_of_plots} panel(s)."
             )
 
+        # A panel title and a y-axis label that say the same thing is noise.
+        # ``axes.show_y_label: false`` drops the label and leaves the title,
+        # which is the usual choice when the title already names the component.
+        show_y_label = bool(_cfg_get(plot_cfg, "axes", "show_y_label", default=True))
+
         for i in range(number_of_plots):
             # Default the panel title to its y-axis label: for a multi-component
             # variable the label already names the component ("Δ Semi-major
@@ -503,7 +508,8 @@ class DifferencedDependentVariablesPerResult(SimulationPlot):
                 )
             axes[i].axhline(0.0, color="black", linewidth=0.8, alpha=0.5)
             axes[i].set_title(component_title)
-            axes[i].set_ylabel(y_labels[i])
+            if show_y_label:
+                axes[i].set_ylabel(y_labels[i])
             axes[i].grid(True, alpha=0.3)
 
         for ax, hy_label in zip(axes, hover_y_labels):
@@ -514,6 +520,11 @@ class DifferencedDependentVariablesPerResult(SimulationPlot):
         add_panel_legend(axes, plot_cfg, len(self.labels))
 
         fig.suptitle(suptitle)
+
+        # Line the y-axis labels up.  Each panel's tick labels have their own
+        # width (a panel reading 1e-6 needs more room than one reading 1e-3), so
+        # without this the labels sit at different horizontal positions.
+        fig.align_ylabels(axes)
 
         # Leave room for the suptitle, which otherwise overlaps the first
         # panel's title.

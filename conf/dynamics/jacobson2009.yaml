@@ -83,23 +83,7 @@ bodies_to_create:
       type: "direct_spice"
       use_body_name: "Triton"
       relative_to: "Neptune"
-    # A passive reference twin of the propagated Triton: it carries a gravity
-    # field so that dependent variables evaluated against it use the same GM as
-    # the propagated body, but it must not act on anything.
-    #
-    # The dependent variables keplerian_state / modified_equinoctial_state are
-    # evaluated against the *environment's* central body.  Without a field here
-    # the propagated body is evaluated against G(M_Neptune + M_Triton) while
-    # this one is evaluated against G(M_Neptune) alone, and since p = h^2/mu
-    # that 2.09e-4 relative difference in mu shows up as a constant -74 km
-    # offset in the semi-latus rectum -- a convention artefact, not a
-    # propagation error.  Matching the fields makes the two element sets
-    # directly comparable.
-    #
-    # ``contributes_acceleration: false`` is what keeps this a reference body:
-    # without it, Triton Spice would gravitationally attract Triton and change
-    # the dynamics.
-    #
+
     # The GM is given explicitly because "Triton Spice" is not a SPICE name, so
     # it cannot be looked up.  The value is Triton's GM from the kernel.
     contributes_acceleration: false

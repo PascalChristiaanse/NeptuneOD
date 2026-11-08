@@ -34,13 +34,6 @@ def get_dynamical_model(
                 )
                 continue  # skip self-acceleration
 
-            # A body may carry a gravity field purely so that dependent
-            # variables evaluated against it use the right GM, without acting
-            # on anything.  ``contributes_acceleration: false`` marks such a
-            # body: it is a passive reference, not a perturber.  Without this
-            # flag a reference twin of the propagated body (e.g. "Triton Spice"
-            # alongside "Triton") would attract it, which is not the intended
-            # dynamics.
             if not bool(settings.get("contributes_acceleration", True)):
                 logger.debug(
                     f"Skipping {perturbing_body} as a perturber of {affected_body}: "

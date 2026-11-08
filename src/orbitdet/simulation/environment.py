@@ -275,6 +275,16 @@ def _configure_gravity_model(
             body_settings.get(body_name).gravity_field_settings = env_setup.gravity_field.central(
                 mu
             )
+        case "central_explicit":
+            # Central gravity with the GM given in the config rather than looked
+            # up in SPICE.  Needed for bodies whose name is not a SPICE name
+            # (e.g. a reference-ephemeris twin such as "Triton Spice"), which
+            # cannot be resolved by ``get_body_gravitational_parameter``.
+            mu = float(settings.gravity.gravitational_parameter)
+            logger.debug(f"Using explicit central gravity for {body_name}: mu={mu}.")
+            body_settings.get(body_name).gravity_field_settings = env_setup.gravity_field.central(
+                mu
+            )
         case "augmented_solar":
             logger.info(f"Augmenting Solar mass with {body_name} mass for central gravity.")
             if body_settings.get("Sun") is None:

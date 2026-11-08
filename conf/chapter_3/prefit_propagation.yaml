@@ -57,8 +57,3 @@ dependent_variables:
   - type: modified_equinoctial_state
     body: "Triton"
     central_body: "Neptune"
-
-Triton:
-    gravity:
-    #override to no gravity field 
-      type: None

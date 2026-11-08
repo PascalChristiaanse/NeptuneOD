@@ -33,12 +33,15 @@ titles:
   # The panel title names the element; the y-axis label carries only the unit,
   # so the two do not repeat each other.  Set explicitly because the default
   # title is the y-axis label, which is now just a unit.
-  component_0: "Δ Semi-latus Rectum"
-  component_1: "Δ f (eccentricity vector, cos)"
-  component_2: "Δ g (eccentricity vector, sin)"
-  component_3: "Δ h (inclination vector, cos)"
-  component_4: "Δ k (inclination vector, sin)"
-  component_5: "Δ L (true longitude)"
+  # Single-quoted YAML strings: in a double-quoted string a backslash starts an
+  # escape sequence, so "$\Delta$" fails to parse with "unknown escape
+  # character 'D'".  Single quotes keep the backslash literal.
+  component_0: '$\Delta$ Semi-latus Rectum'
+  component_1: '$\Delta$ f (eccentricity vector, cos)'
+  component_2: '$\Delta$ g (eccentricity vector, sin)'
+  component_3: '$\Delta$ h (inclination vector, cos)'
+  component_4: '$\Delta$ k (inclination vector, sin)'
+  component_5: '$\Delta$ L (true longitude)'
 axes:
   x_label: "Epoch"
   # Only L is an angle; p, f, g, h and k are not, so only panel 5 is wrapped.
@@ -55,9 +58,9 @@ axes:
   hover_x_label: "Epoch"
   # The hover readout keeps the full name, since there is no title next to it.
   hover_y_label:
-    - "Δ Semi-latus Rectum [m]"
-    - "Δ f (eccentricity vector, cos)"
-    - "Δ g (eccentricity vector, sin)"
-    - "Δ h (inclination vector, cos)"
-    - "Δ k (inclination vector, sin)"
-    - "Δ L (true longitude) [rad]"
+    - '$\Delta$ Semi-latus Rectum [m]'
+    - '$\Delta$ f (eccentricity vector, cos)'
+    - '$\Delta$ g (eccentricity vector, sin)'
+    - '$\Delta$ h (inclination vector, cos)'
+    - '$\Delta$ k (inclination vector, sin)'
+    - '$\Delta$ L (true longitude) [rad]'

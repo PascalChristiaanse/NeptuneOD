@@ -67,6 +67,76 @@ rule rsw_prop_two_poles:
             > {log} 2>&1
         """
 
+rule keplerian_prop_two_poles:
+    """Keplerian elements wrt Triton spice for every pole model, overlaid on one figure."""
+
+    input:
+        expand(
+            f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
+            pole_model=POLE_MODELS,
+        ),
+        python_dependencies("scripts/plot_simulation_figure.py"),
+        hydra_dependencies("conf/chapter_3/fig_keplerian_prop_two_poles.yaml"),
+
+    output:
+        f"{STAGE}/keplerian_prop_two_poles.pdf",
+
+    params:
+        results=",".join(
+            expand(
+                f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
+                pole_model=POLE_MODELS,
+            )
+        ),
+
+    log:
+        f"{STAGE}/keplerian_prop_two_poles.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_simulation_figure.py \
+            hydra.run.dir={STAGE} \
+            figure_config=conf/chapter_3/fig_keplerian_prop_two_poles.yaml \
+            +simulation_results=[{params.results}] \
+            > {log} 2>&1
+        """
+
+rule equinoctial_prop_two_poles:
+    """Modified equinoctial elements wrt Triton spice, one line per pole model."""
+
+    input:
+        expand(
+            f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
+            pole_model=POLE_MODELS,
+        ),
+        python_dependencies("scripts/plot_simulation_figure.py"),
+        hydra_dependencies("conf/chapter_3/fig_equinoctial_prop_two_poles.yaml"),
+
+    output:
+        f"{STAGE}/equinoctial_prop_two_poles.pdf",
+
+    params:
+        # Every pole model's result, in POLE_MODELS order.  The figure config's
+        # ``labels`` must list them in this same order.
+        results=",".join(
+            expand(
+                f"{STAGE}/pole_sweep/{{pole_model}}/propagation_result.tudat",
+                pole_model=POLE_MODELS,
+            )
+        ),
+
+    log:
+        f"{STAGE}/equinoctial_prop_two_poles.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_simulation_figure.py \
+            hydra.run.dir={STAGE} \
+            figure_config=conf/chapter_3/fig_equinoctial_prop_two_poles.yaml \
+            +simulation_results=[{params.results}] \
+            > {log} 2>&1
+        """
+
 
 rule all_chapter_3:
     """Everything chapter 3 needs: the artifacts, every figure, and the sweep."""
@@ -78,4 +148,5 @@ rule all_chapter_3:
             pole_model=POLE_MODELS,
         ),
         f"{STAGE}/rsw_prop_two_poles.pdf",
-        f"{STAGE}/trajectory_rsw_difference.pdf",
+        f"{STAGE}/keplerian_prop_two_poles.pdf",
+        f"{STAGE}/equinoctial_prop_two_poles.pdf",

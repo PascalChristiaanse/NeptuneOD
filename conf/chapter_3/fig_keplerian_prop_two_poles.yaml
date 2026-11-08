@@ -1,0 +1,52 @@
+plotter: "DifferencedDependentVariablesPerResult"
+# Both variables are read from every result, so the difference is
+# "propagated minus SPICE" within each pole model.  Indices follow the order
+# declared in conf/chapter_3/prefit_propagation.yaml:
+#   0 keplerian_state(Triton Spice, Neptune)   <- reference (SPICE ephemeris)
+#   1 keplerian_state(Triton, Neptune)         <- comparison (propagated)
+dependent_variable_index: 1
+comparison_dependent_variable_index: 0
+output_file: "keplerian_prop_two_poles.pdf"
+# One legend entry per entry in cfg.simulation_results, in the same order.
+labels:
+  - "IAU 2015 pole"
+  - "Jacobson (2009) pole"
+# All six panels share one A4 page.  ``paper_size`` is the size of the whole
+# figure, not of each panel.
+figure:
+  paper_size: full
+styling:
+  palette: "tol_muted"
+legend:
+  panel: "top_right"
+  corner: "top_right"
+  frameon: true
+  framealpha: 0.6
+titles:
+  suptitle: "Propagated minus SPICE Keplerian State of {associated_body} w.r.t. {secondary_body}"
+axes:
+  x_label: "Epoch"
+  # Panel indices whose difference is an angle, so it is only meaningful modulo
+  # a full turn.  Wrapping keeps a branch-cut crossing from drawing as a jump
+  # across the whole panel.  Index 3 is the argument of pericenter.
+  #
+  # The orbit is near-circular, so the argument of pericenter is poorly
+  # determined and this will not visibly change the figure yet; it is set here
+  # so the same option is in place for the modified-equinoctial state.
+  wrap_components: [3]
+  # One label per Keplerian element, in TudatPy's saved order.
+  y_label:
+    - "Δ Semi-major Axis [m]"
+    - "Δ Eccentricity"
+    - "Δ Inclination [rad]"
+    - "Δ Argument of Periapsis [rad]"
+    - "Δ RAAN [rad]"
+    - "Δ True Anomaly [rad]"
+  hover_x_label: "Epoch"
+  hover_y_label:
+    - "Δ Semi-major Axis [m]"
+    - "Δ Eccentricity"
+    - "Δ Inclination [rad]"
+    - "Δ Argument of Periapsis [rad]"
+    - "Δ RAAN [rad]"
+    - "Δ True Anomaly [rad]"

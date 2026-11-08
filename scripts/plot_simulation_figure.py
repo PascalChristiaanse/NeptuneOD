@@ -84,6 +84,7 @@ from orbitdet.utility import load_tudat_object
 from orbitdet.visualization import (
     DependentVariable,
     DifferencedDependentVariables,
+    DifferencedDependentVariablesPerResult,
     PropagatedFormalErrorsCartesian,
     PropagatedFormalErrorsRSW,
     RSWDistance,
@@ -104,6 +105,7 @@ FIGURE_BUILDERS = {
     "StateHistory3D": StateHistory3D,
     "DependentVariable": DependentVariable,
     "DifferencedDependentVariables": DifferencedDependentVariables,
+    "DifferencedDependentVariablesPerResult": DifferencedDependentVariablesPerResult,
     "RSWDistance": RSWDistance,
     "RSWDistanceComparison": RSWDistanceComparison,
     "RSWDistanceDifference": RSWDistanceDifference,
@@ -127,6 +129,11 @@ DIFFERENCED_PLOTTERS = {"DifferencedDependentVariables"}
 
 #: Plotters that overlay several results, read from ``cfg.simulation_results``.
 MULTI_RESULT_PLOTTERS = {"RSWDistanceComparison"}
+
+#: Plotters that difference two dependent variables inside each result and
+#: overlay the results.  The indices come from the figure config, so no
+#: dependent variable is selected here.
+PER_RESULT_DIFFERENCED_PLOTTERS = {"DifferencedDependentVariablesPerResult"}
 
 #: Plotters that subtract comparison results from a reference result.  The
 #: reference is ``cfg.simulation_result``; the comparisons are
@@ -238,6 +245,17 @@ def main(cfg: DictConfig):
     if plotter_name in ARRAY_PLOTTERS:
         arrays = _load_formal_errors(cfg)
         _build_array_figure(plotter_name, figure_cfg, arrays).plot()
+    elif plotter_name in PER_RESULT_DIFFERENCED_PLOTTERS:
+        # Two dependent variables differenced inside every result, then the
+        # results overlaid.  The indices live in the figure config, so nothing
+        # is selected here.
+        results = _load_results(cfg)
+        labels = figure_cfg.get("labels")
+        builder(
+            figure_cfg,
+            results,
+            list(labels) if labels is not None else None,
+        ).plot()
     elif plotter_name in MULTI_RESULT_PLOTTERS:
         # Several results overlaid on one figure.  The labels come from the
         # figure config so the rule stays free of model names.

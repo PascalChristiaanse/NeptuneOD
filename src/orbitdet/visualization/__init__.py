@@ -1,7 +1,10 @@
 from .base import Plot
 from .covariance_ellipses import CovarianceEllipses
 from .dependent_variable import DependentVariable
-from .dependent_variable_differenced import DifferencedDependentVariables
+from .dependent_variable_differenced import (
+    DifferencedDependentVariables,
+    DifferencedDependentVariablesPerResult,
+)
 from .estimation_base import EstimationPlot
 from .gaia_transit_errors import GaiaTransitErrorComponents
 from .palettes import DEFAULT_PALETTE, PALETTES, palette
@@ -46,6 +49,7 @@ __all__ = [
     "CovarianceEllipses",
     "DependentVariable",
     "DifferencedDependentVariables",
+    "DifferencedDependentVariablesPerResult",
     "GaiaTransitErrorComponents",
     "IntegratorConvergence",
     "IntegratorErrorVsTime",

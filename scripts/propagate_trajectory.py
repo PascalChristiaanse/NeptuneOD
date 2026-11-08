@@ -71,6 +71,10 @@ def _build_dependent_variable(entry: DictConfig):
     match variable_type:
         case "keplerian_state":
             return dependent_variable.keplerian_state(entry.body, entry.central_body)
+        case "modified_equinoctial_state":
+            return dependent_variable.modified_equinoctial_state(
+                entry.body, entry.central_body
+            )
         case "relative_position":
             return dependent_variable.relative_position(entry.body, entry.secondary_body)
         case "relative_velocity":
@@ -78,7 +82,8 @@ def _build_dependent_variable(entry: DictConfig):
         case _:
             raise ValueError(
                 f"Unknown dependent variable type '{variable_type}'. Known: "
-                "keplerian_state, relative_position, relative_velocity."
+                "keplerian_state, modified_equinoctial_state, relative_position, "
+                "relative_velocity."
             )
 
 

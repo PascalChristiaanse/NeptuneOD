@@ -83,6 +83,13 @@ bodies_to_create:
       type: "direct_spice"
       use_body_name: "Triton"
       relative_to: "Neptune"
+
+    # The GM is given explicitly because "Triton Spice" is not a SPICE name, so
+    # it cannot be looked up.  The value is Triton's GM from the kernel.
+    contributes_acceleration: false
+    gravity:
+      type: "central_explicit"
+      gravitational_parameter: 1.428495462910464e12
   Neptune Barycenter:
     ephemeris:
       type: "direct_spice"

@@ -34,6 +34,13 @@ def get_dynamical_model(
                 )
                 continue  # skip self-acceleration
 
+            if not bool(settings.get("contributes_acceleration", True)):
+                logger.debug(
+                    f"Skipping {perturbing_body} as a perturber of {affected_body}: "
+                    "contributes_acceleration is false."
+                )
+                continue
+
             gravity_settings = getattr(settings, "gravity", None)
             if gravity_settings is None:
                 continue  # skip bodies with no explicit gravity model

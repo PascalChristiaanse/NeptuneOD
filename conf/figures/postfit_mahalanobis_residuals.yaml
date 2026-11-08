@@ -1,3 +1,4 @@
+plotter: "MahalanobisResiduals"
 output_file: "postfit_mahalanobis_residuals.pdf"
 # Standard-frame column(s) the scatter series are grouped by.
 group_by: "observatory_code"

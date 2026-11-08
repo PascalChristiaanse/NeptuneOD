@@ -51,7 +51,7 @@ def get_dynamical_model(
             gravity_type = getattr(gravity_settings, "type", gravity_settings)
 
             match gravity_type:
-                case "central":
+                case "central" | "central_explicit":
                     accelerations.setdefault(affected_body, {})[perturbing_body] = [
                         prop_setup.acceleration.point_mass_gravity()
                     ]

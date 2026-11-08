@@ -1,0 +1,31 @@
+plotter: "DifferencedDependentVariables"
+# Both variables are read from the same propagation result: the reference is one
+# saved dependent variable, the comparison is another.  Indices follow the order
+# declared in ``conf/propagate_trajectory.yaml``:
+#   0 keplerian_state(Triton Spice, Neptune)   <- reference (SPICE ephemeris)
+#   1 keplerian_state(Triton, Neptune)         <- comparison (propagated)
+dependent_variable_index: 0
+comparison_dependent_variable_index: 1
+output_file: "trajectory_keplerian_difference.pdf"
+figure:
+  width: 10
+  height: 15
+titles:
+  suptitle: "Propagated minus SPICE Keplerian State of Triton w.r.t. Neptune"
+axes:
+  x_label: "Epoch"
+  y_label:
+    - "Δ Semi-major Axis [m]"
+    - "Δ Eccentricity"
+    - "Δ Inclination [rad]"
+    - "Δ Argument of Periapsis [rad]"
+    - "Δ RAAN [rad]"
+    - "Δ True Anomaly [rad]"
+  hover_x_label: "Epoch"
+  hover_y_label:
+    - "Δ Semi-major Axis [m]"
+    - "Δ Eccentricity"
+    - "Δ Inclination [rad]"
+    - "Δ Argument of Periapsis [rad]"
+    - "Δ RAAN [rad]"
+    - "Δ True Anomaly [rad]"

@@ -1,8 +1,8 @@
 """Pure statistics over a derived observation frame.
 
 Every function here takes a dataframe (or plain arrays) and returns a value or a
-new tidy dataframe.  Nothing reads config, logs to Aim, or touches the file
-system - that is the job of the table layer (:mod:`orbitdet.analysis.tables`).
+new tidy dataframe.  Nothing reads config or touches the file system - that is
+the job of the table layer (:mod:`orbitdet.analysis.tables`).
 Keeping the maths pure makes it unit-testable without a collection, a system of
 bodies, or an active Hydra run, and makes the assumptions explicit.
 
@@ -508,8 +508,7 @@ def mahalanobis(residuals, *, weight_matrix=None, sigmas=None) -> float:
     sigmas = np.asarray(sigmas, dtype="float64").ravel()
     if sigmas.size != residuals.size:
         raise ValueError(
-            f"Sigma vector size {sigmas.size} does not match residual vector size "
-            f"{residuals.size}."
+            f"Sigma vector size {sigmas.size} does not match residual vector size {residuals.size}."
         )
     good = np.isfinite(residuals) & np.isfinite(sigmas) & (sigmas > 0.0)
     if not np.any(good):

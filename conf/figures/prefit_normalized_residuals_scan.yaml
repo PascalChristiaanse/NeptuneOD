@@ -1,3 +1,4 @@
+plotter: "NormalizedResidualScan"
 output_file: "prefit_normalized_residuals_scan.pdf"
 figure:
   width: 16.54

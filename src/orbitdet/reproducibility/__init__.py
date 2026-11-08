@@ -1,13 +1,16 @@
 # src/orbitdet/reproducibility/__init__.py
 
-from orbitdet.reproducibility.aim import (
-    aim_log_artifact,
-    aim_log_artifact_reference,
-    aim_log_figure,
-    aim_log_metrics,
-    get_aim_run,
+from orbitdet.reproducibility.hydra import (
+    HydraDependencyError,
+    UnsupportedConfigSourceError,
+    hydra_dependencies,
+    register_resolvers,
 )
-from orbitdet.reproducibility.hydra import register_resolvers
+from orbitdet.reproducibility.python_graph import (
+    PythonDependencyError,
+    UnknownModuleError,
+    python_dependencies,
+)
 from orbitdet.reproducibility.runtime import (
     RuntimeContext,
     enforce_initialization,
@@ -26,9 +29,10 @@ __all__ = [
     "require_initialized",
     "enforce_initialization",
     "RuntimeContext",
-    "get_aim_run",
-    "aim_log_metrics",
-    "aim_log_figure",
-    "aim_log_artifact",
-    "aim_log_artifact_reference",
+    "hydra_dependencies",
+    "HydraDependencyError",
+    "UnsupportedConfigSourceError",
+    "python_dependencies",
+    "PythonDependencyError",
+    "UnknownModuleError",
 ]

@@ -24,19 +24,18 @@ defaults:
   - /outlier_rejection: residual_threshold
   - /logging: default
   - _self_
-  - /figures/residuals
-  - /figures/residual_histogram
-  - /figures/residual_qq
-  - /figures/residual_scatter
-  - /figures/dependent_variable
+  - /figures/residuals@figures.residuals
+  - /figures/residual_histogram@figures.residual_histogram
+  - /figures/residual_qq@figures.residual_qq
+  - /figures/residual_scatter@figures.residual_scatter
+  - /figures/dependent_variable@figures.dependent_variable
   - /figures/dependent_variable_differenced@dependent_variable_differenced
-  - /figures/parameter_correlation_heatmap
-  - /figures/parameter_history_per_iteration
-  - /figures/covariance_ellipses
-  - /figures/RSW_distance
-  - /figures/prefit_rsw
-  - /figures/postfit_rsw
-
+  - /figures/parameter_correlation_heatmap@figures.parameter_correlation_heatmap
+  - /figures/parameter_history_per_iteration@figures.parameter_history_per_iteration
+  - /figures/covariance_ellipses@figures.covariance_ellipses
+  - /figures/RSW_distance@figures.RSW_distance
+  - /figures/prefit_rsw@figures.prefit_rsw
+  - /figures/postfit_rsw@figures.postfit_rsw
 seed: 42
 
 # Hydra settings

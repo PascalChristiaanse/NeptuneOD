@@ -578,6 +578,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class WeightingConfig:
     """Configuration for the weighting subsystem."""
+
     enabled: bool = False
     strategy: str = "id_v2"
     gap_threshold_hours: float = 4.0
@@ -588,6 +589,7 @@ class WeightingConfig:
 @dataclass(frozen=True)
 class OutlierRejectionConfig:
     """Configuration for the outlier rejection subsystem."""
+
     enabled: bool = False
     strategies: tuple = ()  # list of strategy config dicts
 
@@ -595,6 +597,7 @@ class OutlierRejectionConfig:
 @dataclass(frozen=True)
 class DecBiasConfig:
     """Configuration for DEC bias injection."""
+
     enabled: bool = False
     biases: dict[str, float] = field(default_factory=dict)  # set_id → arcsec
 ```

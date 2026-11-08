@@ -1,27 +1,22 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.estimation_base import EstimationPlot
 
 
-class ResidualRMSPerIteration(Plot):
-    """Plot the RMS of the residuals per iteration of the estimation process."""
+class ResidualRMSPerIteration(EstimationPlot):
+    """Plot the RMS of the residuals per iteration of the estimation process.
 
-    def __init__(self, cfg, estimation_output):
-        super().__init__(cfg)
-        self.estimation_output = estimation_output
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+    estimation_output : est_an.EstimationOutput
+        The estimation output whose ``residual_history`` is plotted.
+    """
 
     def _make_figure(self):
         estimation_output = self.estimation_output
-
-        """
-        Plots the RMS of the residuals per iteration of the estimation process.
-
-        Parameters
-        ----------
-        estimation_output : est_an.EstimationOutput
-            The output of the estimation process containing the residuals per iteration.
-        """
 
         rms_per_iteration = []
         for iteration in range(estimation_output.residual_history.shape[1]):

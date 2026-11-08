@@ -11,11 +11,10 @@ defaults:
   - /parameters: initial_state
   - /logging: default
   - _self_
-  - /figures/residuals
-  - /figures/residual_histogram
-  - /figures/residual_qq
-  - /figures/residual_scatter
-
+  - /figures/residuals@figures.residuals
+  - /figures/residual_histogram@figures.residual_histogram
+  - /figures/residual_qq@figures.residual_qq
+  - /figures/residual_scatter@figures.residual_scatter
 seed: 42
 
 # Hydra settings — will be overridden by the sweep config.

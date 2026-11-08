@@ -1,74 +1,33 @@
 import matplotlib.pyplot as plt
-from tudatpy.estimation import estimation_analysis as est_an
 
-from orbitdet.visualization.base import Plot
+from orbitdet.visualization.estimation_base import EstimationPlot, _cfg_get
 
 
-class ParameterCorrelationHeatmap(Plot):
-    """Plot a heatmap of the estimated parameter correlations from the estimation output."""
+class ParameterCorrelationHeatmap(EstimationPlot):
+    """Plot a heatmap of the estimated parameter correlations from the estimation output.
 
-    def __init__(self, cfg, estimation_output: est_an.EstimationOutput):
-        super().__init__(cfg)
-        self.estimation_output = estimation_output
+    Parameters
+    ----------
+    cfg : DictConfig
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        Supported keys: ``parameter_names``, ``annotation``, ``decimal_places``,
+        ``figure.width``, ``figure.height``.
+    estimation_output : est_an.EstimationOutput
+        The estimation output whose correlation matrix is plotted.
+    """
 
     def _make_figure(self):
-        cfg = self.cfg
+        plot_cfg = self.cfg
         estimation_output = self.estimation_output
-
-        """
-        Plots a heatmap of the estimated parameter correlations from the estimation output.
-
-        Parameters
-        ----------
-        cfg : DictConfig
-            Configuration containing optional 'parameter_correlation_heatmap' settings.
-            Supported keys:
-                parameter_names : list of str
-                    Names for each parameter (used as tick labels and annotation).
-                    Defaults to Cowell propagation parameter names.
-                figure : dict
-                    'width' and 'height' for figure size.
-                annotation : bool
-                    Whether to annotate cells with correlation values (default True).
-                decimal_places : int
-                    Number of decimal places for annotations (default 2).
-
-        estimation_output : est_an.EstimationOutput
-            The output of the estimation process containing the correlation matrix.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-            The figure object.
-        ax : matplotlib.axes.Axes
-            The axes object.
-        """
-        plot_cfg = cfg.get("parameter_correlation_heatmap", {})
 
         correlation_matrix = estimation_output.correlations
         n_params = correlation_matrix.shape[0]
 
         # Default parameter names: Cowell propagation (position xyz, velocity xyz)
-        default_names = [
-            "x",
-            "y",
-            "z",
-            "v\u2093",
-            "v_y",
-            "v_z",
-        ]
-        parameter_names = plot_cfg.get("parameter_names", default_names)
+        default_names = ["x", "y", "z", "v\u2093", "v_y", "v_z"]
+        parameter_names = self._parameter_names(n_params, default_names)
 
-        # Extend or truncate parameter_names to match matrix size
-        if len(parameter_names) < n_params:
-            parameter_names = list(parameter_names) + [
-                f"p{i}" for i in range(len(parameter_names), n_params)
-            ]
-        else:
-            parameter_names = parameter_names[:n_params]
-
-        fig_width = plot_cfg.get("figure", {}).get("width", 8.0)
-        fig_height = plot_cfg.get("figure", {}).get("height", 8.0)
+        fig_width, fig_height = self._figure_size()
         fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
         cax = ax.imshow(correlation_matrix, cmap="coolwarm", vmin=-1.0, vmax=1.0)
@@ -81,9 +40,9 @@ class ParameterCorrelationHeatmap(Plot):
         ax.set_yticklabels(parameter_names)
 
         # Annotate cells with correlation values
-        annotate = plot_cfg.get("annotation", True)
+        annotate = _cfg_get(plot_cfg, "annotation", default=True)
         if annotate:
-            decimal_places = plot_cfg.get("decimal_places", 2)
+            decimal_places = _cfg_get(plot_cfg, "decimal_places", default=2)
             for i in range(n_params):
                 for j in range(n_params):
                     value = correlation_matrix[i, j]

@@ -2,13 +2,13 @@
 
 A table class mirrors :class:`orbitdet.visualization.base.Plot`: where a plotter
 builds a matplotlib figure and publishes it as a PDF, a table builds a
-:class:`pandas.DataFrame` and publishes it as CSV and Markdown.  Both attach the
-saved file to the Hydra output directory and record an Aim artifact reference,
-so a run's figures and its tables are bookkept the same way.
+:class:`pandas.DataFrame` and publishes it as CSV and Markdown.  Both write the
+saved file to the Hydra output directory, so a run's figures and its tables are
+bookkept the same way.
 
 Subclasses implement :meth:`Table._build`, which returns the dataframe (or a
 mapping of name -> dataframe).  The public :meth:`Table.build` wraps that with
-the metric logging below, so callers only need::
+the publishing below, so callers only need::
 
     frame = SourceResidualSummary(access).build()
 """
@@ -22,8 +22,6 @@ from pathlib import Path
 import pandas as pd
 from hydra.core.hydra_config import HydraConfig
 
-from orbitdet.reproducibility import aim_log_artifact_reference, aim_log_metrics
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["Table"]
@@ -35,8 +33,8 @@ class Table(ABC):
     Parameters
     ----------
     name : str, optional
-        Base name used for output files and the Aim artifact.  Defaults to the
-        snake_case class name (set by subclasses that need a different name).
+        Base name used for output files.  Defaults to the snake_case class name
+        (set by subclasses that need a different name).
     """
 
     def __init__(self, name: str | None = None):
@@ -59,7 +57,7 @@ class Table(ABC):
         return result
 
     def publish(self, result: pd.DataFrame | dict[str, pd.DataFrame]) -> None:
-        """Write the table(s) as CSV and Markdown, and record them with Aim.
+        """Write the table(s) as CSV and Markdown.
 
         Parameters
         ----------
@@ -78,26 +76,6 @@ class Table(ABC):
 
             markdown_path = output_dir / f"{table_name}.md"
             markdown_path.write_text(_to_markdown(frame))
-
-            aim_log_artifact_reference(csv_path)
-            aim_log_artifact_reference(markdown_path)
-
-        self._log_metrics(tables)
-
-    def _log_metrics(self, tables: dict[str, pd.DataFrame]) -> None:
-        """Log simple scalar metrics from the tables to the current Aim run.
-
-        Only the first table is summarised, and only the row count and the
-        ``n_obs`` total; richer metrics belong to the table subclass that knows
-        what its columns mean.  A subclass can override this.
-        """
-        metrics: dict[str, float] = {}
-        for table_name, frame in tables.items():
-            metrics[f"table/{table_name}/n_rows"] = float(len(frame))
-            if "n_obs" in frame.columns:
-                metrics[f"table/{table_name}/n_obs"] = float(frame["n_obs"].sum())
-        if metrics:
-            aim_log_metrics(metrics)
 
 
 def _to_markdown(frame: pd.DataFrame) -> str:

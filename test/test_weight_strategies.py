@@ -174,10 +174,12 @@ class TestBuildWeightsDf:
         )
         clusters = ClusterList(
             [
-                Cluster(indices=np.array([0, 1], dtype=int), cluster_id="tf_0000", 
-                    level="timeframe"),
-                Cluster(indices=np.array([2, 3], dtype=int), cluster_id="tf_0001", 
-                    level="timeframe"),
+                Cluster(
+                    indices=np.array([0, 1], dtype=int), cluster_id="tf_0000", level="timeframe"
+                ),
+                Cluster(
+                    indices=np.array([2, 3], dtype=int), cluster_id="tf_0001", level="timeframe"
+                ),
             ]
         )
         weights_ra = np.array([1e12, 1e12, 2e12, 2e12])

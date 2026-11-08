@@ -1,3 +1,4 @@
+plotter: "GaiaTransitErrorComponents"
 output_file: "gaia_transit_error_components.pdf"
 # Epoch gap (seconds) above which a new transit starts. Within a transit the
 # samples span tens of seconds; successive transits are >= ~106 min apart.

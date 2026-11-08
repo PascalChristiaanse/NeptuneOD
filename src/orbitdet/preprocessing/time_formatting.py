@@ -1,9 +1,9 @@
 """Observation-epoch *formatting*: source columns to seconds since J2000.
 
-This module provides methods for formatting common observation-epoch encodings into a single, 
+This module provides methods for formatting common observation-epoch encodings into a single,
 uniform representation: seconds since the J2000.0 epoch, 2000-01-01T12:00:00, as TudatPy renders it.
-Conversions are routed through :class:`tudatpy.astro.time_representation.DateTime` . 
-The timescale is not applied here, only the numeric representation of the epoch is produced.  
+Conversions are routed through :class:`tudatpy.astro.time_representation.DateTime` .
+The timescale is not applied here, only the numeric representation of the epoch is produced.
 The timescale is applied later by :mod:`orbitdet.preprocessing.time_scales`.
 
 

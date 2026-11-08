@@ -1,0 +1,66 @@
+plotter: "DifferencedDependentVariablesPerResult"
+# Both variables are read from every result, so the difference is
+# "propagated minus SPICE" within each pole model.  Indices follow the order
+# declared in conf/chapter_3/prefit_propagation.yaml:
+#   4 modified_equinoctial_state(Triton Spice, Neptune)  <- reference (SPICE)
+#   5 modified_equinoctial_state(Triton, Neptune)        <- comparison (propagated)
+#
+# The modified equinoctial elements are used instead of the Keplerian ones
+# because the orbit is near-circular: the Keplerian argument of pericenter and
+# true anomaly are individually ill-conditioned there, and the solver splits the
+# same orbit between them arbitrarily.  f and g encode the eccentricity vector
+# directly, so they stay well-defined.
+dependent_variable_index: 5
+comparison_dependent_variable_index: 4
+output_file: "equinoctial_prop_two_poles.pdf"
+# One legend entry per entry in cfg.simulation_results, in the same order.
+labels:
+  - "IAU 2015 pole"
+  - "Jacobson (2009) pole"
+# All six panels share one A4 page.  ``paper_size`` is the size of the whole
+# figure, not of each panel.
+figure:
+  paper_size: full
+styling:
+  palette: "tol_muted"
+legend:
+  panel: "top_right"
+  corner: "top_right"
+  frameon: true
+  framealpha: 0.6
+titles:
+  suptitle: "Propagated minus SPICE Modified Equinoctial State of {associated_body} w.r.t. {secondary_body}"
+  # The panel title names the element; the y-axis label carries only the unit,
+  # so the two do not repeat each other.  Set explicitly because the default
+  # title is the y-axis label, which is now just a unit.
+  # Single-quoted YAML strings: in a double-quoted string a backslash starts an
+  # escape sequence, so "$\Delta$" fails to parse with "unknown escape
+  # character 'D'".  Single quotes keep the backslash literal.
+  component_0: '$\Delta$ Semi-latus Rectum'
+  component_1: '$\Delta$ f (eccentricity vector, cos)'
+  component_2: '$\Delta$ g (eccentricity vector, sin)'
+  component_3: '$\Delta$ h (inclination vector, cos)'
+  component_4: '$\Delta$ k (inclination vector, sin)'
+  component_5: '$\Delta$ L (true longitude)'
+axes:
+  x_label: "Epoch"
+  # Only L is an angle; p, f, g, h and k are not, so only panel 5 is wrapped.
+  wrap_components: [5]
+  # One unit per element, in TudatPy's saved order: p, f, g, h, k, L.  The
+  # element names live in ``titles.component_N`` above.
+  y_label:
+    - "[m]"
+    - "[-]"
+    - "[-]"
+    - "[-]"
+    - "[-]"
+    - "[rad]"
+  hover_x_label: "Epoch"
+  # The hover readout keeps the full name, since there is no title next to it.
+  hover_y_label:
+    - '$\Delta$ Semi-latus Rectum [m]'
+    - '$\Delta$ f (eccentricity vector, cos)'
+    - '$\Delta$ g (eccentricity vector, sin)'
+    - '$\Delta$ h (inclination vector, cos)'
+    - '$\Delta$ k (inclination vector, sin)'
+    - '$\Delta$ L (true longitude) [rad]'

@@ -1,0 +1,15 @@
+# Snakemake configuration for the thesis reproduction pipeline.
+#
+# Every path is relative to the repository root, which is where Snakemake is
+# invoked from.
+
+# Interpreter used for every stage.  Override on the command line with
+#   snakemake --config python=/path/to/python
+python: "/home/pascal/miniconda3/envs/NeptuneOD/bin/python"
+
+# Root under which every stage writes its artifacts.  Each stage gets its own
+# subdirectory, so a stage can be deleted and regenerated in isolation.
+results_root: "results/pipeline"
+
+# Number of cores used when a launch target does not pass --cores.
+cores: 4

@@ -350,8 +350,6 @@ def _resample_uniform(times, values) -> tuple[np.ndarray, np.ndarray, float]:
     if not np.isfinite(spacing) or spacing <= 0.0:
         raise ValueError("Could not infer a valid sampling interval for the residual PSD.")
 
-    uniform_times = np.arange(
-        unique_times[0], unique_times[-1] + spacing / 2.0, spacing
-    )
+    uniform_times = np.arange(unique_times[0], unique_times[-1] + spacing / 2.0, spacing)
     uniform_values = np.interp(uniform_times, unique_times, values)
     return uniform_times, uniform_values, spacing

@@ -84,9 +84,7 @@ def _synthetic_components(n_obs=2):
     dec_r = 3e-6
     ra_s = 1e-7
     dec_s = 2e-7
-    random_block = block_diag(
-        *[np.diag([ra_r**2, dec_r**2]) for _ in range(n_obs)]
-    )
+    random_block = block_diag(*[np.diag([ra_r**2, dec_r**2]) for _ in range(n_obs)])
     systematic_block = np.tile(np.diag([ra_s**2, dec_s**2]), (n_obs, n_obs))
     return [random_block], [systematic_block]
 
@@ -383,9 +381,9 @@ class TestPerAxisScaling:
         random_blocks, systematic_blocks = _synthetic_components()
         store_gaia_covariance_components(SET_ID, random_blocks, systematic_blocks)
 
-        weights, _ = GaiaComponentsWeight(
-            random_scale_al=2.0, random_scale_ac=5.0
-        ).compute_weights(_make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001)
+        weights, _ = GaiaComponentsWeight(random_scale_al=2.0, random_scale_ac=5.0).compute_weights(
+            _make_obs_set(2), _clusters(SET_ID, 2), SET_ID, 0.001
+        )
         assert weights.shape == (4,)
         assert np.all(np.isfinite(weights))
         assert np.all(weights > 0.0)
@@ -420,9 +418,7 @@ class TestGaiaAstrometryComponentSplit:
         total_blocks = astrometry._get_observation_covariance(1)
 
         assert len(random_blocks) == len(systematic_blocks) == len(total_blocks) == 1
-        np.testing.assert_allclose(
-            random_blocks[0] + systematic_blocks[0], total_blocks[0]
-        )
+        np.testing.assert_allclose(random_blocks[0] + systematic_blocks[0], total_blocks[0])
 
     def test_scales_applied_per_component(self):
         astrometry = self._make_astrometry()

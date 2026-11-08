@@ -1,0 +1,47 @@
+# @package _global_
+
+# Toy default config for ``scripts/plot_simulation_figure.py``.
+#
+# This file exists only so the script runs with no arguments at all:
+#
+#     python scripts/plot_simulation_figure.py
+#
+# It is NOT the configuration for any real figure.  Every figure is described
+# entirely by its own file under ``conf/figures/``, which the Snakemake rules
+# pass as ``figure_config=``.  That file names the plotter, the styling and the
+# artifact paths, so nothing about a figure lives here.
+#
+# The defaults below point at the toy pre-fit propagation stage, which is the
+# smallest artifact that exercises the result-driven plotters.
+
+defaults:
+  - /kernels: classical
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Whether to open the figure interactively after writing it.  Left unset, the
+# script decides: it shows the figure only when the run is interactive, so a
+# Snakemake job (whose stdout is redirected to its log) never blocks on
+# plt.show().  Set true to always show, false to never show.
+# figure_show: false
+
+# The figure's own config file.  Its stem is the figure's name, and it carries
+# the plotter, the styling and the artifact paths.
+figure_config: "conf/figures/trajectory_3d.yaml"
+
+# Artifact to read for the result-driven figures.  Written by the propagation
+# (or estimation) stage.
+simulation_result: "results/pipeline/chapter_3/pole_sweep/IAU2015/propagation_result.tudat"
+
+# Artifact to read for the array-driven figures (propagated formal errors and
+# the RSW distance with uncertainty).  Written by the estimation stage.
+formal_errors: "results/pipeline/chapter_3/propagated_formal_errors.npz"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

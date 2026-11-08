@@ -23,9 +23,7 @@ RECEIVER_KEY = "receiver"
 def _patch_links_receiver(monkeypatch):
     import tudatpy.estimation.observable_models_setup
 
-    monkeypatch.setattr(
-        tudatpy.estimation.observable_models_setup.links, "receiver", RECEIVER_KEY
-    )
+    monkeypatch.setattr(tudatpy.estimation.observable_models_setup.links, "receiver", RECEIVER_KEY)
 
 
 def _obs_set(set_id, n=2, residuals=None):
@@ -147,9 +145,7 @@ class TestWeightEnginePlan:
             lambda access, set_index: views[set_index],
         )
         engine = WeightEngine.from_config(self._cfg())
-        engine.apply(
-            _collection([_obs_set("Gaia"), _obs_set("689")]), MagicMock(), access=object()
-        )
+        engine.apply(_collection([_obs_set("Gaia"), _obs_set("689")]), MagicMock(), access=object())
 
         built = engine._plan_strategies
         assert len(built) == 2

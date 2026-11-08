@@ -187,8 +187,7 @@ class IntegratorConvergence(Plot):
         strategy = self.strategy
 
         plot_cfg = _cfg_get(cfg, "integrator_convergence", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=14)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=10)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, axes = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=False)
 
@@ -320,8 +319,7 @@ class InterpolatorConvergence(Plot):
         interpolator_type = self.interpolator_type
 
         plot_cfg = _cfg_get(cfg, "interpolator_convergence", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=14)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=10)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, axes = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=False)
 
@@ -441,8 +439,7 @@ class IntegratorFamilyComparison(Plot):
         strategy = self.strategy
 
         plot_cfg = _cfg_get(cfg, "integrator_family_comparison", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=12)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
@@ -597,8 +594,7 @@ class IntegratorErrorVsTime(Plot):
         strategy = self.strategy
 
         plot_cfg = _cfg_get(cfg, "integrator_error_vs_time", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=6)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
@@ -672,8 +668,7 @@ class IntegratorErrorVsTimeFamily(Plot):
         strategy = self.strategy
 
         plot_cfg = _cfg_get(cfg, "integrator_error_vs_time_family", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=10)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=7)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
@@ -764,8 +759,7 @@ class InterpolatorFamilyComparison(Plot):
         results_by_type = self.results_by_type
 
         plot_cfg = _cfg_get(cfg, "interpolator_family_comparison", default=None)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=12)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
@@ -932,8 +926,7 @@ class CombinationComparison(Plot):
         if plot_cfg is None:
             plot_cfg = _cfg_get(cfg, "combination_comparison", default=None)
 
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=16.54)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=12.0)
+        fig_w, fig_h = self._figure_size(cfg=plot_cfg)
 
         fig, axes = plt.subplots(3, 1, figsize=(fig_w, fig_h), sharex=True)
         ax_pos, ax_rsw, ax_vel = axes

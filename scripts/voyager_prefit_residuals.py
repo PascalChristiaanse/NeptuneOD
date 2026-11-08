@@ -1,13 +1,10 @@
 import logging
 import os
-from pathlib import Path
 
 import hydra
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import observations as obs
 from tudatpy.estimation.observations_setup import observations_simulation_settings as obs_sim_setup
@@ -17,8 +14,6 @@ from orbitdet.data import KernelManager
 from orbitdet.observations.collection import create_observation_collection
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact,
-    aim_log_metrics,
     enforce_initialization,
     initialize,
 )
@@ -69,9 +64,7 @@ def main(cfg: DictConfig):
     logger.info("Environment created successfully.")
 
     # Create observations
-    observations, observation_models, standard_frame = create_observation_collection(
-        cfg, bodies
-    )
+    observations, observation_models, standard_frame = create_observation_collection(cfg, bodies)
     logger.info("Observations generated successfully.")
 
     # Add range dependent variable to compute lighttime post simulation
@@ -91,25 +84,10 @@ def main(cfg: DictConfig):
     )
     logger.info("Pre-fit residuals computed successfully.")
 
-    # Log metric summary of residuals to Aim
-    rms = np.sqrt(
-        np.mean(np.square(observations.get_single_observation_sets()[0].concatenated_residuals))
-    )
-    if rms.size > 0:
-        aim_log_metrics(
-            {
-                "residuals_rms": float(rms.std()),
-                "residuals_mean": float(rms.mean()),
-                "residuals_max": float(abs(rms).max()),
-                "num_observations": rms.size,
-            }
-        )
-        logger.info("Logged residual summary metrics to Aim.")
-
     access = ObservationAccess.build(observations, standard_frame)
-    residuals_psd = ResidualsPSD(cfg, access, 30, cfg.figures.residuals_psd)
+    residuals_psd = ResidualsPSD(OmegaConf.select(cfg, "figures.residuals_psd", default={}), access)
     fig_psd, ax_psd = residuals_psd._make_figure()
-    residuals = Residuals(cfg, access)
+    residuals = Residuals(OmegaConf.select(cfg, "figures.residuals", default={}), access)
     fig, ax = residuals._make_figure()
 
     # add line on y axis at date of voyager 2 closest approach to neptune,
@@ -123,16 +101,10 @@ def main(cfg: DictConfig):
     ax[1].legend()
     logger.info("Pre-fit residuals plotted successfully.")
 
-    # Save, log to Aim, and attach the PDFs via the Plot base class after the
+    # Save and attach the PDFs via the Plot base class after the
     # closest-approach lines were added.
     residuals.publish(fig, ax)
     residuals_psd.publish(fig_psd, ax_psd)
-
-    # Also log config.yaml as artifact for this run
-    output_dir = Path(HydraConfig.get().runtime.output_dir)
-    config_path = output_dir / "config.yaml"
-    if config_path.exists():
-        aim_log_artifact(config_path)
 
     backend = plt.get_backend().lower()
     if backend == "agg" or "inline" in backend:

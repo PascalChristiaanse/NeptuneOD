@@ -1,3 +1,4 @@
+plotter: "Residuals"
 output_file: "postfit_residuals.pdf"
 # Standard-frame column(s) the scatter series are grouped by (colour/marker/legend).
 # Any standard-frame column works, e.g. observatory_code, set_id, source_set_id.

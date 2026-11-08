@@ -42,7 +42,6 @@ from tudatpy.dynamics import simulator as sim
 from orbitdet.data import KernelManager
 from orbitdet.reproducibility import (
     RuntimeContext,
-    aim_log_artifact_reference,
     enforce_initialization,
     initialize,
 )
@@ -180,7 +179,6 @@ def main(cfg: DictConfig):
             integration_time=t_coarse + t_fine,
         )
         logger.info("Results saved to %s", npz_path)
-        aim_log_artifact_reference(npz_path)
 
         metadata = {
             "strategy": strategy,
@@ -303,7 +301,6 @@ def main(cfg: DictConfig):
             integration_time=t_fwd + t_bwd,
         )
         logger.info("Results saved to %s", npz_path)
-        aim_log_artifact_reference(npz_path)
 
         metadata = {
             "strategy": strategy,

@@ -13,11 +13,9 @@ import logging
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-from omegaconf import DictConfig
 
-from orbitdet.analysis import ObservationAccess, analysis_frame
-from orbitdet.visualization.base import Plot, _make_hover_formatter, _snake_case
-from orbitdet.visualization.residuals import _cfg_get
+from orbitdet.visualization.base import _make_hover_formatter
+from orbitdet.visualization.residual_base import ResidualPlot, _cfg_get
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ def _format_colorbar_tick(value, _position: int | None = None) -> str:
         return f"{value:.0f}"
 
 
-class ResidualScatter(Plot):
+class ResidualScatter(ResidualPlot):
     """Plot RA vs Dec residuals as a scatter, with observation time as colour.
 
     Each cluster (by default ``observatory_code``) gets its own marker shape, and
@@ -47,86 +45,21 @@ class ResidualScatter(Plot):
     Parameters
     ----------
     cfg : DictConfig
-        The Hydra experiment configuration.
+        The figure's own configuration block (``conf/figures/<name>.yaml``).
+        ``group_by``, ``axes.unit`` and ``include_rejected`` are read from here.
     access : ObservationAccess
         The access layer whose derived frame is plotted.
-    use_figure_name : str | None
-        Name of the figure configuration block under ``cfg.figures``.  Defaults
-        to ``"residual_scatter"``.
-    group_by : str | list[str] | None
-        Standard-frame column(s) to cluster the marker shapes by.  ``None``
-        (default) falls back to the figure config's ``group_by`` and then to
-        ``"observatory_code"``.
-    unit : str | None
-        Display unit for the residual axes: ``"arcsec"`` or ``"mas"``.  ``None``
-        (default) uses the figure config's ``axes.unit`` (itself defaulting to
-        ``"arcsec"``).
-    fig : plt.Figure | None
-        An optional pre-existing figure.  Must be provided together with ``ax``.
-    ax : plt.Axes | None
-        An optional pre-existing axes.  Must be provided together with ``fig``.
-    include_rejected : bool
-        Whether to plot rows that outlier rejection removed.  Defaults to
-        ``False``.
     """
 
-    def __init__(
-        self,
-        cfg: DictConfig,
-        access: ObservationAccess,
-        use_figure_name: str | None = "residual_scatter",
-        group_by: str | list[str] | None = None,
-        unit: str | None = None,
-        fig: plt.Figure | None = None,
-        ax: plt.Axes | None = None,
-        include_rejected: bool = False,
-    ):
-        super().__init__(cfg)
-        self.use_figure_name = use_figure_name or "residual_scatter"
-        self.access = access
-        self.group_by = group_by
-        self.unit = unit
-        self.include_rejected = include_rejected
-        if (fig is not None and ax is None) or (fig is None and ax is not None):
-            raise ValueError("Both fig and ax must be provided together.")
-        self.fig = fig
-        self.ax = ax
-        self.name = self.use_figure_name or _snake_case(self.__class__.__name__)
-
-    def _grouping(self, plot_cfg) -> list[str]:
-        """Resolve the clustering columns: argument, then config, then default."""
-        group_by = self.group_by
-        if group_by is None:
-            group_by = _cfg_get(plot_cfg, "group_by", default=None)
-        if group_by is None:
-            group_by = "observatory_code"
-        return [group_by] if isinstance(group_by, str) else list(group_by)
-
-    @staticmethod
-    def _group_label(key, columns: list[str]) -> str:
-        """Render a groupby key as a legend label."""
-        values = key if isinstance(key, tuple) else (key,)
-        if len(columns) == 1:
-            return str(values[0])
-        return ", ".join(f"{column}={value}" for column, value in zip(columns, values, strict=True))
-
     def _make_figure(self):
-        plot_cfg = _cfg_get(self.cfg.figures, self.use_figure_name, default=None)
-        logger.debug("Plotting configuration for '%s': %s", self.use_figure_name, plot_cfg)
-        fig_w = _cfg_get(plot_cfg, "figure", "width", default=8.27)
-        fig_h = _cfg_get(plot_cfg, "figure", "height", default=8.27)
+        plot_cfg = self.cfg
+        fig_w, fig_h = self._figure_size()
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
-        if self.fig is None and self.ax is None:
-            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        else:
-            fig, ax = self.fig, self.ax
-
-        unit = self.unit or _cfg_get(plot_cfg, "axes", "unit", default="arcsec")
+        unit = self.unit
 
         # One tidy frame: standard columns + residual/weight/sigma + unit columns.
-        frame = analysis_frame(self.access, unit=unit, scan=False, normalized=False)
-        if not self.include_rejected and "rejected" in frame.columns:
-            frame = frame.loc[~frame["rejected"].astype(bool)]
+        frame = self._frame(unit=unit, scan=False, normalized=False)
 
         first_col = f"residual_first_rad_{unit}"
         second_col = f"residual_second_rad_{unit}"
@@ -136,13 +69,8 @@ class ResidualScatter(Plot):
                 f"cannot plot residuals in unit '{unit}'."
             )
 
-        group_cols = self._grouping(plot_cfg)
-        missing = [column for column in group_cols if column not in frame.columns]
-        if missing:
-            raise ValueError(
-                f"Grouping column(s) {missing} are not in the standard frame. "
-                f"Available columns: {sorted(frame.columns)}."
-            )
+        group_cols = self._grouping()
+        self._require_columns(frame, group_cols)
 
         # Global epoch range, so every cluster shares one colour scale.
         epochs_all = frame["epoch_tdb"].to_numpy("float64")
@@ -156,8 +84,7 @@ class ResidualScatter(Plot):
 
         cmap_name = _cfg_get(plot_cfg, "styling", "cmap", default="rainbow")
         cmap = plt.get_cmap(cmap_name)
-        marker_size = _cfg_get(plot_cfg, "styling", "marker_size", default=30)
-        marker_types = ["o", "s", "D", "^", "v", "<", ">", "P", "X"]
+        _, marker_size, marker_types = self._styling()
 
         for index, (key, cluster) in enumerate(frame.groupby(group_cols, dropna=False, sort=True)):
             marker = marker_types[index % len(marker_types)]
@@ -184,18 +111,7 @@ class ResidualScatter(Plot):
                 edgecolors="none",
             )
 
-        target_name = "target"
-        if "observed_object" in frame.columns and not frame["observed_object"].dropna().empty:
-            target_name = str(frame["observed_object"].dropna().iloc[0])
-
-        title = _cfg_get(
-            plot_cfg, "titles", "title", default="RA vs DEC Residuals for {target_name}"
-        )
-        try:
-            if isinstance(title, str):
-                title = title.format(target_name=target_name)
-        except Exception:
-            pass
+        title = self._suptitle(frame, "title", "RA vs DEC Residuals for {target_name}")
 
         x_label = _cfg_get(plot_cfg, "axes", "x_label", default=f"RA Residual [{unit}]")
         y_label = _cfg_get(plot_cfg, "axes", "y_label", default=f"DEC Residual [{unit}]")
@@ -213,29 +129,13 @@ class ResidualScatter(Plot):
         cbar.set_label(_cfg_get(plot_cfg, "axes", "colorbar_label", default="Epoch"))
         cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(_format_colorbar_tick))
 
-        hover_x_label = _cfg_get(
-            plot_cfg, "axes", "hover_x_label", default=f"RA Residual [{unit}]"
-        )
+        hover_x_label = _cfg_get(plot_cfg, "axes", "hover_x_label", default=f"RA Residual [{unit}]")
         hover_y_label = _cfg_get(
             plot_cfg, "axes", "hover_y_label", default=f"DEC Residual [{unit}]"
         )
         ax.format_coord = _make_hover_formatter(hover_x_label, hover_y_label, datetime_x=False)
 
-        try:
-            legend_ncols = int(_cfg_get(plot_cfg, "legend", "ncols", default=2))
-        except Exception:
-            legend_ncols = 2
-
-        bbox = _cfg_get(plot_cfg, "legend", "bbox_to_anchor", default={"x": 0.5, "y": -0.15})
-        try:
-            if isinstance(bbox, dict):
-                bbox_tuple = (float(bbox.get("x", 0.5)), float(bbox.get("y", -0.15)))
-            else:
-                bbox_tuple = tuple(float(x) for x in bbox)
-        except Exception:
-            bbox_tuple = (0.5, -0.15)
-
-        ax.legend(ncols=legend_ncols, loc="upper center", bbox_to_anchor=bbox_tuple)
+        self._legend(ax)
         fig.set_tight_layout(True)
 
         return fig, ax

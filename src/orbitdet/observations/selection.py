@@ -197,9 +197,7 @@ def compile_selection(spec: Any) -> Selection:
         plain = OmegaConf.to_container(spec, resolve=True) if isinstance(spec, DictConfig) else spec
         unknown = set(plain) - {"where"}
         if unknown:
-            raise ValueError(
-                f"Unknown selection key(s) {sorted(unknown)}; expected 'where'."
-            )
+            raise ValueError(f"Unknown selection key(s) {sorted(unknown)}; expected 'where'.")
         if "where" not in plain:
             raise ValueError("A selection mapping must have a 'where' key.")
         return compile_selection(plain["where"])

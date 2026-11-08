@@ -1,0 +1,36 @@
+plotter: "RSWDistanceDifference"
+# Index into each result's ordered dependent variables.  Index 2 is
+# relative_position(Triton Spice, Triton) in the order declared in
+# conf/chapter_3/prefit_propagation.yaml.
+dependent_variable_index: 2
+output_file: "trajectory_rsw_difference.pdf"
+central_body: "Neptune"
+# One legend entry per entry in cfg.simulation_results, in the same order.
+# The reference is cfg.simulation_result (the Jacobson 2009 pole model).
+labels:
+  - "Jacobson (2009) − IAU 2015"
+figure:
+  paper_size: half_height
+# Line colours, cycled across the series.  A single colour keeps the eye on the
+# curve shape; add more entries to distinguish overlaid series.
+styling:
+  colors: ["black"]
+# The legend is drawn inside one panel, so it cannot clip the x-axis labels.
+legend:
+  panel: "top_right"    # top_left | top_right | bottom_left | bottom_right
+  corner: "top_right"   # corner of that panel to anchor to
+  frameon: true
+  framealpha: 0.6       # semi-transparent, so curves behind stay visible
+titles:
+  r: "Radial (R)"
+  s: "Transverse (S)"
+  w: "Cross-track (W)"
+  norm: "L2 Norm of RSW"
+  suptitle: "RSW Difference of {body1} w.r.t. {body2} (centered on {central_body})"
+axes:
+  x_label: "Epoch"
+  # Display unit for the RSW components: "m" or "km".
+  unit: "km"
+  y_label: "Difference [km]"
+  hover_x_label: "Epoch"
+  hover_y_label: "Difference [km]"

@@ -2,7 +2,7 @@
 
 The :class:`Table` base mirrors :class:`orbitdet.visualization.base.Plot`: a
 subclass builds a :class:`pandas.DataFrame` and the base publishes it as CSV and
-Markdown, records it with Aim, and logs simple metrics.
+Markdown.
 
 See :mod:`orbitdet.analysis.tables.residual_summary` for the concrete tables.
 """

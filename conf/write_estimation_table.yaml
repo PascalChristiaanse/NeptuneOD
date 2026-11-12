@@ -1,0 +1,39 @@
+# @package _global_
+
+# Config for ``scripts/write_estimation_table.py``.
+#
+# The script writes exactly one table per run from a serialized
+# ``EstimationOutput``.  Which table, and which artifact to read, are passed as
+# overrides by the Snakemake rules:
+#
+#     python scripts/write_estimation_table.py \
+#         table_config=conf/tables/parameter_change.yaml \
+#         estimation_output=results/.../estimation_output.tudat
+#
+# The table's name is the stem of ``table_config``, so there is no separate
+# ``table`` key to keep in sync.
+
+defaults:
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# The table's own config file.  Its stem is the table's name, and it carries the
+# producer, the writer and the output file name.
+table_config: "conf/tables/parameter_change.yaml"
+
+# Override the output file stem.  Left null, the table config's ``output_file``
+# names the output.  A rule that writes the same table once per model sets this
+# so the files do not overwrite each other.
+output_name: null
+
+# Artifact to read.  Written by the estimation stage.
+estimation_output: "results/chapter_3/initial_state_estimation/IAU2015/estimation_output.tudat"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

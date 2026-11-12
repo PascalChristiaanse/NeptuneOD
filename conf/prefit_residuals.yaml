@@ -24,10 +24,33 @@ defaults:
 
 seed: 42
 
-# Pre-fit residuals are evaluated against the SPICE ephemeris, so the
-# propagator's integrated result is not needed here.
+# The observation collection this stage computes residuals for, and the standard
+# frame that goes with it.  Both are written by
+# ``scripts/generate_observation_collection.py``; Snakemake overrides them with
+# the paths of the rule's inputs.
+observations: "results/generate_observation_collection_toy/generate_observation_collection/observations.tudat"
+standard_frame: "results/generate_observation_collection_toy/generate_observation_collection/standard_frame.parquet"
+
+# Residuals are evaluated against the SPICE ephemeris, so the propagator's
+# integrated result is not needed here.
 propagation:
   set_integrated_result: false
+
+# Which ephemeris the residuals are computed against.
+#
+#   spice        the environment's own ephemeris (SPICE) - the a priori state
+#   propagation  a saved SingleArcSimulationResults installed as the observed
+#                body's ephemeris - a propagated state
+#
+# The type is auto-detected: naming ``propagation_result`` selects
+# ``propagation``, leaving it unset selects ``spice``.  Set ``type`` explicitly
+# to override the detection.
+#
+# Both keys are declared (as null) rather than commented out, so a rule can
+# override them without the ``+`` prefix Hydra needs for new keys.
+observation_source:
+  type: null
+  propagation_result: null
 
 # Hydra settings
 hydra:

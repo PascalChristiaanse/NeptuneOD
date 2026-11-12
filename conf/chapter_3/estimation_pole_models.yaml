@@ -1,0 +1,73 @@
+# @package _global_
+
+# Experiment: Triton initial state estimation for each Neptune pole model.
+#
+# The chapter 3 initial state estimation fits the Triton state to the synthetic
+# observations produced by ``generate_synthetic_observations``.  The fit is run
+# once per pole model, because the pole model changes Neptune's orientation and
+# therefore the geometry the observations are compared against, so the two fits
+# are not interchangeable and both are kept.
+#
+# The pole model is selected per run by the Snakemake rule, which overrides
+# ``bodies_to_create.Neptune.rotation_model.type`` with the wildcard value:
+#
+#     python scripts/solve_estimation.py \
+#         --config-name chapter_3/estimation_pole_models \
+#         hydra.run.dir=results/<stage>/<pole_model> \
+#         bodies_to_create.Neptune.rotation_model.type=<pole_model>
+#
+# The two supported values are the ones the pole sweep uses: ``IAU2015`` and
+# ``Pole_Model_Jacobson2009``.
+#
+# It deliberately composes NO figure configs: the estimation stage saves the
+# EstimationOutput and nothing else, and the figures are separate rules.
+
+defaults:
+  - /dynamics: jacobson2009
+  - /kernels: jacobson2009
+  - /parameters: initial_state
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/chapter_3/initial_state_estimation/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# The observation collection the fit consumes, written by the pre-fit stage.
+# Snakemake overrides it with the path of the rule's input.
+observations: "results/chapter_3/initial_state_estimation/prefit_observations.tudat"
+
+# The estimator's propagator does not need a stored integrated result.
+propagation:
+  set_integrated_result: false
+
+# Time settings.  The window matches the synthetic observation collection so the
+# fit sees the same epochs the observations were generated on.
+start_date: 1900-1-1T12:00:00
+end_date: 2027-1-1T12:00:00
+initial_epoch: 1989-08-25T12:00:00
+
+# Estimation settings specific to this experiment.  The parameter set itself
+# comes from ``/parameters: initial_state``.
+estimation:
+  max_iterations: 10
+  max_iterations_without_improvement: 3
+
+dependent_variables:
+  - type: keplerian_state
+    body: "Triton Spice"
+    central_body: "Neptune"
+  - type: keplerian_state
+    body: "Triton"
+    central_body: "Neptune"
+  - type: relative_position
+    body: "Triton Spice"
+    secondary_body: "Triton"
+  - type: relative_velocity
+    body: "Triton Spice"
+    secondary_body: "Triton"

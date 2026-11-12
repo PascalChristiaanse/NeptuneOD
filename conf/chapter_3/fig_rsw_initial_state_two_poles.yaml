@@ -1,0 +1,30 @@
+plotter: "RSWDistanceComparison"
+dependent_variable_index: 2
+output_file: "rsw_initial_state_two_poles.pdf"
+central_body: "Neptune"
+labels:
+  # Must match POLE_MODELS order in workflow/chapters/chapter_3.smk, which is
+  # the order the rule passes the results in.
+  - "IAU 2015 pole"
+  - "Jacobson (2009) pole"
+figure:
+  paper_size: half_height
+styling:
+  palette: "tol_muted"
+legend:
+  panel: "top_right"   
+  corner: "top_right"   
+  frameon: true
+  framealpha: 0.6       
+titles:
+  r: "Radial (R)"
+  s: "Transverse (S)"
+  w: "Cross-track (W)"
+  norm: "L2 Norm of RSW"
+  suptitle: "RSW Separation of {body2} w.r.t. {body1} (centered on {central_body})\nInitial State Estimation Comparison"
+axes:
+  x_label: "Epoch"
+  unit: "km"
+  y_label: "Distance [km]"
+  hover_x_label: "Epoch"
+  hover_y_label: "Distance [km]"

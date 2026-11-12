@@ -172,6 +172,103 @@ rule rsw_between_pole_models:
             > {log} 2>&1
         """
 
+######################################################
+############## Initial state estimation ##############
+######################################################
+INITIAL_ESTIMATION_FOLDER = f"{STAGE}/initial_state_estimation"
+rule generate_synthetic_observations:
+    """Generate synthetic observations for the initial state estimation."""
+
+    input:
+        python_dependencies("scripts/generate_observation_collection.py"),
+        hydra_dependencies("conf/chapter_3/coll_synthetic_3d_point.yaml"),
+
+    output:
+        f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
+        f"{INITIAL_ESTIMATION_FOLDER}/prefit_standard_frame.parquet",
+
+    log:
+        f"{INITIAL_ESTIMATION_FOLDER}/generate_synthetic_observations.log",
+
+    shell:
+        """
+        {PYTHON} scripts/generate_observation_collection.py \
+            --config-name chapter_3/coll_synthetic_3d_point \
+            hydra.run.dir={INITIAL_ESTIMATION_FOLDER} \
+            output.observations=prefit_observations \
+            output.standard_frame=prefit_standard_frame.parquet \
+            > {log} 2>&1
+        """
+
+
+rule estimate_initial_state_pole_models:
+    """Fit the Triton initial state once per Neptune pole model.
+
+    The pole model changes Neptune's orientation, so the two fits are separate
+    experiments rather than repeats of the same one.
+    """
+
+    input:
+        python_dependencies("scripts/solve_estimation.py"),
+        hydra_dependencies("conf/chapter_3/estimation_pole_models.yaml"),
+        f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
+
+    output:
+        f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/estimation_output.tudat",
+        f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/final_iteration_simulation_results.tudat",
+        f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/estimation_log.log",
+
+    wildcard_constraints:
+        pole_model="|".join(POLE_MODELS),
+
+    log:
+        f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/estimate.log",
+
+    shell:
+        """
+        {PYTHON} scripts/solve_estimation.py \
+            --config-name chapter_3/estimation_pole_models \
+            hydra.run.dir={INITIAL_ESTIMATION_FOLDER}/{wildcards.pole_model} \
+            observations={INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat \
+            bodies_to_create.Neptune.rotation_model.type={wildcards.pole_model} \
+            > {log} 2>&1
+        """
+
+
+rule rsw_initial_state_two_poles:
+    """RSW separation for the two initial state estimates, overlaid on one figure."""
+
+    input:
+        expand(
+            f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/final_iteration_simulation_results.tudat",
+            pole_model=POLE_MODELS,
+        ),
+        python_dependencies("scripts/plot_simulation_figure.py"),
+        hydra_dependencies("conf/chapter_3/fig_rsw_initial_state_two_poles.yaml"),
+
+    output:
+        f"{INITIAL_ESTIMATION_FOLDER}/rsw_initial_state_two_poles.pdf",
+
+    params:
+        results=",".join(
+            expand(
+                f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/final_iteration_simulation_results.tudat",
+                pole_model=POLE_MODELS,
+            )
+        ),
+
+    log:
+        f"{INITIAL_ESTIMATION_FOLDER}/rsw_initial_state_two_poles.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_simulation_figure.py \
+            hydra.run.dir={INITIAL_ESTIMATION_FOLDER} \
+            figure_config=conf/chapter_3/fig_rsw_initial_state_two_poles.yaml \
+            +simulation_results=[{params.results}] \
+            > {log} 2>&1
+        """
+
 rule all_chapter_3:
     """Everything chapter 3 needs: the artifacts, every figure, and the sweep."""
 
@@ -198,3 +295,8 @@ rule all_chapter_3:
         ),
         # Paragraph 2: initial state estimation, one figure comparing the two fits
         f"{INITIAL_ESTIMATION_FOLDER}/rsw_initial_state_two_poles.pdf",
+        # Paragraph 2: one covariance/correlation corner plot per pole model
+        expand(
+            f"{INITIAL_ESTIMATION_FOLDER}/rsw_correlations_{{pole_model}}.pdf",
+            pole_model=POLE_MODELS,
+        ),

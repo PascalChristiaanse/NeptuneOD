@@ -1,4 +1,5 @@
 from .base import Plot
+from .covariance_correlation_pairgrid import CovarianceCorrelationPairGrid
 from .covariance_ellipses import CovarianceEllipses
 from .dependent_variable import DependentVariable
 from .dependent_variable_differenced import (
@@ -46,6 +47,7 @@ __all__ = [
     "SimulationPlot",
     "ArrayPlot",
     "CombinationComparison",
+    "CovarianceCorrelationPairGrid",
     "CovarianceEllipses",
     "DependentVariable",
     "DifferencedDependentVariables",

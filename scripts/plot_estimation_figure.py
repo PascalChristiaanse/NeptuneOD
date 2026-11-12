@@ -9,7 +9,7 @@ Runnable standalone::
     python scripts/plot_estimation_figure.py \\
         figure=parameter_correlation_heatmap \\
         figure_config=conf/figures/parameter_correlation_heatmap.yaml \\
-        estimation_output=results/pipeline/chapter_3/estimation_output.tudat
+        estimation_output=results/chapter_3/estimation_output.tudat
 
 or as a Snakemake rule, which passes the same overrides.
 

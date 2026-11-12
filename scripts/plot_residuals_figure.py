@@ -16,8 +16,8 @@ Runnable in three ways:
       python scripts/plot_residuals_figure.py \\
           figure=prefit_residuals_spice \\
           figure_config=conf/figures/prefit_residuals_spice.yaml \\
-          observations=results/pipeline/chapter_3/prefit_residuals/observations.tudat \\
-          standard_frame=results/pipeline/chapter_3/prefit_residuals/standard_frame.parquet
+          observations=results/chapter_3/prefit_residuals/observations.tudat \\
+          standard_frame=results/chapter_3/prefit_residuals/standard_frame.parquet
 
 * as a Snakemake rule, which passes all four as overrides.
 

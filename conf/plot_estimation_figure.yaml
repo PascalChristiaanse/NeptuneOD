@@ -30,7 +30,7 @@ seed: 42
 figure_config: "conf/figures/parameter_correlation_heatmap.yaml"
 
 # Artifact to read.  Written by the estimation stage.
-estimation_output: "results/pipeline/chapter_3/estimation_output.tudat"
+estimation_output: "results/chapter_3/estimation_output.tudat"
 
 # Hydra settings
 hydra:

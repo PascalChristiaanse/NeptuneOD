@@ -32,8 +32,8 @@ seed: 42
 figure_config: "conf/figures/prefit_residuals_spice.yaml"
 
 # Artifacts to read.  Both are written by the ``prefit_residuals`` stage.
-observations: "results/pipeline/prefit_residuals_toy/prefit_residuals/observations.tudat"
-standard_frame: "results/pipeline/prefit_residuals_toy/prefit_residuals/standard_frame.parquet"
+observations: "results/prefit_residuals_toy/prefit_residuals/observations.tudat"
+standard_frame: "results/prefit_residuals_toy/prefit_residuals/standard_frame.parquet"
 
 # Hydra settings
 hydra:

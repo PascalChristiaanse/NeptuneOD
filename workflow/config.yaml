@@ -9,7 +9,7 @@ python: "/home/pascal/miniconda3/envs/NeptuneOD/bin/python"
 
 # Root under which every stage writes its artifacts.  Each stage gets its own
 # subdirectory, so a stage can be deleted and regenerated in isolation.
-results_root: "results/pipeline"
+results_root: "results"
 
 # Number of cores used when a launch target does not pass --cores.
 cores: 4

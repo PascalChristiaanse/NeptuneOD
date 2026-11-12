@@ -33,11 +33,11 @@ figure_config: "conf/figures/trajectory_3d.yaml"
 
 # Artifact to read for the result-driven figures.  Written by the propagation
 # (or estimation) stage.
-simulation_result: "results/pipeline/chapter_3/pole_sweep/IAU2015/propagation_result.tudat"
+simulation_result: "results/chapter_3/pole_sweep/IAU2015/propagation_result.tudat"
 
 # Artifact to read for the array-driven figures (propagated formal errors and
 # the RSW distance with uncertainty).  Written by the estimation stage.
-formal_errors: "results/pipeline/chapter_3/propagated_formal_errors.npz"
+formal_errors: "results/chapter_3/propagated_formal_errors.npz"
 
 # Hydra settings
 hydra:

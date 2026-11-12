@@ -148,3 +148,24 @@ class TestResidualScatter:
         plot = ResidualScatter(_cfg(group_by="not_a_column"), access)
         with pytest.raises(ValueError, match="not in the standard frame"):
             plot._make_figure()
+
+    def test_builds_under_journal_style(self):
+        """The journal style installs a constrained layout engine.
+
+        That engine builds the colourbar through its gridspec, so a plotter that
+        then forces tight layout raises ``RuntimeError``.  Building the figure
+        with the style applied guards against that regression.
+        """
+        from orbitdet.visualization.style import apply_style
+
+        saved = dict(matplotlib.rcParams)
+        try:
+            apply_style("A&A")
+            access = _access()
+            plot = ResidualScatter(_cfg(), access)
+            fig, ax = plot._make_figure()
+            assert len(fig.axes) == 2  # main axes + colourbar
+            assert type(fig.get_layout_engine()).__name__ == "ConstrainedLayoutEngine"
+            plt.close(fig)
+        finally:
+            matplotlib.rcParams.update(saved)

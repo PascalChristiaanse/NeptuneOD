@@ -62,5 +62,9 @@ class ParameterCorrelationHeatmap(EstimationPlot):
         ax.set_xlabel("Parameter")
         ax.set_ylabel("Parameter")
 
-        plt.tight_layout()
+        # Keep the constrained layout engine the journal style installs.  The
+        # colorbar is created through that engine's gridspec, so switching to
+        # tight layout here would raise (matplotlib refuses to swap engines once
+        # a colorbar exists).
+        fig.set_layout_engine("constrained")
         return fig, ax

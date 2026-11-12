@@ -176,6 +176,10 @@ rule rsw_between_pole_models:
 ############## Initial state estimation ##############
 ######################################################
 INITIAL_ESTIMATION_FOLDER = f"{STAGE}/initial_state_estimation"
+
+#: LaTeX styles the parameter-change table is written in.  Must match the
+#: ``writer.styles`` list in conf/tables/parameter_change.yaml.
+TABLE_STYLES = ["booktabs", "aa"]
 rule generate_synthetic_observations:
     """Generate synthetic observations for the initial state estimation."""
 
@@ -306,6 +310,39 @@ rule rsw_correlations:
         """
 
 
+rule parameter_change_table:
+    """Initial vs final parameter table for each pole model's initial state estimate."""
+
+    input:
+        python_dependencies("scripts/write_estimation_table.py"),
+        hydra_dependencies("conf/write_estimation_table.yaml"),
+        # The table config is named by a plain key rather than a defaults entry,
+        # so hydra_dependencies() above does not see it.
+        "conf/tables/parameter_change.yaml",
+        estimation_output=f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/estimation_output.tudat",
+
+    output:
+        # One LaTeX file per style the table config names (booktabs and aa).
+        f"{INITIAL_ESTIMATION_FOLDER}/parameter_change_{{pole_model}}_booktabs.tex",
+        f"{INITIAL_ESTIMATION_FOLDER}/parameter_change_{{pole_model}}_aa.tex",
+
+    wildcard_constraints:
+        pole_model="|".join(POLE_MODELS),
+
+    log:
+        f"{INITIAL_ESTIMATION_FOLDER}/parameter_change_{{pole_model}}.log",
+
+    shell:
+        """
+        {PYTHON} scripts/write_estimation_table.py \
+            hydra.run.dir={INITIAL_ESTIMATION_FOLDER} \
+            table_config=conf/tables/parameter_change.yaml \
+            estimation_output={input.estimation_output} \
+            output_name=parameter_change_{wildcards.pole_model} \
+            > {log} 2>&1
+        """
+
+
 rule all_chapter_3:
     """Everything chapter 3 needs: the artifacts, every figure, and the sweep."""
 
@@ -336,4 +373,10 @@ rule all_chapter_3:
         expand(
             f"{INITIAL_ESTIMATION_FOLDER}/rsw_correlations_{{pole_model}}.pdf",
             pole_model=POLE_MODELS,
+        ),
+        # Paragraph 2: one parameter-change table per pole model, in both styles
+        expand(
+            f"{INITIAL_ESTIMATION_FOLDER}/parameter_change_{{pole_model}}_{{style}}.tex",
+            pole_model=POLE_MODELS,
+            style=TABLE_STYLES,
         ),

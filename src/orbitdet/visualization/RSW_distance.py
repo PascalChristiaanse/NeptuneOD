@@ -559,16 +559,27 @@ class RSWDistanceDifference(SimulationPlot):
         The figure's own configuration block (``conf/figures/<name>.yaml``).
         ``central_body`` is read from here (default ``"Neptune"``).
         config keys:
-            - ``central_body``: the central body for the RSW frame (default ``"Neptune"``)
-            - ``titles``: a mapping of panel names to titles (default ``"Radial (R)"``, ``"Transverse (S)"``, ``"Cross-track (W)"``, ``"L2 Norm of RSW"``)
-            - ``axes``: a mapping of axis labels (default ``"Epoch"``, ``"Difference [unit]"``)
-            - ``styling``: a mapping of styling options (default ``palette: "okabe_ito"``, ``colors: ["#0072B2", "#D55E00"]``)
-            - ``legend``: a mapping of legend options (default ``panel: "top_right"``, ``corner: "top_right"``, ``ncols: 1``)
-            - ``figure_size``: a mapping of figure size options (default ``width: 10``, ``height: 8``)
-            - ``output``: a mapping of output options (default ``filename: "rsw_difference.pdf"``, ``dpi: 300``)
-            - ``savefig``: a mapping of savefig options (default ``bbox_inches: "tight"``, ``pad_inches: 0.1``)
-            - ``show``: a boolean indicating whether to show the figure (default ``False``)
-            - ``close``: a boolean indicating whether to close the figure after saving (default ``True``)
+            - ``central_body``: the central body for the RSW frame
+              (default ``"Neptune"``)
+            - ``titles``: a mapping of panel names to titles (default
+              ``"Radial (R)"``, ``"Transverse (S)"``, ``"Cross-track (W)"``,
+              ``"L2 Norm of RSW"``)
+            - ``axes``: a mapping of axis labels (default ``"Epoch"``,
+              ``"Difference [unit]"``)
+            - ``styling``: a mapping of styling options (default
+              ``palette: "okabe_ito"``, ``colors: ["#0072B2", "#D55E00"]``)
+            - ``legend``: a mapping of legend options (default
+              ``panel: "top_right"``, ``corner: "top_right"``, ``ncols: 1``)
+            - ``figure_size``: a mapping of figure size options (default
+              ``width: 10``, ``height: 8``)
+            - ``output``: a mapping of output options (default
+              ``filename: "rsw_difference.pdf"``, ``dpi: 300``)
+            - ``savefig``: a mapping of savefig options (default
+              ``bbox_inches: "tight"``, ``pad_inches: 0.1``)
+            - ``show``: a boolean indicating whether to show the figure
+              (default ``False``)
+            - ``close``: a boolean indicating whether to close the figure
+              after saving (default ``True``)
     reference_result : prop.SimulationResults
         The result every comparison is subtracted from.
     comparison_results : list[prop.SimulationResults]

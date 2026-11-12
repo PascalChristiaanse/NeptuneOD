@@ -1,0 +1,38 @@
+plotter: RSWDistanceDifference
+central_body: Neptune
+# The relative-position dependent variable, in the order declared by
+# conf/chapter_3/estimation_pole_models.yaml:
+#   2 relative_position(Triton Spice, Triton)
+# The reference is the SPICE ephemeris, so the difference is
+# "SPICE minus propagated" for every variant.
+dependent_variable_index: 2
+comparison_dependent_variable_index: 2
+output_file: "rsw_gm_sweep.pdf"
+labels:
+  # Must match the order the rule passes the results in: the initial state fit
+  # first, then the three GM sets in GM_SETS order.
+  - "Initial state only"
+  - "Initial state + Neptune $G M$"
+  - "Initial state + Triton $G M$"
+  - "Initial state + Neptune and Triton $G M$"
+figure:
+  paper_size: half_height
+styling:
+  palette: "tol_muted"
+legend:
+  panel: "top_right"
+  corner: "top_right"
+  frameon: true
+  framealpha: 0.6
+titles:
+  r: "Radial (R)"
+  s: "Transverse (S)"
+  w: "Cross-track (W)"
+  norm: "L2 Norm of RSW"
+  suptitle: "RSW Separation of {body2} w.r.t. {body1} for the Gravitational Parameter Fits\n(centered on {central_body})"
+axes:
+  x_label: "Epoch"
+  unit: "km"
+  y_label: "Distance [km]"
+  hover_x_label: "Epoch"
+  hover_y_label: "Distance [km]"

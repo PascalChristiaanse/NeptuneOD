@@ -518,6 +518,86 @@ rule gm_goodness_of_fit_table:
         """
 
 
+rule rsw_gm_sweep:
+    """RSW separation of every GM-sweep fit, with the state-only fit as baseline.
+
+    The reference is the SPICE ephemeris, so each curve is how far that fit's
+    propagated Triton departs from SPICE.  Overlaying the state-only fit shows
+    whether estimating a GM improves the trajectory or trades one error for
+    another.
+    """
+
+    input:
+        python_dependencies("scripts/plot_simulation_figure.py"),
+        hydra_dependencies("conf/chapter_3/fig_rsw_gm_sweep.yaml"),
+        simulation_result=f"{INITIAL_ESTIMATION_FOLDER}/{POLE_MODELS[0]}/final_iteration_simulation_results.tudat",
+        simulation_results=expand(
+            f"{GM_SWEEP_FOLDER}/{{gm_set}}/final_iteration_simulation_results.tudat",
+            gm_set=GM_SETS,
+        ),
+
+    output:
+        f"{GM_SWEEP_FOLDER}/rsw_gm_sweep.pdf",
+
+    params:
+        results=",".join(
+            [f"{INITIAL_ESTIMATION_FOLDER}/{POLE_MODELS[0]}/final_iteration_simulation_results.tudat"]
+            + [
+                f"{GM_SWEEP_FOLDER}/{gm_set}/final_iteration_simulation_results.tudat"
+                for gm_set in GM_SETS
+            ]
+        ),
+
+    log:
+        f"{GM_SWEEP_FOLDER}/rsw_gm_sweep.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_simulation_figure.py \
+            hydra.run.dir={GM_SWEEP_FOLDER} \
+            figure_config=conf/chapter_3/fig_rsw_gm_sweep.yaml \
+            simulation_result={input.simulation_result} \
+            +simulation_results=[{params.results}] \
+            > {log} 2>&1
+        """
+
+
+rule rsw_correlations_gm_sweep:
+    """RSW covariance/correlation corner plot for each GM-sweep fit.
+
+    The plotter rotates the covariance into the RSW frame, so it rebuilds the
+    system of bodies.  The stage config composes the GM-sweep estimation config
+    and the rule overrides the parameter set, so the frame is the one the fit
+    used.
+    """
+
+    input:
+        python_dependencies("scripts/plot_estimation_figure.py"),
+        hydra_dependencies("conf/chapter_3/fig_rsw_correlations_gm_sweep.yaml"),
+        # The figure config is named by a plain key rather than a defaults
+        # entry, so hydra_dependencies() above does not see it.
+        lambda wildcards: f"conf/chapter_3/fig_rsw_correlations_gm_sweep_{wildcards.gm_set}.yaml",
+        estimation_output=f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_output.tudat",
+
+    output:
+        f"{GM_SWEEP_FOLDER}/rsw_correlations_{{gm_set}}.pdf",
+
+    wildcard_constraints:
+        gm_set="|".join(GM_SETS),
+
+    log:
+        f"{GM_SWEEP_FOLDER}/rsw_correlations_{{gm_set}}.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_estimation_figure.py \
+            --config-name chapter_3/fig_rsw_correlations_gm_sweep \
+            hydra.run.dir={GM_SWEEP_FOLDER} \
+            figure_config=conf/chapter_3/fig_rsw_correlations_gm_sweep_{wildcards.gm_set}.yaml \
+            estimation_output={input.estimation_output} \
+            parameters={wildcards.gm_set} \
+            > {log} 2>&1
+        """
 
 
 rule all_chapter_3:
@@ -572,4 +652,10 @@ rule all_chapter_3:
         expand(
             f"{GM_SWEEP_FOLDER}/goodness_of_fit_{{style}}.tex",
             style=TABLE_STYLES,
+        ),
+        # Paragraph 3: RSW separation of every fit, and one corner plot each
+        f"{GM_SWEEP_FOLDER}/rsw_gm_sweep.pdf",
+        expand(
+            f"{GM_SWEEP_FOLDER}/rsw_correlations_{{gm_set}}.pdf",
+            gm_set=GM_SETS,
         ),

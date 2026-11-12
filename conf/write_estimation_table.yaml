@@ -28,8 +28,16 @@ table_config: "conf/tables/parameter_change.yaml"
 # so the files do not overwrite each other.
 output_name: null
 
-# Artifact to read.  Written by the estimation stage.
+# Artifact to read for a single-fit table.  Written by the estimation stage.
 estimation_output: "results/chapter_3/initial_state_estimation/IAU2015/estimation_output.tudat"
+
+# Artifacts to read for a comparison table: a label -> path mapping, in the row
+# order the table should show.  A rule overrides this with the fits it compares.
+estimation_outputs: {}
+
+# The observation collection the compared fits were run against.  Only a
+# comparison table reads it; it supplies the epochs the residuals live on.
+observations: "results/chapter_3/initial_state_estimation/prefit_observations.tudat"
 
 # Hydra settings
 hydra:

@@ -30,6 +30,14 @@ Table selection
 Each table config names its producer class with a ``table`` key (e.g.
 ``table: "EstimationParameterTable"``).  The registry maps that class name to
 the class, so one config file per table instance can share a single producer.
+
+Single-fit and multi-fit tables
+-------------------------------
+Most tables describe one fit and read ``estimation_output``.  A comparison
+table describes several, so it reads ``estimation_outputs`` - a mapping of
+label to path - and ``observations``, the collection the fits were run against.
+Which of the two a producer needs is declared in :data:`MULTI_FIT_TABLES`, so
+the script stays free of per-table knowledge.
 """
 
 import logging
@@ -42,6 +50,7 @@ from tudatpy.estimation import estimation_analysis as est_an
 
 from orbitdet.analysis.tables import (
     EstimationParameterTable,
+    GoodnessOfFitTable,
     TableView,
     attach_table_config,
     build_writers,
@@ -59,7 +68,12 @@ logger = logging.getLogger(__name__)
 #: dataframe the config selects from.
 TABLE_BUILDERS = {
     "EstimationParameterTable": EstimationParameterTable,
+    "GoodnessOfFitTable": GoodnessOfFitTable,
 }
+
+#: Producers that compare several fits.  They take a label -> output mapping
+#: plus the observation collection, instead of a single estimation output.
+MULTI_FIT_TABLES = {"GoodnessOfFitTable"}
 
 #: Keys of a table config that describe the table rather than the producer.
 _TABLE_KEYS = ("table", "output_file", "writer", "columns")
@@ -70,6 +84,26 @@ def _load_estimation_output(cfg: DictConfig) -> est_an.EstimationOutput:
     path = cfg.estimation_output
     logger.info("Loading estimation output from %s", path)
     return load_tudat_object(est_an.EstimationOutput, path)
+
+
+def _load_estimation_outputs(cfg: DictConfig) -> dict[str, est_an.EstimationOutput]:
+    """Load every fit named by ``cfg.estimation_outputs``, keeping the labels."""
+    outputs: dict[str, est_an.EstimationOutput] = {}
+    for label, path in cfg.estimation_outputs.items():
+        logger.info("Loading estimation output '%s' from %s", label, path)
+        outputs[str(label)] = load_tudat_object(est_an.EstimationOutput, str(path))
+    if not outputs:
+        raise ValueError("cfg.estimation_outputs is empty; nothing to compare.")
+    return outputs
+
+
+def _load_observations(cfg: DictConfig):
+    """Load the observation collection the fits were run against."""
+    from tudatpy.estimation import observations as obs
+
+    path = cfg.observations
+    logger.info("Loading observation collection from %s", path)
+    return load_tudat_object(obs.ObservationCollection, path)
 
 
 def _producer_options(table_cfg: DictConfig) -> dict:
@@ -116,10 +150,17 @@ def main(cfg: DictConfig):
     # after the table config has been merged in.
     initialize(cfg)
 
-    estimation_output = _load_estimation_output(cfg)
-
-    logger.info("Building the estimation parameter frame...")
-    frame = builder(estimation_output, **_producer_options(table_cfg))._build()
+    options = _producer_options(table_cfg)
+    if table_cfg.get("table") in MULTI_FIT_TABLES:
+        logger.info("Building the comparison frame...")
+        frame = builder(
+            _load_estimation_outputs(cfg),
+            observations=_load_observations(cfg),
+            **options,
+        )._build()
+    else:
+        logger.info("Building the estimation parameter frame...")
+        frame = builder(_load_estimation_output(cfg), **options)._build()
 
     logger.info("Writing table '%s'...", table_name)
     TableView(

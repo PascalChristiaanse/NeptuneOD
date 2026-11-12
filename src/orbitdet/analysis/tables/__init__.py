@@ -18,6 +18,7 @@ from .config import (
     build_writers,
     resolve_table_builder,
 )
+from .goodness_of_fit import GoodnessOfFitTable, build_goodness_of_fit_frame
 from .latex import AATableWriter, LatexTableWriter, escape_latex
 from .parameter_table import (
     DEFAULT_PARAMETER_NAMES,
@@ -45,6 +46,8 @@ __all__ = [
     "resolve_table_builder",
     "TableView",
     "EstimationParameterTable",
+    "GoodnessOfFitTable",
+    "build_goodness_of_fit_frame",
     "build_parameter_frame",
     "DEFAULT_PARAMETER_NAMES",
     "ResidualSummary",

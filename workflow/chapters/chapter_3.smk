@@ -370,6 +370,21 @@ GM_PARAMETER_NAMES = {
 }
 
 
+def _gm_fit_paths() -> dict[str, str]:
+    """Return ``slug -> estimation_output`` for the baseline and every GM fit.
+
+    The baseline is the state-only fit from the initial state estimation
+    section, so the comparison table shows what estimating a GM buys over not
+    estimating one.
+    """
+    paths = {
+        "initial_state": (
+            f"{INITIAL_ESTIMATION_FOLDER}/{POLE_MODELS[0]}/estimation_output.tudat"
+        )
+    }
+    for gm_set in GM_SETS:
+        paths[gm_set] = f"{GM_SWEEP_FOLDER}/{gm_set}/estimation_output.tudat"
+    return paths
 
 
 rule estimate_gm_sweep:
@@ -459,6 +474,50 @@ rule gm_parameter_change_table:
         """
 
 
+rule gm_goodness_of_fit_table:
+    """Residual RMS and per-RSW-component maximum error for every GM-sweep fit.
+
+    One table comparing all the fits, so the rows are the fits rather than the
+    parameters.  The initial state fit from the previous section is included as
+    the baseline the GM fits are measured against.
+    """
+
+    input:
+        python_dependencies("scripts/write_estimation_table.py"),
+        hydra_dependencies("conf/write_estimation_table.yaml"),
+        "conf/tables/gm_goodness_of_fit.yaml",
+        observations=f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
+        estimation_outputs=expand(
+            f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_output.tudat",
+            gm_set=GM_SETS,
+        ),
+
+    output:
+        f"{GM_SWEEP_FOLDER}/goodness_of_fit_booktabs.tex",
+        f"{GM_SWEEP_FOLDER}/goodness_of_fit_aa.tex",
+
+    params:
+        # One ``label=path`` override per fit, in the row order the table shows.
+        # The baseline fit comes first so every GM fit is read against it.
+        outputs=[
+            f"+estimation_outputs.{slug}={path}"
+            for slug, path in _gm_fit_paths().items()
+        ],
+
+    log:
+        f"{GM_SWEEP_FOLDER}/goodness_of_fit.log",
+
+    shell:
+        """
+        {PYTHON} scripts/write_estimation_table.py \
+            hydra.run.dir={GM_SWEEP_FOLDER} \
+            table_config=conf/tables/gm_goodness_of_fit.yaml \
+            observations={input.observations} \
+            {params.outputs} \
+            > {log} 2>&1
+        """
+
+
 
 
 rule all_chapter_3:
@@ -507,5 +566,10 @@ rule all_chapter_3:
         expand(
             f"{GM_SWEEP_FOLDER}/{{gm_set}}/parameter_change_{{style}}.tex",
             gm_set=GM_SETS,
+            style=TABLE_STYLES,
+        ),
+        # Paragraph 3: one goodness-of-fit table comparing every fit
+        expand(
+            f"{GM_SWEEP_FOLDER}/goodness_of_fit_{{style}}.tex",
             style=TABLE_STYLES,
         ),

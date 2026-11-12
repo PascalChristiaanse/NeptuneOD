@@ -343,6 +343,75 @@ rule parameter_change_table:
         """
 
 
+######################################################
+############## Gravitational parameter sweep #########
+######################################################
+GM_SWEEP_FOLDER = f"{STAGE}/gm_sweep"
+
+#: Parameter sets the GM sweep estimates.  Each is a config group under
+#: ``conf/parameters/``; the rule passes the wildcard value as ``parameters=``.
+#: All three include the initial state, so the fits differ only in which
+#: gravitational parameters are added to it.
+GM_SETS = [
+    "state_plus_neptune_GM",
+    "state_plus_triton_GM",
+    "state_gm_nep_gm_tri",
+]
+
+
+
+
+
+rule estimate_gm_sweep:
+    """Fit the initial state with each swept set of gravitational parameters.
+
+    The sweep asks how well the synthetic observations constrain the
+    gravitational parameters, and whether adding Triton's GM to the fit changes
+    Neptune's.  Each combination is a separate fit, so the enumeration lives
+    here rather than in a Hydra multirun: every fit stays an ordinary rule with
+    its own artifacts, and a single combination can be re-run on its own.
+
+    The parameter set is the only thing that varies.  Dynamics, kernels, epochs
+    and dependent variables are inherited from the initial state estimation
+    config, so a GM fit differs from the state-only fit in exactly one thing.
+    """
+
+    input:
+        python_dependencies("scripts/solve_estimation.py"),
+        # The parameter set is selected by a group override, so the dependency
+        # list has to be composed with that override: without it the base
+        # config's own ``parameters`` default would be tracked instead, and
+        # editing the swept parameter file would not re-run the fit.
+        lambda wildcards: hydra_dependencies(
+            "conf/chapter_3/estimation_gm_sweep.yaml",
+            overrides=[f"parameters={wildcards.gm_set}"],
+        ),
+        f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
+
+    output:
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_output.tudat",
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/final_iteration_simulation_results.tudat",
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_log.log",
+
+    wildcard_constraints:
+        gm_set="|".join(GM_SETS),
+
+    log:
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimate.log",
+
+    shell:
+        """
+        {PYTHON} scripts/solve_estimation.py \
+            --config-name chapter_3/estimation_gm_sweep \
+            hydra.run.dir={GM_SWEEP_FOLDER}/{wildcards.gm_set} \
+            observations={INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat \
+            parameters={wildcards.gm_set} \
+            > {log} 2>&1
+        """
+
+
+
+
 rule all_chapter_3:
     """Everything chapter 3 needs: the artifacts, every figure, and the sweep."""
 
@@ -379,4 +448,9 @@ rule all_chapter_3:
             f"{INITIAL_ESTIMATION_FOLDER}/parameter_change_{{pole_model}}_{{style}}.tex",
             pole_model=POLE_MODELS,
             style=TABLE_STYLES,
+        ),
+        # Paragraph 3: one fit per swept set of gravitational parameters
+        expand(
+            f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_output.tudat",
+            gm_set=GM_SETS,
         ),

@@ -1,0 +1,40 @@
+# @package _global_
+
+# Experiment: Triton initial state estimation with a swept set of gravitational
+# parameters.
+#
+# The chapter 3 GM sweep asks how well the synthetic observations constrain the
+# gravitational parameters, and whether adding Triton's GM to the fit changes
+# Neptune's.  Each combination is a separate fit, so the sweep is a wildcard
+# over the parameter set rather than a Hydra multirun: Snakemake owns the
+# enumeration, which keeps every fit an ordinary rule with its own artifacts.
+#
+# The parameter set is selected per run by the Snakemake rule, which overrides
+# the ``parameters`` config group with the wildcard value:
+#
+#     python scripts/solve_estimation.py \
+#         --config-name chapter_3/estimation_gm_sweep \
+#         hydra.run.dir=results/<stage>/<gm_set> \
+#         parameters=<gm_set>
+#
+# The supported values are the ones the sweep enumerates: ``state_plus_neptune_GM``,
+# ``state_plus_triton_GM`` and ``state_gm_nep_gm_tri``.
+#
+# Everything else - dynamics, kernels, epochs, dependent variables - is
+# inherited from the initial state estimation config, so a GM fit differs from
+# the state-only fit in exactly one thing: which parameters are estimated.
+#
+# It deliberately composes NO figure configs: the estimation stage saves the
+# EstimationOutput and nothing else, and the figures are separate rules.
+
+defaults:
+  - /chapter_3: estimation_pole_models
+  - _self_
+
+# Hydra settings.  The run directory is pinned by the rule, so the default here
+# only matters for a standalone run.
+hydra:
+  run:
+    dir: results/chapter_3/gm_sweep/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

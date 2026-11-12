@@ -358,6 +358,16 @@ GM_SETS = [
     "state_gm_nep_gm_tri",
 ]
 
+#: Display name per estimated parameter, in parameter-vector order, for each GM
+#: set.  TudatPy orders the blocks initial state first, then the scalar
+#: parameters in the order the parameter config enables them, so the state names
+#: come first and the gravitational parameters follow.  The parameter-change
+#: table needs these because its vector is longer than the state-only fit's.
+GM_PARAMETER_NAMES = {
+    "state_plus_neptune_GM": ["x", "y", "z", "v_x", "v_y", "v_z", "mu_N"],
+    "state_plus_triton_GM": ["x", "y", "z", "v_x", "v_y", "v_z", "mu_T"],
+    "state_gm_nep_gm_tri": ["x", "y", "z", "v_x", "v_y", "v_z", "mu_N", "mu_T"],
+}
 
 
 
@@ -410,6 +420,45 @@ rule estimate_gm_sweep:
         """
 
 
+rule gm_parameter_change_table:
+    """Initial vs final parameter table for each GM-sweep fit.
+
+    The parameter vector is longer than the state-only fit's, so the extra rows
+    need naming.  The names come from :data:`GM_PARAMETER_NAMES` rather than the
+    table config, because they depend on which parameters the set estimates and
+    the rule is the only place that knows the set.
+    """
+
+    input:
+        python_dependencies("scripts/write_estimation_table.py"),
+        hydra_dependencies("conf/write_estimation_table.yaml"),
+        "conf/tables/gm_parameter_change.yaml",
+        estimation_output=f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_output.tudat",
+
+    output:
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/parameter_change_booktabs.tex",
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/parameter_change_aa.tex",
+
+    wildcard_constraints:
+        gm_set="|".join(GM_SETS),
+
+    params:
+        params=lambda wildcards: ",".join(GM_PARAMETER_NAMES[wildcards.gm_set]),
+
+    log:
+        f"{GM_SWEEP_FOLDER}/{{gm_set}}/parameter_change.log",
+
+    shell:
+        """
+        {PYTHON} scripts/write_estimation_table.py \
+            hydra.run.dir={GM_SWEEP_FOLDER}/{wildcards.gm_set} \
+            table_config=conf/tables/gm_parameter_change.yaml \
+            estimation_output={input.estimation_output} \
+            "+parameter_names=[{params}]" \
+            > {log} 2>&1
+        """
+
+
 
 
 rule all_chapter_3:
@@ -453,4 +502,10 @@ rule all_chapter_3:
         expand(
             f"{GM_SWEEP_FOLDER}/{{gm_set}}/estimation_output.tudat",
             gm_set=GM_SETS,
+        ),
+        # Paragraph 3: one parameter-change table per GM fit, in both styles
+        expand(
+            f"{GM_SWEEP_FOLDER}/{{gm_set}}/parameter_change_{{style}}.tex",
+            gm_set=GM_SETS,
+            style=TABLE_STYLES,
         ),

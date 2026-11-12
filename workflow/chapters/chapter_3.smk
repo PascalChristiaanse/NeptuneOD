@@ -269,6 +269,43 @@ rule rsw_initial_state_two_poles:
             > {log} 2>&1
         """
 
+rule rsw_correlations:
+    """RSW covariance/correlation corner plot for each pole model's initial state estimate.
+
+    The plotter rotates the covariance into the RSW frame, so it rebuilds the
+    system of bodies.  The stage config composes the estimation config and the
+    rule overrides the pole model, so the frame is the one the fit used.
+    """
+
+    input:
+        python_dependencies("scripts/plot_estimation_figure.py"),
+        hydra_dependencies("conf/chapter_3/fig_rsw_correlations.yaml"),
+        # The figure config is named by a plain key rather than a defaults
+        # entry, so hydra_dependencies() above does not see it.
+        lambda wildcards: f"conf/chapter_3/fig_rsw_correlations_{wildcards.pole_model}.yaml",
+        estimation_output=f"{INITIAL_ESTIMATION_FOLDER}/{{pole_model}}/estimation_output.tudat",
+
+    output:
+        f"{INITIAL_ESTIMATION_FOLDER}/rsw_correlations_{{pole_model}}.pdf",
+
+    wildcard_constraints:
+        pole_model="|".join(POLE_MODELS),
+
+    log:
+        f"{INITIAL_ESTIMATION_FOLDER}/rsw_correlations_{{pole_model}}.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_estimation_figure.py \
+            --config-name chapter_3/fig_rsw_correlations \
+            hydra.run.dir={INITIAL_ESTIMATION_FOLDER} \
+            figure_config=conf/chapter_3/fig_rsw_correlations_{wildcards.pole_model}.yaml \
+            estimation_output={input.estimation_output} \
+            bodies_to_create.Neptune.rotation_model.type={wildcards.pole_model} \
+            > {log} 2>&1
+        """
+
+
 rule all_chapter_3:
     """Everything chapter 3 needs: the artifacts, every figure, and the sweep."""
 

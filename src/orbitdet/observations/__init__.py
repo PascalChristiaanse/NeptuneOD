@@ -23,7 +23,7 @@ from .clustering import (
     partition_by_set,
     partition_by_timeframes,
 )
-from .collection import create_observation_collection
+from .collection import create_observation_collection, rebuild_observation_models
 from .configs import (
     ObservationDatasetConfig,
     SimulatedObservationConfig,
@@ -75,6 +75,7 @@ __all__ = [
     # Factory functions
     "create_observation_dataset",
     "create_observation_collection",
+    "rebuild_observation_models",
     # Factory modules (implicitly imported for registration)
     "simulated",
     "standard_frames",

@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import tudatpy.dynamics.environment as env
+import tudatpy.estimation.observable_models_setup as obs_model_setup
 import tudatpy.estimation.observations as obs
 from omegaconf import DictConfig, OmegaConf
 
@@ -281,3 +282,66 @@ def create_observation_collection(
         standard_frame = empty_frame()
 
     return total_collection, flat_models, standard_frame
+
+
+#: Observable type -> the model-settings factory that builds it.
+#:
+#: A collection stores each set's observable type and link definition, but not
+#: the model settings it was built with - those are not serializable.  This is
+#: the inverse of the mapping the factories apply, and it is what lets a stage
+#: that only has a collection rebuild the models it needs.
+OBSERVABLE_MODEL_FACTORIES: dict[Any, Any] = {
+    obs_model_setup.model_settings.angular_position_type: (
+        obs_model_setup.model_settings.angular_position
+    ),
+    obs_model_setup.model_settings.relative_angular_position_type: (
+        obs_model_setup.model_settings.relative_angular_position
+    ),
+    obs_model_setup.model_settings.position_angle_type: (
+        obs_model_setup.model_settings.position_angle
+    ),
+    obs_model_setup.model_settings.separation_distance_type: (
+        obs_model_setup.model_settings.separation_distance
+    ),
+    obs_model_setup.model_settings.relative_position_observable_type: (
+        obs_model_setup.model_settings.relative_cartesian_position
+    ),
+}
+
+
+def rebuild_observation_models(
+    collection: obs.ObservationCollection,
+) -> list[Any]:
+    """Rebuild the observation model settings a collection was built with.
+
+    A collection carries each set's observable type, link definition and epochs,
+    but not the model settings - ``ObservationModelSettings`` has no
+    ``save_to_binary``, so they cannot be stored alongside it.  Rebuilding them
+    from the collection is what lets a stage compute residuals for a collection
+    it did not build, and it is why the residual stage needs no collection
+    config of its own.
+
+    Args:
+        collection: The collection to rebuild the models for.
+
+    Returns:
+        One model-settings object per observation set, in the collection's set
+        order - the order ``create_observation_simulators`` expects.
+
+    Raises:
+        KeyError: If the collection holds an observable type with no known
+            factory, which would otherwise silently drop that set's residuals.
+    """
+    models: list[Any] = []
+    for observable_type in collection.get_observable_types():
+        try:
+            factory = OBSERVABLE_MODEL_FACTORIES[observable_type]
+        except KeyError:
+            known = ", ".join(sorted(str(key) for key in OBSERVABLE_MODEL_FACTORIES))
+            raise KeyError(
+                f"No observation model factory is registered for observable type "
+                f"{observable_type}. Known types: {known}."
+            ) from None
+        for link_definition in collection.get_link_definitions_for_observables(observable_type):
+            models.append(factory(link_definition))
+    return models

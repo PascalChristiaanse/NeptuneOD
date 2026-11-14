@@ -107,12 +107,15 @@ def test_returns_sorted_unique_paths(fake_package: Path) -> None:
     assert len(files) == len(set(files))
 
 
-def test_package_init_is_included(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Importing a submodule executes its parent packages, so they are deps.
+def test_ancestor_package_inits_are_excluded_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-export-only ``__init__.py`` is not a dependency of its submodules.
 
-    Grimp records explicit imports only, so the ancestor ``__init__.py`` files
-    are added explicitly. Editing one changes what the import does, so omitting
-    them would leave a rule stale.
+    Importing ``initpkg.visualization.plotting`` does execute the two ancestor
+    ``__init__.py`` files, but the module never reads them.  Tracking them makes
+    every rule that touches the package stale whenever an unrelated export is
+    added, so they are excluded unless asked for.
     """
     root = tmp_path / "initpkg"
     _write(root / "__init__.py")
@@ -131,9 +134,64 @@ def test_package_init_is_included(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         python_graph._root_dir.cache_clear()
         sys.modules.pop("initpkg", None)
 
+    assert "initpkg/__init__.py" not in files
+    assert "initpkg/visualization/__init__.py" not in files
+    assert "initpkg/visualization/plotting.py" in files
+
+
+def test_ancestor_package_inits_can_be_included(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old behaviour stays available for callers that want it."""
+    root = tmp_path / "initpkg"
+    _write(root / "__init__.py")
+    _write(root / "visualization" / "__init__.py")
+    _write(root / "visualization" / "plotting.py", "VALUE = 1\n")
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(python_graph, "PACKAGE", "initpkg")
+    python_graph._import_graph.cache_clear()
+    python_graph._root_dir.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    try:
+        files = python_dependencies("initpkg.visualization.plotting", include_package_inits=True)
+    finally:
+        python_graph._import_graph.cache_clear()
+        python_graph._root_dir.cache_clear()
+        sys.modules.pop("initpkg", None)
+
     assert "initpkg/__init__.py" in files
     assert "initpkg/visualization/__init__.py" in files
     assert "initpkg/visualization/plotting.py" in files
+
+
+def test_explicitly_imported_package_init_is_always_included(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A package imported by name is a real edge, not an ancestor.
+
+    ``from initpkg.helpers import VALUE`` reads ``helpers/__init__.py``, so
+    editing it must invalidate the rule even with the ancestor tracking off.
+    """
+    root = tmp_path / "initpkg"
+    _write(root / "__init__.py")
+    _write(root / "helpers" / "__init__.py", "VALUE = 1\n")
+    _write(root / "consumer.py", "from initpkg.helpers import VALUE\n")
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(python_graph, "PACKAGE", "initpkg")
+    python_graph._import_graph.cache_clear()
+    python_graph._root_dir.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    try:
+        files = python_dependencies("initpkg.consumer")
+    finally:
+        python_graph._import_graph.cache_clear()
+        python_graph._root_dir.cache_clear()
+        sys.modules.pop("initpkg", None)
+
+    assert "initpkg/helpers/__init__.py" in files
+    assert "initpkg/__init__.py" not in files
 
 
 def test_leaf_module_returns_only_itself(fake_package: Path) -> None:
@@ -298,6 +356,6 @@ def test_real_script_entry_point() -> None:
     assert files
     assert all(Path(path).is_file() for path in files)
     assert any(path.endswith("scripts/solve_least_squares.py") for path in files)
-    assert any(path.endswith("orbitdet/visualization/__init__.py") for path in files)
+    assert any(path.endswith("orbitdet/visualization/base.py") for path in files)
     # Only the entry script itself, never its siblings.
     assert [p for p in files if p.startswith("scripts/")] == ["scripts/solve_least_squares.py"]

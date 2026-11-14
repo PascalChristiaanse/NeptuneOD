@@ -1,0 +1,11 @@
+# @package _global_
+
+# Estimation settings: Triton initial state + Neptune J2 only.
+# The J4 coefficient is held at its a priori value, so this isolates the
+# oblateness term from the higher-order one.
+estimation:
+  max_iterations: 5
+  max_iterations_without_improvement: 3
+  parameters_to_estimate:
+    initial_state: true
+    neptune_j2: true

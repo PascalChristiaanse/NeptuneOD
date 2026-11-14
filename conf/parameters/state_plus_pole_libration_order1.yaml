@@ -1,0 +1,15 @@
+# @package _global_
+
+# Estimation settings: Triton initial state + Neptune pole libration amplitudes
+# at the dominant frequency only.
+#
+# The two-frequency variant (``state_plus_pole_libration``) estimates
+# [alpha_1, delta_1, alpha_2, delta_2]; this one estimates [alpha_1, delta_1],
+# so the second harmonic is held at its a priori value.  Use this to test
+# whether the second harmonic is constrained at all before paying for it.
+estimation:
+  max_iterations: 5
+  max_iterations_without_improvement: 3
+  parameters_to_estimate:
+    initial_state: true
+    iau_rotation_model_pole_librations_order1: true

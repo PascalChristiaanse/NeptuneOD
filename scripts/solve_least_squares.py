@@ -33,6 +33,7 @@ from orbitdet.simulation import (
 )
 from orbitdet.utility import save_tudat_object
 from orbitdet.visualization import (
+    CovarianceCorrelationPairGrid,
     CovarianceEllipses,
     GaiaTransitErrorComponents,
     MahalanobisResiduals,
@@ -574,6 +575,12 @@ def main(cfg: DictConfig):
         CovarianceEllipses(cfg.figures.covariance_ellipses, estimation_output, bodies, ctx).plot()
     except Exception as e:
         logger.warning("Failed to plot covariance ellipses: %s", e)
+    try:
+        CovarianceCorrelationPairGrid(
+            cfg.figures.covariance_correlation_pairgrid, estimation_output, bodies, ctx
+        ).plot()
+    except Exception as e:
+        logger.warning("Failed to plot covariance/correlation pair grid: %s", e)
     RSWDistance(
         cfg.figures.postfit_rsw,
         final_result.propagation_results,

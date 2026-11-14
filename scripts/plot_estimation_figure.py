@@ -9,7 +9,7 @@ Runnable standalone::
     python scripts/plot_estimation_figure.py \\
         figure=parameter_correlation_heatmap \\
         figure_config=conf/figures/parameter_correlation_heatmap.yaml \\
-        estimation_output=results/pipeline/chapter_3/estimation_output.tudat
+        estimation_output=results/chapter_3/estimation_output.tudat
 
 or as a Snakemake rule, which passes the same overrides.
 
@@ -34,12 +34,15 @@ from _figure_common import (
     show_or_serve,
 )
 from omegaconf import DictConfig
+from tudatpy.astro.time_representation import iso_string_to_epoch_time_object
 from tudatpy.estimation import estimation_analysis as est_an
 
+from orbitdet.data import KernelManager
 from orbitdet.reproducibility import enforce_initialization, initialize
 from orbitdet.simulation import get_environment
 from orbitdet.utility import load_tudat_object
 from orbitdet.visualization import (
+    CovarianceCorrelationPairGrid,
     CovarianceEllipses,
     ParameterCorrelationHeatmap,
     ParameterHistoryPerIteration,
@@ -52,13 +55,15 @@ logger = logging.getLogger(__name__)
 #: Every estimation plotter this script can draw, keyed by the class name a
 #: figure config declares with its ``plotter`` key.  Each class takes
 #: ``(figure_cfg, estimation_output)`` and its ``.plot()`` publishes the figure.
-#: ``CovarianceEllipses`` additionally needs the system of bodies and runtime
-#: context; the script supplies them when ``requires_environment`` is set.
+#: ``CovarianceEllipses`` and ``CovarianceCorrelationPairGrid`` additionally
+#: need the system of bodies and runtime context; the script supplies them when
+#: ``requires_environment`` is set.
 FIGURE_BUILDERS = {
     "ResidualRMSPerIteration": ResidualRMSPerIteration,
     "ParameterCorrelationHeatmap": ParameterCorrelationHeatmap,
     "ParameterHistoryPerIteration": ParameterHistoryPerIteration,
     "CovarianceEllipses": CovarianceEllipses,
+    "CovarianceCorrelationPairGrid": CovarianceCorrelationPairGrid,
 }
 
 
@@ -67,6 +72,33 @@ def _load_estimation_output(cfg: DictConfig) -> est_an.EstimationOutput:
     path = cfg.estimation_output
     logger.info("Loading estimation output from %s", path)
     return load_tudat_object(est_an.EstimationOutput, path)
+
+
+def _inject_epochs(cfg: DictConfig, ctx) -> None:
+    """Attach the run's epochs to the runtime context.
+
+    :func:`orbitdet.reproducibility.initialize` returns a context that only
+    carries the reproducibility bookkeeping (commit, output directory, seed).
+    The epochs live in the run configuration, so every stage that needs them
+    copies them across; the environment builders and the RSW rotation both read
+    ``ctx.start_epoch``.
+    """
+    ctx.start_epoch = iso_string_to_epoch_time_object(cfg.start_date)
+    ctx.end_epoch = iso_string_to_epoch_time_object(cfg.end_date)
+    ctx.initial_epoch = iso_string_to_epoch_time_object(cfg.initial_epoch)
+
+
+def _furnish_kernels(cfg: DictConfig) -> None:
+    """Furnish SPICE kernels before the environment is built.
+
+    A figure that rotates its covariance into the RSW frame rebuilds the system
+    of bodies, which resolves ephemerides from the kernel pool.  Loading is
+    cheap and idempotent, so it is done for every environment-needing figure.
+    """
+    logger.info("Furnishing SPICE kernels...")
+    km = KernelManager(cfg)
+    km.download_all_kernels()
+    km.furnish()
 
 
 @hydra.main(
@@ -98,6 +130,10 @@ def main(cfg: DictConfig):
 
     logger.info("Plotting figure '%s'...", figure_name)
     if getattr(builder, "requires_environment", False):
+        # The RSW-frame plotters rebuild the system of bodies, so they need the
+        # epochs on the context and the kernels in the pool first.
+        _inject_epochs(cfg, ctx)
+        _furnish_kernels(cfg)
         bodies = get_environment(cfg, ctx)
         builder(figure_cfg, estimation_output, bodies, ctx).plot()
     else:

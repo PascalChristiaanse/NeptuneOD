@@ -1,0 +1,51 @@
+# Table: parameter updates of one GM-sweep fit.
+#
+# The same producer and writer as the chapter 3 parameter-change table, but the
+# parameter names differ: a GM fit estimates the initial state *and* one or two
+# gravitational parameters, so the vector is longer than the six Cartesian
+# elements and the extra rows need naming.
+#
+# The names are *not* set here: they depend on which parameters the set
+# estimates, so the ``gm_parameter_change_table`` rule passes them as a
+# ``parameter_names`` override.  Running this config by hand needs the same
+# override, e.g. ``"+parameter_names=[x,y,z,v_x,v_y,v_z,mu_N]"``.
+
+table: "EstimationParameterTable"
+output_file: "parameter_change"
+
+columns:
+  - "parameter"
+  - "initial"
+  - "final"
+  - "relative_change_percent"
+  - "change_factor"
+  - "formal_error"
+  - "shift_sigma"
+
+writer:
+  styles:
+    - "booktabs"
+    - "aa"
+  caption: "Initial and final parameter values of the gravitational parameter fit."
+  label: "tab:gm_parameter_change"
+  headers:
+    parameter: "Parameter"
+    initial: "Initial"
+    final: "Final"
+    relative_change_percent: "$\\Delta$ [\\%]"
+    change_factor: "Factor"
+    formal_error: "$\\sigma$"
+    shift_sigma: "$\\Delta/\\sigma$"
+  formats:
+    parameter: "math"
+    initial: ".6e"
+    final: ".6e"
+    relative_change_percent: ".4f"
+    change_factor: ".6f"
+    formal_error: ".3e"
+    shift_sigma: ".3f"
+  alignments:
+    parameter: "l"
+  style_options:
+    aa:
+      typesize: "\\scriptsize"

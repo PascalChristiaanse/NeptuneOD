@@ -1,0 +1,31 @@
+# @package _global_
+
+# Config for ``scripts/plot_estimation_figure.py`` when it draws the RSW
+# covariance/correlation corner plot of a chapter 3 initial state estimate.
+#
+# The plotter rotates the covariance into the RSW frame, which needs the system
+# of bodies.  Composing the estimation config means the environment - and with
+# it the frame - is exactly the one the fit used, rather than a second,
+# possibly divergent, definition of the same bodies.
+#
+# The pole model is selected per run by the Snakemake rule, which overrides
+# ``bodies_to_create.Neptune.rotation_model.type`` with the wildcard value and
+# names the figure config and the estimation output to read:
+#
+#     python scripts/plot_estimation_figure.py \
+#         --config-name chapter_3/fig_rsw_correlations \
+#         hydra.run.dir=results/<stage> \
+#         figure_config=conf/chapter_3/fig_rsw_correlations_<pole_model>.yaml \
+#         estimation_output=results/<stage>/<pole_model>/estimation_output.tudat \
+#         bodies_to_create.Neptune.rotation_model.type=<pole_model>
+
+defaults:
+  - /chapter_3: estimation_pole_models
+  - _self_
+
+# The figure's own config file.  Its stem is the figure's name, and it carries
+# the plotter, the styling and the output file name.
+figure_config: "conf/chapter_3/fig_rsw_correlations_IAU2015.yaml"
+
+# Artifact to read.  Written by ``estimate_initial_state_pole_models``.
+estimation_output: "results/chapter_3/initial_state_estimation/IAU2015/estimation_output.tudat"

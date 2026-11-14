@@ -1,0 +1,68 @@
+# Table: initial vs final parameter values of a solved estimation.
+#
+# ``table`` names the producer class, ``columns`` selects which of the columns
+# that producer derives are shown, and ``writer`` describes how the selection is
+# typeset.  Everything outside those keys is passed to the producer as a keyword
+# argument, so a table can add options without the script knowing them.
+#
+# The producer derives one wide frame per parameter:
+#
+#   parameter, index, initial, final, absolute_change,
+#   relative_change_percent, change_factor, formal_error,
+#   relative_formal_error_percent, initial_sigma, final_sigma,
+#   correlation_with_previous
+#
+# so a new table is a new file here, not a new class.
+#
+# ``writer.styles`` names every LaTeX format to emit from the one description:
+# ``booktabs`` is the plain journal-neutral table, ``aa`` the A&A / AAS
+# ``deluxetable``.  Both are written, so the two cannot drift apart; a single
+# style would write ``<output_file stem>.tex`` with no suffix.
+#
+# ``writer.style_options`` adds or overrides keys for one style only, which is
+# where a journal-specific option such as the A&A ``typesize`` belongs.
+
+table: "EstimationParameterTable"
+output_file: "parameter_change"
+
+columns:
+  - "parameter"
+  - "initial"
+  - "final"
+  - "relative_change_percent"
+  - "change_factor"
+
+# Display names per parameter, in parameter-vector order.  The chapter 3 fits
+# estimate Triton's Cartesian initial state, so the default (x, y, z, v_x, v_y,
+# v_z) applies; name them here to label a different parameter set.
+# parameter_names:
+#   - "x"
+#   - "y"
+#   - "z"
+#   - "v_x"
+#   - "v_y"
+#   - "v_z"
+
+writer:
+  styles:
+    - "booktabs"
+    - "aa"
+  caption: "Initial and final parameter values of the Triton initial state estimation."
+  label: "tab:parameter_change"
+  headers:
+    parameter: "Parameter"
+    initial: "Initial"
+    final: "Final"
+    relative_change_percent: "$\\Delta$ [\\%]"
+    change_factor: "Factor"
+  formats:
+    parameter: "math"
+    initial: ".6e"
+    final: ".6e"
+    relative_change_percent: ".4f"
+    change_factor: ".6f"
+  alignments:
+    parameter: "l"
+  style_options:
+    aa:
+      typesize: "\\scriptsize"

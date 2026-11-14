@@ -1,0 +1,60 @@
+# Table: goodness of fit of the GM-sweep fits.
+#
+# One row per fit, comparing the residual RMS and the largest residual in each
+# RSW component and in the norm.  The single RMS says how good a fit is; the
+# per-component maxima say *where* it is wrong, which is what distinguishes a
+# fit that is uniformly mediocre from one that is good except in cross-track.
+#
+# The residuals are the estimator's own (best iteration), rotated into the RSW
+# frame with the propagated state at each observation epoch.  Nothing is
+# recomputed, so the table describes exactly the fits that were saved.
+
+table: "GoodnessOfFitTable"
+output_file: "goodness_of_fit"
+
+# Display label per fit slug.  The rule passes the slugs as
+# ``estimation_outputs`` keys (Hydra's override grammar forbids spaces in a
+# key), and the table shows these labels instead.  A slug with no entry is
+# shown as-is.
+labels:
+  initial_state: "Initial state only"
+  state_plus_neptune_GM: "Initial state + Neptune $GM$"
+  state_plus_triton_GM: "Initial state + Triton $GM$"
+  state_gm_nep_gm_tri: "Initial state + Neptune and Triton $GM$"
+
+writer:
+  styles:
+    - "booktabs"
+    - "aa"
+  caption: "Goodness of fit of the gravitational parameter fits."
+  label: "tab:gm_goodness_of_fit"
+  headers:
+    model: "Fit"
+    n_residuals: "$N$"
+    rms: "RMS"
+    max_abs: "max"
+    rms_R: "RMS$_R$"
+    rms_S: "RMS$_S$"
+    rms_W: "RMS$_W$"
+    max_abs_R: "max$_R$"
+    max_abs_S: "max$_S$"
+    max_abs_W: "max$_W$"
+    rms_norm: "RMS$_{\\mathrm{norm}}$"
+    max_abs_norm: "max$_{\\mathrm{norm}}$"
+  formats:
+    n_residuals: "d"
+    rms: ".4e"
+    max_abs: ".4e"
+    rms_R: ".4e"
+    rms_S: ".4e"
+    rms_W: ".4e"
+    max_abs_R: ".4e"
+    max_abs_S: ".4e"
+    max_abs_W: ".4e"
+    rms_norm: ".4e"
+    max_abs_norm: ".4e"
+  alignments:
+    model: "l"
+  style_options:
+    aa:
+      typesize: "\\scriptsize"

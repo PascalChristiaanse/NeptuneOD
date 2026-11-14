@@ -150,7 +150,12 @@ def _load_result(cfg: DictConfig) -> prop.SimulationResults:
     """
     path = cfg.simulation_result
     logger.info("Loading simulation result from %s", path)
-    return load_tudat_object(prop.SingleArcSimulationResults, path)
+    try:
+        return load_tudat_object(prop.SingleArcSimulationResults, path)
+    except RuntimeError:
+        res = load_tudat_object(prop.SingleArcVariationalSimulationResults, path)
+        return res.dynamics_results
+    
 
 
 def _load_results(cfg: DictConfig) -> list[prop.SimulationResults]:
@@ -161,7 +166,12 @@ def _load_results(cfg: DictConfig) -> list[prop.SimulationResults]:
     results = []
     for path in paths:
         logger.info("Loading simulation result from %s", path)
-        results.append(load_tudat_object(prop.SingleArcSimulationResults, path))
+        try:
+            results.append(load_tudat_object(prop.SingleArcSimulationResults, path))
+        except RuntimeError:
+            res = load_tudat_object(prop.SingleArcVariationalSimulationResults, path)
+            
+            results.append(res.dynamics_results)
     return results
 
 

@@ -136,6 +136,11 @@ class ResidualScatter(ResidualPlot):
         ax.format_coord = _make_hover_formatter(hover_x_label, hover_y_label, datetime_x=False)
 
         self._legend(ax)
-        fig.set_tight_layout(True)
+
+        # Keep the constrained layout engine the journal style installs.  The
+        # colorbar is created through that engine's gridspec, so switching to
+        # tight layout here would raise (matplotlib refuses to swap engines once
+        # a colorbar exists).
+        fig.set_layout_engine("constrained")
 
         return fig, ax

@@ -1,0 +1,25 @@
+plotter: "CovarianceCorrelationPairGrid"
+output_file: "rsw_correlations_gm_sweep_state_plus_triton_GM.pdf"
+suptitle: "Covariance and correlation (1σ) [RSW frame]\nTriton $G M$ only"
+rotate_to_rsw: true
+body_name: "Triton"
+central_body_name: "Neptune"
+# One name per estimated parameter, in parameter-vector order.  TudatPy puts the
+# initial state first, then the scalar parameters, so the six Cartesian elements
+# come first and the gravitational parameters follow.  Only the first six are
+# rotated into RSW; the GM entries are left in their own units.
+parameter_names:
+  - "R"
+  - "S"
+  - "W"
+  - "v_R"
+  - "v_S"
+  - "v_W"
+  - "$G M_{\\mathrm{T}}$"
+n_sigma: 1.0
+annotation: true
+decimal_places: 2
+cmap: "coolwarm"
+figure:
+  width: 7.0
+  height: 7.0

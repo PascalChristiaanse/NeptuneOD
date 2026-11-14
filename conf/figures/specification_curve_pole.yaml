@@ -1,0 +1,48 @@
+# Figure: specification curve of the pole-orientation parameter-combination sweep.
+#
+# The top panel is the truth table (a dot where a parameter is estimated), the
+# bottom panel the residual RMS of the same fit, sorted so the curve is
+# monotone.  Fits that did not converge are kept and marked, because which
+# combinations fail is itself a result.
+#
+# The libration order is drawn as two rows, one per order, so it reads like the
+# toggles.  Order 1 and order 2 are alternative specifications of the same
+# parameter block, so the enumeration never marks both.
+
+plotter: "SpecificationCurve"
+output_file: "specification_curve_pole.pdf"
+
+specification_columns:
+  - "iau_rotation_model_pole"
+  - "iau_rotation_model_pole_rate"
+  - "iau_rotation_model_pole_librations_order1"
+  - "iau_rotation_model_pole_librations_order2"
+outcome_column: "rms"
+converged_column: "converged"
+sort: "ascending"
+marker_size: 28
+
+labels:
+  iau_rotation_model_pole: "Pole"
+  iau_rotation_model_pole_rate: "Pole rate"
+  iau_rotation_model_pole_librations_order1: "Librations order 1"
+  iau_rotation_model_pole_librations_order2: "Librations order 2"
+
+figure:
+  width: 8.27
+  height: 6.0
+
+styling:
+  palette: "okabe_ito"
+
+titles:
+  suptitle: "Pole-orientation parameter combinations"
+  matrix: "Estimated parameters"
+  outcome: "Residual RMS"
+
+axes:
+  outcome_label: "RMS residual [m]"
+  # A few fits are far worse than the rest and would flatten the comparison, so
+  # the axis is cut at 500 m and those fits are marked with a caret instead.
+  outcome_clip: 500.0
+  outcome_annotate_max: true

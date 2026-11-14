@@ -1,0 +1,46 @@
+# @package _global_
+
+# Generation config for the observation collection stage.
+#
+# This is the config ``scripts/generate_observation_collection.py`` runs with by
+# default, so the stage works with no arguments:
+#
+#     python scripts/generate_observation_collection.py
+#
+# It deliberately composes NO figure configs.  Figures are separate rules with
+# their own config files under ``conf/figures/``, so editing a figure title
+# cannot invalidate this stage.
+#
+
+defaults:
+  - /datasets/simulated_3d_point_1950@datasets.simulated
+  - /dynamics: prefit
+  - /kernels: classical
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# The collection stage only builds observations, so the propagator's integrated
+# result is not needed here.
+propagation:
+  set_integrated_result: false
+
+# Artifact names written into the Hydra run directory.  The defaults are the
+# generic names; a stage that wants its artifacts labelled for what they are
+# overrides them, e.g. the chapter 3 pre-fit stage writes
+# ``prefit_observations.tudat`` / ``prefit_standard_frame.parquet``.
+output:
+  observations: "observations"
+  standard_frame: "standard_frame.parquet"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+start_date: 1962-1-1T12:00:00
+end_date: 2027-1-1T12:00:00
+initial_epoch: 1989-08-25T12:00:00

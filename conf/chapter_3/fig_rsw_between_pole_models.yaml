@@ -1,0 +1,28 @@
+plotter: RSWDistanceDifference
+central_body: Neptune
+dependent_variable_index: 2
+comparison_dependent_variable_index: 2
+output_file: "rsw_between_pole_models.pdf"
+labels:
+  - "IAU 2015 pole - Jacobson (2009) pole"
+figure: 
+  paper_size: half_height
+styling:
+  palette: "black"
+legend:
+  panel: "top_right"
+  corner: "top_right"
+  frameon: true
+  framealpha: 0.6
+titles:
+  r: "Radial (R)"
+  s: "Transverse (S)"
+  w: "Cross-track (W)"
+  norm: "L2 Norm of RSW"
+  suptitle: "Difference in RSW Separation of {body2} w.r.t. {body1} \n for Two Pole Models (centered on {central_body})"
+axes:
+  x_label: "Epoch"
+  unit: "km"
+  y_label: "Distance [km]"
+  hover_x_label: "Epoch"
+  hover_y_label: "Distance [km]"

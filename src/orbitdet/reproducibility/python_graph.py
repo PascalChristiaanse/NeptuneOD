@@ -24,6 +24,12 @@ The argument may be either:
 * a module name or file path for a script outside the package, e.g.
   ``"scripts.solve_least_squares"`` or ``"scripts/solve_least_squares.py"``.
 
+Package ``__init__.py`` files are tracked only when something imports the
+package by name.  Importing ``a.b.c`` does execute ``a/__init__.py``, but a
+re-export-only ``__init__.py`` is never read by the importing module, so
+tracking it would make every rule that touches the package stale whenever an
+unrelated export is added.  Pass ``include_package_inits=True`` to restore the
+strict behaviour.
 
 This is static analysis, so it cannot see:
 * dynamic imports (``importlib.import_module``, ``__import__``, ``exec``);
@@ -220,7 +226,10 @@ def _resolve_entrypoint(entrypoint: str) -> str:
     return entrypoint
 
 
-def python_dependencies(entrypoint: str) -> list[str]:
+def python_dependencies(
+    entrypoint: str,
+    include_package_inits: bool = False,
+) -> list[str]:
     """Return all Python source files required by an entry-point module.
 
     Includes the entry point itself and every module it imports transitively
@@ -235,6 +244,20 @@ def python_dependencies(entrypoint: str) -> list[str]:
         ``"orbitdet.visualization.residuals"``, or a script module name or path,
         e.g. ``"scripts.solve_least_squares"`` or
         ``"scripts/solve_least_squares.py"``.
+    include_package_inits:
+        Whether to track the ``__init__.py`` of every *ancestor* package of an
+        imported module, even when nothing imports that package by name.
+
+        Importing ``a.b.c`` does execute ``a/__init__.py`` and
+        ``a/b/__init__.py``, so in principle editing one changes what the import
+        does.  In practice a package ``__init__.py`` that only re-exports names
+        is not read by the importing module at all, and tracking it makes every
+        rule that touches the package stale whenever an unrelated export is
+        added.  Defaults to ``False`` for that reason.
+
+        A package that *is* imported by name (``from orbitdet.data import
+        KernelManager``) is a real import edge and is always tracked, whatever
+        this flag says.
 
     Returns
     -------
@@ -253,14 +276,12 @@ def python_dependencies(entrypoint: str) -> list[str]:
     Examples
     --------
     >>> python_dependencies("orbitdet.visualization.residuals")
-    ['src/orbitdet/analysis/__init__.py',
-     'src/orbitdet/visualization/__init__.py',
-     'src/orbitdet/visualization/base.py',
+    ['src/orbitdet/visualization/base.py',
      'src/orbitdet/visualization/residuals.py',
      ...]
     >>> python_dependencies("scripts/solve_least_squares.py")
     ['scripts/solve_least_squares.py',
-     'src/orbitdet/analysis/__init__.py',
+     'src/orbitdet/analysis/access.py',
      ...]
     """
     module = _resolve_entrypoint(entrypoint)
@@ -289,9 +310,12 @@ def python_dependencies(entrypoint: str) -> list[str]:
     modules = {name for name in modules if name.split(".")[0] in roots}
 
     # Importing a module also executes its parent packages' __init__.py, which
-    # Grimp does not model as an import edge.
-    for name in list(modules):
-        modules.update(_ancestor_packages(name))
+    # Grimp does not model as an import edge.  Those are opt-in: a re-export-only
+    # __init__.py is not read by the importing module, so tracking it would make
+    # every rule stale on an unrelated export change.
+    if include_package_inits:
+        for name in list(modules):
+            modules.update(_ancestor_packages(name))
 
     files = {path for name in modules if (path := _module_to_file(name, roots)) is not None}
 

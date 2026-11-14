@@ -1,0 +1,19 @@
+plotter: "CovarianceCorrelationPairGrid"
+output_file: "covariance_correlation_pairgrid.pdf"
+rotate_to_rsw: true
+body_name: "Triton"
+central_body_name: "Neptune"
+parameter_names:
+  - "R"
+  - "S"
+  - "W"
+  - "v_R"
+  - "v_S"
+  - "v_W"
+n_sigma: 1.0
+annotation: true
+decimal_places: 2
+cmap: "coolwarm"
+figure:
+  width: 7.0
+  height: 7.0

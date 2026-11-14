@@ -1,0 +1,33 @@
+# @package _global_
+
+# Config for ``scripts/plot_estimation_figure.py`` when it draws the RSW
+# covariance/correlation corner plot of a GM-sweep fit.
+#
+# The plotter rotates the covariance into the RSW frame, which needs the system
+# of bodies.  Composing the estimation config means the environment - and with
+# it the frame - is exactly the one the fit used, rather than a second,
+# possibly divergent, definition of the same bodies.
+#
+# The rule names the figure config and the estimation output to read:
+#
+#     python scripts/plot_estimation_figure.py \
+#         --config-name chapter_3/fig_rsw_correlations_gm_sweep \
+#         hydra.run.dir=results/<stage> \
+#         figure_config=conf/chapter_3/fig_rsw_correlations_gm_sweep_<gm_set>.yaml \
+#         estimation_output=results/<stage>/<gm_set>/estimation_output.tudat
+#
+# It composes the initial state estimation config rather than the GM-sweep one:
+# the plotter needs the system of bodies and the epochs, not the parameter set,
+# which is already baked into the estimation output it reads.  Composing the
+# GM-sweep config would also compose the same ``chapter_3`` group twice.
+
+defaults:
+  - /chapter_3: estimation_pole_models
+  - _self_
+
+# The figure's own config file.  Its stem is the figure's name, and it carries
+# the plotter, the styling and the output file name.
+figure_config: "conf/chapter_3/fig_rsw_correlations_gm_sweep_state_plus_neptune_GM.yaml"
+
+# Artifact to read.  Written by ``estimate_gm_sweep``.
+estimation_output: "results/chapter_3/gm_sweep/state_plus_neptune_GM/estimation_output.tudat"

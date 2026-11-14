@@ -31,4 +31,5 @@ for _chapter in sorted(Path(workflow.basedir, "chapters").glob("*.smk")):
 rule all:
     input:
         rules.all_chapter_3.input,
+        # rules.all_prefit_residuals_toy.input,
 

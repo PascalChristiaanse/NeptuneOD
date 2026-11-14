@@ -4,5 +4,9 @@
 estimation:
   max_iterations: 5
   max_iterations_without_improvement: 3
+  # Stop once the residual moves less than this between iterations.  Without it
+  # the solver's default of 0.0 never fires, so every fit runs to the iteration
+  # cap and its termination reason says nothing about convergence.
+  minimum_residual_change: 1.0
   parameters_to_estimate:
     initial_state: true

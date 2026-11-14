@@ -1,0 +1,40 @@
+# @package _global_
+
+# Toy variant of ``coll_synthetic_3d_point``: the same synthetic-observation
+# stage, but with a short burst dataset and a one-year window, so the whole
+# sweep pipeline can be exercised in seconds instead of hours.
+#
+# Used by ``workflow/chapters/chapter_3_toy.smk``.  The dynamics and kernels are
+# the real ones, so a toy fit exercises the same code path as the real sweep;
+# only the observation window and the iteration limit are reduced.
+
+defaults:
+  - /datasets/simulated_bursts@datasets.simulated
+  - /dynamics: jacobson2009
+  - /kernels: jacobson2009
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# The collection stage only builds observations, so the propagator's integrated
+# result is not needed here.
+propagation:
+  set_integrated_result: false
+
+# Artifact names written into the Hydra run directory.
+output:
+  observations: "prefit_observations"
+  standard_frame: "prefit_standard_frame.parquet"
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# A one-year window around the simulated bursts.
+start_date: 2025-1-1T12:00:00
+end_date: 2026-1-1T12:00:00
+initial_epoch: 2025-1-1T12:00:00

@@ -1,6 +1,7 @@
 # vscode stuff
 .vscode
 results
+results_old
 data/kernels
 data/raw
 data/other

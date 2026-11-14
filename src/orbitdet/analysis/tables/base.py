@@ -6,6 +6,10 @@ builds a matplotlib figure and publishes it as a PDF, a table builds a
 saved file to the Hydra output directory, so a run's figures and its tables are
 bookkept the same way.
 
+A table that also carries :class:`~orbitdet.analysis.tables.latex.LatexTableWriter`
+instances publishes one ``.tex`` file per writer, so the same reduction serves a
+report and several journals.
+
 Subclasses implement :meth:`Table._build`, which returns the dataframe (or a
 mapping of name -> dataframe).  The public :meth:`Table.build` wraps that with
 the publishing below, so callers only need::
@@ -17,10 +21,13 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from pathlib import Path
 
 import pandas as pd
 from hydra.core.hydra_config import HydraConfig
+
+from orbitdet.analysis.tables.latex import LatexTableWriter
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +42,18 @@ class Table(ABC):
     name : str, optional
         Base name used for output files.  Defaults to the snake_case class name
         (set by subclasses that need a different name).
+    writers : Mapping[str, LatexTableWriter], optional
+        LaTeX renderers keyed by style name.  When set, :meth:`publish` writes
+        one ``.tex`` file per style next to the CSV and Markdown ones.
     """
 
-    def __init__(self, name: str | None = None):
+    def __init__(
+        self,
+        name: str | None = None,
+        writers: Mapping[str, LatexTableWriter] | None = None,
+    ):
         self.name = name or _snake_case(self.__class__.__name__)
+        self.writers = dict(writers or {})
 
     @abstractmethod
     def _build(self) -> pd.DataFrame | dict[str, pd.DataFrame]:
@@ -57,7 +72,7 @@ class Table(ABC):
         return result
 
     def publish(self, result: pd.DataFrame | dict[str, pd.DataFrame]) -> None:
-        """Write the table(s) as CSV and Markdown.
+        """Write the table(s) as CSV, Markdown and one LaTeX file per style.
 
         Parameters
         ----------
@@ -76,6 +91,10 @@ class Table(ABC):
 
             markdown_path = output_dir / f"{table_name}.md"
             markdown_path.write_text(_to_markdown(frame))
+
+            for style, writer in self.writers.items():
+                stem = table_name if len(self.writers) == 1 else f"{table_name}_{style}"
+                (output_dir / f"{stem}.tex").write_text(writer.render(frame))
 
 
 def _to_markdown(frame: pd.DataFrame) -> str:

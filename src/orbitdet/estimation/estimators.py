@@ -22,6 +22,8 @@ Two important design points:
         parameters_to_estimate:
           neptune_GM:
             value: 6.809e6
+          neptune_j2_j4:
+            value: [-2.0e-4, -6.0e-6]   # [C20, C40]
           neptune_inverse_tidal_quality_factor:
             value: 0.0125
           initial_state:
@@ -34,6 +36,21 @@ Two important design points:
   with (which otherwise comes from the SPICE ephemeris at the arc's initial
   epoch), so the estimation config is the single source of truth for the initial
   estimate.
+
+Shared parameter identifiers
+----------------------------
+TudatPy identifies a parameter by body and type, not by which coefficients or
+frequencies it covers. ``neptune_j2``, ``neptune_j4`` and the combined
+``neptune_j2_j4`` all resolve to the *same* identifier, as do the two libration
+orders. They differ only in the size of the block they build: one scalar for
+each separate harmonic, two for the combined harmonic block, and two or four for
+the libration orders.
+
+Enabling two keys that share an identifier is not supported. The consolidated
+parameter set holds a single block for that identifier, so one key would be
+silently dropped. :func:`_validate_unique_parameter_identifiers` turns that into
+an error instead: use ``neptune_j2_j4`` to estimate both coefficients, and pick
+exactly one libration order per fit.
 """
 
 import logging
@@ -50,13 +67,23 @@ from orbitdet.reproducibility.runtime import RuntimeContext
 
 logger = logging.getLogger(__name__)
 
+#: Angular frequency (rad/s) of the dominant Neptune pole libration term, derived
+#: from the dominant period in the IAU pole model (``omega_dot``).
+_NEPTUNE_POLE_LIBRATION_FREQUENCY: float = np.deg2rad(52.3836218446110 / 36525 / 24 / 3600)
+
 #: Angular frequencies (rad/s) of the two Neptune pole libration terms estimated
-#: when ``iau_rotation_model_pole_librations`` is enabled. Derived from the
-#: dominant period in the IAU pole model (``omega_dot`` and its second harmonic).
-_NEPTUNE_POLE_LIBRATION_FREQUENCIES: list[float] = [
-    np.deg2rad(52.3836218446110 / 36525 / 24 / 3600),
-    2 * np.deg2rad(52.3836218446110 / 36525 / 24 / 3600),
+#: when ``iau_rotation_model_pole_librations_order2`` is enabled: the dominant
+#: term and its second harmonic. The block is
+#: ``[alpha_1, delta_1, alpha_2, delta_2]``.
+_NEPTUNE_POLE_LIBRATION_FREQUENCIES_ORDER2: list[float] = [
+    _NEPTUNE_POLE_LIBRATION_FREQUENCY,
+    2 * _NEPTUNE_POLE_LIBRATION_FREQUENCY,
 ]
+
+#: Angular frequencies estimated when
+#: ``iau_rotation_model_pole_librations_order1`` is enabled: the dominant term
+#: only, so the block is ``[alpha_1, delta_1]`` rather than four scalars.
+_NEPTUNE_POLE_LIBRATION_FREQUENCIES_ORDER1: list[float] = [_NEPTUNE_POLE_LIBRATION_FREQUENCY]
 
 #: Human-readable description for each additional (non-state) parameter key,
 #: used for logging. The set of keys is the authoritative list of parameters that
@@ -64,10 +91,17 @@ _NEPTUNE_POLE_LIBRATION_FREQUENCIES: list[float] = [
 _ADDITIONAL_PARAMETER_DESCRIPTIONS: dict[str, str] = {
     "iau_rotation_model_pole": "IAU rotation model pole",
     "iau_rotation_model_pole_rate": "IAU rotation model pole rate",
-    "iau_rotation_model_pole_librations": "IAU rotation model pole librations",
+    "iau_rotation_model_pole_librations_order1": (
+        "IAU rotation model pole librations, dominant frequency only"
+    ),
+    "iau_rotation_model_pole_librations_order2": (
+        "IAU rotation model pole librations, dominant frequency and second harmonic"
+    ),
     "neptune_GM": "Neptune gravitational parameter",
     "triton_GM": "Triton gravitational parameter",
-    "neptune_j2_j4": "Neptune J2 and J4 spherical harmonics coefficients",
+    "neptune_j2": "Neptune J2 (C20) spherical harmonics coefficient",
+    "neptune_j4": "Neptune J4 (C40) spherical harmonics coefficient",
+    "neptune_j2_j4": "Neptune J2 and J4 (C20 and C40) spherical harmonics coefficients",
     "neptune_inverse_tidal_quality_factor": (
         "Neptune inverse tidal quality factor (1/Q), tide raised by Triton"
     ),
@@ -131,22 +165,27 @@ def _build_additional_parameter_settings(
             return param_setup.iau_rotation_model_pole("Neptune")
         case "iau_rotation_model_pole_rate":
             return param_setup.iau_rotation_model_pole_rate("Neptune")
-        case "iau_rotation_model_pole_librations":
+        case "iau_rotation_model_pole_librations_order1":
             return param_setup.iau_rotation_model_pole_librations(
-                "Neptune", _NEPTUNE_POLE_LIBRATION_FREQUENCIES
+                "Neptune", _NEPTUNE_POLE_LIBRATION_FREQUENCIES_ORDER1
+            )
+        case "iau_rotation_model_pole_librations_order2":
+            return param_setup.iau_rotation_model_pole_librations(
+                "Neptune", _NEPTUNE_POLE_LIBRATION_FREQUENCIES_ORDER2
             )
         case "neptune_GM":
             return param_setup.gravitational_parameter("Neptune")
         case "triton_GM":
             return param_setup.gravitational_parameter("Triton")
+        case "neptune_j2":
+            return _neptune_harmonics_settings([(2, 0)])
+        case "neptune_j4":
+            return _neptune_harmonics_settings([(4, 0)])
         case "neptune_j2_j4":
-            block_indices = [
-                (2, 0),  # C20 (J2)
-                (4, 0),  # C40 (J4)
-            ]
-            return param_setup.spherical_harmonics_c_coefficients_block(
-                body="Neptune", block_indices=block_indices
-            )
+            # One block for both coefficients, so the fit estimates C20 and C40
+            # together. Enabling the two single-coefficient keys in the same fit
+            # is rejected by _validate_unique_parameter_identifiers.
+            return _neptune_harmonics_settings([(2, 0), (4, 0)])
         case "neptune_inverse_tidal_quality_factor":
             # Inverse tidal quality factor of Neptune (tide raised on Neptune,
             # by Triton). Requires a direct_tidal_dissipation acceleration on
@@ -164,6 +203,94 @@ def _build_additional_parameter_settings(
             return param_setup.direct_tidal_dissipation_time_lag("Neptune", ["Triton"])
         case _:
             raise ValueError(f"Unknown parameter {param_name} specified for estimation")
+
+
+def _neptune_harmonics_settings(
+    block_indices: list[tuple[int, int]],
+) -> param_setup.EstimatableParameterSettings:
+    """Build a Neptune cosine-coefficient block for the given ``(degree, order)``.
+
+    ``neptune_j2`` and ``neptune_j4`` resolve to the same TudatPy parameter
+    identifier, because a spherical-harmonic block is identified by body and
+    coefficient type rather than by which degrees it contains. They differ only
+    in the size of the block they build.
+    """
+    return param_setup.spherical_harmonics_c_coefficients_block(
+        body="Neptune", block_indices=block_indices
+    )
+
+
+#: Guidance for each pair of parameter keys that TudatPy maps to one identifier.
+_SHARED_IDENTIFIER_RESOLUTIONS: dict[frozenset[str], str] = {
+    frozenset({"neptune_j2", "neptune_j4"}): (
+        "Enable the combined key 'neptune_j2_j4' instead, which builds one block "
+        "holding both C20 and C40."
+    ),
+    frozenset(
+        {
+            "iau_rotation_model_pole_librations_order1",
+            "iau_rotation_model_pole_librations_order2",
+        }
+    ): (
+        "The two libration orders describe the same parameter block; enable "
+        "exactly one of them in a given fit."
+    ),
+}
+
+
+def _validate_unique_parameter_identifiers(
+    settings: dict[str, param_setup.EstimatableParameterSettings],
+) -> None:
+    """Reject two enabled keys that resolve to the same TudatPy identifier.
+
+    A consolidated parameter set holds one block per identifier, so requesting
+    the same identifier twice would silently drop one of the blocks. Failing
+    here makes the incompatibility visible before a fit is launched.
+
+    Raises
+    ------
+    ValueError
+        If two enabled keys share an identifier.
+    """
+    identifier_to_key: dict[tuple, str] = {}
+    for key, setting in settings.items():
+        identifier = setting.parameter_identifier
+        previous = identifier_to_key.get(identifier)
+        if previous is None:
+            identifier_to_key[identifier] = key
+            continue
+        resolution = _SHARED_IDENTIFIER_RESOLUTIONS.get(
+            frozenset((previous, key)),
+            "Enable at most one of them in a given fit.",
+        )
+        raise ValueError(
+            f"Parameters '{previous}' and '{key}' resolve to the same TudatPy "
+            f"parameter identifier {identifier!r}. {resolution}"
+        )
+
+
+def _enabled_additional_parameter_settings(
+    cfg: DictConfig,
+) -> dict[str, param_setup.EstimatableParameterSettings]:
+    """Build the settings object for every enabled non-state parameter key.
+
+    Returns
+    -------
+    dict[str, EstimatableParameterSettings]
+        Settings keyed by configuration key, in configuration order.
+
+    Raises
+    ------
+    ValueError
+        If two enabled keys resolve to the same parameter identifier.
+    """
+    settings: dict[str, param_setup.EstimatableParameterSettings] = {}
+    for key, enabled in iter_parameter_entries(cfg):
+        if not enabled or key == "initial_state":
+            continue
+        settings[key] = _build_additional_parameter_settings(key)
+    _validate_unique_parameter_identifiers(settings)
+    return settings
 
 
 def _is_sequence(value) -> bool:
@@ -209,13 +336,16 @@ def get_additional_parameter_identifiers(cfg: DictConfig) -> dict[str, tuple]:
     dict[str, tuple]
         Mapping from configuration key to the corresponding
         ``EstimatableParameterSet`` identifier tuple.
+
+    Raises
+    ------
+    ValueError
+        If two enabled keys resolve to the same parameter identifier.
     """
-    identifiers: dict[str, tuple] = {}
-    for key, enabled in iter_parameter_entries(cfg):
-        if not enabled or key == "initial_state":
-            continue
-        identifiers[key] = _build_additional_parameter_settings(key).parameter_identifier
-    return identifiers
+    return {
+        key: setting.parameter_identifier
+        for key, setting in _enabled_additional_parameter_settings(cfg).items()
+    }
 
 
 def _is_state_identifier(identifier: tuple) -> bool:
@@ -414,10 +544,8 @@ def get_estimatable_parameter_settings(
     estimated_parameters.extend(param_setup.initial_states(prop_settings, bodies))
 
     logger.info(f"Parameters to estimate ({len(estimated_parameters)})")
-    for param_name, should_estimate in iter_parameter_entries(cfg):
-        if not should_estimate or param_name == "initial_state":
-            continue
-        estimated_parameters.append(_build_additional_parameter_settings(param_name))
+    for param_name, setting in _enabled_additional_parameter_settings(cfg).items():
+        estimated_parameters.append(setting)
         logger.info("\t - %s", _ADDITIONAL_PARAMETER_DESCRIPTIONS.get(param_name, param_name))
 
     return estimated_parameters

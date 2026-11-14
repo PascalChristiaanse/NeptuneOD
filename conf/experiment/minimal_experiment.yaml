@@ -19,6 +19,7 @@ defaults:
   - /figures/parameter_correlation_heatmap@figures.parameter_correlation_heatmap
   - /figures/parameter_history_per_iteration@figures.parameter_history_per_iteration
   - /figures/covariance_ellipses@figures.covariance_ellipses
+  - /figures/covariance_correlation_pairgrid@figures.covariance_correlation_pairgrid
 seed: 42
 
 # Hydra settings

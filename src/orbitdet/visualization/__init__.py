@@ -1,4 +1,5 @@
 from .base import Plot
+from .covariance_correlation_pairgrid import CovarianceCorrelationPairGrid
 from .covariance_ellipses import CovarianceEllipses
 from .dependent_variable import DependentVariable
 from .dependent_variable_differenced import (
@@ -22,6 +23,7 @@ from .residuals import NormalizedResiduals, NormalizedResidualScan, Residuals, R
 from .RSW_distance import RSWDistance, RSWDistanceComparison, RSWDistanceDifference
 from .rsw_distance_with_uncertainty import RSWDistanceWithUncertainty
 from .simulation_base import ArrayPlot, SimulationPlot
+from .specification_curve import SpecificationCurve
 from .state_history_3d import StateHistory3D
 from .style import DEFAULT_STYLE, apply_style, available_styles
 from .validation import (
@@ -44,8 +46,10 @@ __all__ = [
     "ResidualPlot",
     "EstimationPlot",
     "SimulationPlot",
+    "SpecificationCurve",
     "ArrayPlot",
     "CombinationComparison",
+    "CovarianceCorrelationPairGrid",
     "CovarianceEllipses",
     "DependentVariable",
     "DifferencedDependentVariables",

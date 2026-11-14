@@ -1,0 +1,47 @@
+# @package _global_
+
+# Config for ``scripts/analyse_parameter_sweep.py``.
+#
+# The script compares the fits of one parameter-combination sweep and writes the
+# group's comparison table.  Which group, and where its results live, are passed
+# as overrides by the Snakemake rules:
+#
+#     python scripts/analyse_parameter_sweep.py \
+#         sweep_group=gravity \
+#         sweep_dir=results/chapter_3/parameter_sweeps/gravity \
+#         table_config=conf/tables/sweep_comparison.yaml
+#
+# The truth table comes from the sweep's CSV, the same file the rule enumerates
+# with.
+
+defaults:
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Which sweep group to analyse: ``gravity`` or ``pole``.
+sweep_group: "gravity"
+
+# The group's results folder: one sub-directory per fit, each holding
+# ``estimation_output.tudat`` and ``estimation_log.log``.
+sweep_dir: "results/chapter_3/parameter_sweeps/gravity"
+
+# The sweep's CSV: one row per fit, one column per parameter.
+sweep_csv: "conf/sweeps/gravity.csv"
+
+# The table's own config file.  Its stem names the table, and it carries the
+# column selection and the LaTeX writer.
+table_config: "conf/tables/sweep_comparison.yaml"
+
+# Base name of the published files.  The rule overrides it per group so the two
+# groups cannot overwrite each other; ``null`` falls back to the table's own
+# name.
+output_name: null
+
+# Hydra settings
+hydra:
+  run:
+    dir: results/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

@@ -115,4 +115,4 @@ estimation:
         # apriori: [1.0e7, 1.0e2]
     # - "iau_rotation_model_pole"
     # - "neptune_GM"
-    # - "neptune_j2_j4"
+    # - "neptune_j2"

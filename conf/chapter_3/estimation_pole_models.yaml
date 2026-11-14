@@ -57,6 +57,7 @@ initial_epoch: 1989-08-25T12:00:00
 estimation:
   max_iterations: 10
   max_iterations_without_improvement: 3
+  minimum_residual_change: 1.0
 
 dependent_variables:
   - type: keplerian_state

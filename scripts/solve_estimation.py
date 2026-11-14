@@ -94,6 +94,11 @@ def _build_estimation_input(
         number_of_iterations_without_improvement=cfg.estimation.get(
             "max_iterations_without_improvement", cfg.estimation.max_iterations
         ),
+        # A fit whose residual has stopped moving is converged even though the
+        # iteration limit has not been reached.  Without this the checker can
+        # only stop on the iteration cap, so a plateaued fit is reported as
+        # "maximum number of iterations reached" and read as not converged.
+        minimum_residual_change=cfg.estimation.get("minimum_residual_change", 0.0),
     )
 
     inverse_apriori_covariance = get_apriori_covariance_matrix(cfg, parameter_set)
@@ -128,12 +133,13 @@ def _build_estimation_input(
     )
     return estimation_input
 
+
 def _build_dependent_variables(cfg: DictConfig) -> list:
     """Build every dependent-variable save setting, preserving config order."""
     entries = cfg.get("dependent_variables") or []
     return [_build_dependent_variable(entry) for entry in entries]
 
-    
+
 def _build_dependent_variable(entry: DictConfig):
     """Build one dependent-variable save setting from a config entry.
 
@@ -149,9 +155,7 @@ def _build_dependent_variable(entry: DictConfig):
         case "keplerian_state":
             return dependent_variable.keplerian_state(entry.body, entry.central_body)
         case "modified_equinoctial_state":
-            return dependent_variable.modified_equinoctial_state(
-                entry.body, entry.central_body
-            )
+            return dependent_variable.modified_equinoctial_state(entry.body, entry.central_body)
         case "relative_position":
             return dependent_variable.relative_position(entry.body, entry.secondary_body)
         case "relative_velocity":
@@ -162,6 +166,7 @@ def _build_dependent_variable(entry: DictConfig):
                 "keplerian_state, modified_equinoctial_state, relative_position, "
                 "relative_velocity."
             )
+
 
 @hydra.main(
     version_base=None,
@@ -243,7 +248,7 @@ def main(cfg: DictConfig):
         os.path.join(output_dir, "final_iteration_simulation_results"),
     )
     logger.info("Final iteration simulation results saved to %s", output_path)
-       
+
     logger.info("solve_estimation stage completed.")
 
 

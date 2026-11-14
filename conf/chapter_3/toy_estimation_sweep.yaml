@@ -1,0 +1,62 @@
+# @package _global_
+
+# Toy variant of ``estimation_gm_sweep``: the same sweep rule, but with a short
+# window and a two-iteration limit, so every specification of a sweep group can
+# be run in seconds.
+#
+# Used by ``workflow/chapters/chapter_3_toy.smk``.  The dynamics, kernels and
+# dependent variables are the real ones, so a toy fit exercises the same code
+# path as the real sweep; only the window and the iteration limit are reduced.
+#
+# The parameter set is selected per run by the Snakemake rule, exactly as for
+# the real sweep:
+#
+#     python scripts/solve_estimation.py \
+#         --config-name chapter_3/toy_estimation_sweep \
+#         hydra.run.dir=results/<stage>/<group>/<spec> \
+#         '+estimation.parameters_to_estimate={...}'
+
+defaults:
+  - /dynamics: jacobson2009
+  - /kernels: jacobson2009
+  - /parameters: initial_state
+  - /logging: default
+  - _self_
+
+seed: 42
+
+# Hydra settings.  The run directory is pinned by the rule.
+hydra:
+  run:
+    dir: results/chapter_3_toy/parameter_sweeps/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false
+
+# The observation collection the fit consumes, written by the toy collection
+# stage.  Snakemake overrides it with the path of the rule's input.
+observations: "results/chapter_3_toy/initial_state_estimation/prefit_observations.tudat"
+
+# The estimator's propagator does not need a stored integrated result.
+propagation:
+  set_integrated_result: false
+
+# A one-year window around the simulated bursts.
+start_date: 2025-1-1T12:00:00
+end_date: 2026-1-1T12:00:00
+initial_epoch: 2025-1-1T12:00:00
+
+# The toy is not meant to reach a small residual: its observations come from
+# the SPICE ephemeris while the fit propagates the jacobson2009 model, so the
+# residual plateaus at the model-vs-ephemeris mismatch (~5 km).  What the toy
+# does check is that a fit *terminates and is reported as converged*, so the
+# plateau is declared converged with ``minimum_residual_change``: once the
+# residual stops moving, more iterations cannot help.
+estimation:
+  max_iterations: 6
+  max_iterations_without_improvement: 2
+  minimum_residual_change: 1.0
+
+dependent_variables:
+  - type: keplerian_state
+    body: "Triton"
+    central_body: "Neptune"

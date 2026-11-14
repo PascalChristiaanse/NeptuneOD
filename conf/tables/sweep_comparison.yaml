@@ -1,0 +1,67 @@
+# Table: comparison of the fits of one parameter-combination sweep.
+#
+# One row per specification, in the order the sweep lists them, so the table
+# reads as the truth table: the toggle columns say which parameters the fit
+# estimated, and the remaining columns say what came out.
+#
+# ``converged`` is read from the solver's own log, not inferred from the
+# residual: a fit that stopped on the iteration limit is not converged however
+# small its residual.  ``rms`` is the estimator's best-iteration residual RMS, so
+# it describes exactly the fit that was saved.
+#
+# The table is written once per group (``gravity`` and ``pole``); the rule
+# overrides ``output_name`` so the two files cannot overwrite each other.
+
+table: "SweepComparisonTable"
+output_file: "sweep_comparison"
+
+columns:
+  - "specification"
+  - "neptune_GM"
+  - "triton_GM"
+  - "neptune_j2_j4"
+  - "iau_rotation_model_pole"
+  - "iau_rotation_model_pole_rate"
+  - "iau_rotation_model_pole_librations_order1"
+  - "iau_rotation_model_pole_librations_order2"
+  - "converged"
+  - "rms"
+  - "n_iterations"
+  - "n_parameters"
+
+writer:
+  styles:
+    - "booktabs"
+    - "aa"
+  caption: "Parameter-combination sweep: which parameters each fit estimated, whether it converged, and its residual RMS."
+  label: "tab:sweep_comparison"
+  headers:
+    specification: "Specification"
+    neptune_GM: "$GM_{\\mathrm{N}}$"
+    triton_GM: "$GM_{\\mathrm{T}}$"
+    neptune_j2_j4: "$J_2, J_4$"
+    iau_rotation_model_pole: "Pole"
+    iau_rotation_model_pole_rate: "Pole rate"
+    iau_rotation_model_pole_librations_order1: "Libr. 1"
+    iau_rotation_model_pole_librations_order2: "Libr. 2"
+    converged: "Conv."
+    rms: "RMS"
+    n_iterations: "$N_{\\mathrm{it}}$"
+    n_parameters: "$N_{\\mathrm{par}}$"
+  formats:
+    neptune_GM: "toggle"
+    triton_GM: "toggle"
+    neptune_j2_j4: "toggle"
+    iau_rotation_model_pole: "toggle"
+    iau_rotation_model_pole_rate: "toggle"
+    iau_rotation_model_pole_librations_order1: "toggle"
+    iau_rotation_model_pole_librations_order2: "toggle"
+    converged: "toggle"
+    rms: ".4e"
+    n_iterations: "int"
+    n_parameters: "int"
+  alignments:
+    specification: "l"
+  style_options:
+    aa:
+      typesize: "\\scriptsize"

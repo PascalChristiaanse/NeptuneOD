@@ -1,6 +1,9 @@
 """Chapter 4: Investigation 1 - Repeating Atanas' 'Parameter Estimation with Simulated
 Observations'"""
 
+import pandas as pd
+from snakemake.utils import Paramspace
+
 from orbitdet.reproducibility import hydra_dependencies, python_dependencies
 
 STAGE = f"{RESULTS_ROOT}/chapter_3"
@@ -191,16 +194,24 @@ rule generate_synthetic_observations:
         f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
         f"{INITIAL_ESTIMATION_FOLDER}/prefit_standard_frame.parquet",
 
+    params:
+        # Everything the shell needs is a param, so the toy pipeline can reuse
+        # this rule with ``use rule ... as ... with:`` instead of duplicating it.
+        config_name="chapter_3/coll_synthetic_3d_point",
+        folder=INITIAL_ESTIMATION_FOLDER,
+        observations="prefit_observations",
+        standard_frame="prefit_standard_frame.parquet",
+
     log:
         f"{INITIAL_ESTIMATION_FOLDER}/generate_synthetic_observations.log",
 
     shell:
         """
         {PYTHON} scripts/generate_observation_collection.py \
-            --config-name chapter_3/coll_synthetic_3d_point \
-            hydra.run.dir={INITIAL_ESTIMATION_FOLDER} \
-            output.observations=prefit_observations \
-            output.standard_frame=prefit_standard_frame.parquet \
+            --config-name {params.config_name} \
+            hydra.run.dir={params.folder} \
+            output.observations={params.observations} \
+            output.standard_frame={params.standard_frame} \
             > {log} 2>&1
         """
 
@@ -600,6 +611,194 @@ rule rsw_correlations_gm_sweep:
         """
 
 
+######################################################
+########## Parameter-combination sweeps ##############
+######################################################
+# Two groups of fits, each enumerating every combination of its parameters:
+#
+#   gravity  neptune_GM x triton_GM x neptune_j2_j4          (8 fits)
+#   pole     pole x pole rate x librations order 0/1/2       (12 fits)
+#
+# Every fit is independent: it reads the synthetic observations and its own
+# config, and nothing else.
+PARAMETER_SWEEP_FOLDER = f"{STAGE}/parameter_sweeps"
+
+# One CSV per group: a row per fit, a column per parameter, True meaning that fit
+# estimates it.
+SWEEP_GROUPS = ["gravity", "pole"]
+SWEEP_PARAMSPACES = {
+    group: Paramspace(
+        pd.read_csv(f"conf/sweeps/{group}.csv"),
+        filename_params="*",
+        single_wildcard="sweep_spec",
+        # ``~`` is Paramspace's default, but Hydra's override grammar rejects it.
+        param_sep="-",
+    )
+    for group in SWEEP_GROUPS
+}
+
+rule estimate_parameter_sweep:
+    """Fit the Triton initial state for one parameter-combination specification.
+
+    The specification is the only thing that varies.  Dynamics, kernels, epochs
+    and dependent variables are inherited from the initial state estimation
+    config, so a sweep fit differs from the state-only fit in exactly one thing:
+    which parameters are estimated.  Initial values come from the force and
+    rotation models (SPICE and the configured gravity field) unless the
+    specification gives a ``value``.
+
+    The solver log is an output, not just a log: the analysis reads it to decide
+    whether the fit converged, because the estimator reports that only in its
+    own log.
+    """
+
+    input:
+        python_dependencies("scripts/solve_estimation.py"),
+        hydra_dependencies("conf/chapter_3/estimation_gm_sweep.yaml"),
+        f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
+
+    output:
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_spec}}/estimation_output.tudat",
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_spec}}/estimation_log.log",
+
+    wildcard_constraints:
+        sweep_group="|".join(SWEEP_GROUPS),
+        sweep_spec=r"[A-Za-z0-9_-]+",
+
+    params:
+        # Resolved here rather than in the shell, which only knows wildcards.
+        override=lambda wildcards: (
+            "+estimation.parameters_to_estimate={"
+            + ",".join(
+                f"{key}:{str(value).lower()}"
+                for key, value in {
+                    "initial_state": True,
+                    **SWEEP_PARAMSPACES[wildcards.sweep_group].instance(wildcards),
+                }.items()
+            )
+            + "}"
+        ),
+        config_name="chapter_3/estimation_gm_sweep",
+        folder=PARAMETER_SWEEP_FOLDER,
+        observations=f"{INITIAL_ESTIMATION_FOLDER}/prefit_observations.tudat",
+
+    log:
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_spec}}/estimate.log",
+
+    shell:
+        """
+        {PYTHON} scripts/solve_estimation.py \
+            --config-name {params.config_name} \
+            hydra.run.dir={params.folder}/{wildcards.sweep_group}/{wildcards.sweep_spec} \
+            observations={params.observations} \
+            '{params.override}' \
+            > {log} 2>&1
+        """
+
+
+rule analyse_parameter_sweep:
+    """Compare every fit of one sweep group in a single table.
+
+    The table lists every specification of the group, in truth-table order,
+    with the convergence verdict read from each fit's solver log and the
+    residual RMS of its best iteration.  A specification whose fit produced no
+    output is still listed, as not converged, so a missing fit is visible rather
+    than absent.
+    """
+
+    input:
+        python_dependencies("scripts/analyse_parameter_sweep.py"),
+        hydra_dependencies("conf/analyse_parameter_sweep.yaml"),
+        "conf/tables/sweep_comparison.yaml",
+        lambda wildcards: f"conf/sweeps/{wildcards.sweep_group}.csv",
+        estimation_outputs=lambda wildcards: expand(
+            f"{PARAMETER_SWEEP_FOLDER}/{wildcards.sweep_group}/{{sweep_spec}}/estimation_output.tudat",
+            sweep_spec=list(SWEEP_PARAMSPACES[wildcards.sweep_group].instance_patterns),
+        ),
+        estimation_logs=lambda wildcards: expand(
+            f"{PARAMETER_SWEEP_FOLDER}/{wildcards.sweep_group}/{{sweep_spec}}/estimation_log.log",
+            sweep_spec=list(SWEEP_PARAMSPACES[wildcards.sweep_group].instance_patterns),
+        ),
+
+    output:
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_group}}_sweep_comparison.csv",
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_group}}_sweep_comparison.md",
+        # One LaTeX file per style.  The style is expanded here rather than
+        # left as a wildcard: the rule's wildcard is the group, and a second
+        # wildcard in the output would have to be filled by the caller.
+        [
+            f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_group}}_sweep_comparison_{style}.tex"
+            for style in TABLE_STYLES
+        ],
+
+    wildcard_constraints:
+        sweep_group="|".join(SWEEP_GROUPS),
+
+    params:
+        # Everything the shell needs is a param, so the toy pipeline can reuse
+        # this rule with ``use rule ... as ... with:`` instead of duplicating it.
+        folder=PARAMETER_SWEEP_FOLDER,
+        table_config="conf/tables/sweep_comparison.yaml",
+        sweep_csv=lambda wildcards: f"conf/sweeps/{wildcards.sweep_group}.csv",
+
+    log:
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/analyse.log",
+
+    shell:
+        """
+        {PYTHON} scripts/analyse_parameter_sweep.py \
+            hydra.run.dir={params.folder}/{wildcards.sweep_group} \
+            sweep_group={wildcards.sweep_group} \
+            sweep_dir={params.folder}/{wildcards.sweep_group} \
+            table_config={params.table_config} \
+            sweep_csv={params.sweep_csv} \
+            output_name={wildcards.sweep_group}_sweep_comparison \
+            > {log} 2>&1
+        """
+
+
+rule plot_parameter_sweep:
+    """Draw the specification curve of one sweep group.
+
+    The figure is the truth table and the residual RMS of the same fits, aligned
+    row by row and sorted by RMS.  It reads the comparison table rather than the
+    estimation outputs, so the figure and the table cannot disagree about what a
+    fit did.  Fits that did not converge are kept and marked.
+    """
+
+    input:
+        python_dependencies("scripts/plot_sweep_figure.py"),
+        hydra_dependencies("conf/plot_sweep_figure.yaml"),
+        lambda wildcards: f"conf/figures/specification_curve_{wildcards.sweep_group}.yaml",
+        sweep_table=f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_group}}_sweep_comparison.csv",
+
+    output:
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/specification_curve_{{sweep_group}}.pdf",
+
+    wildcard_constraints:
+        sweep_group="|".join(SWEEP_GROUPS),
+
+    params:
+        # Everything the shell needs is a param, so the toy pipeline can reuse
+        # this rule with ``use rule ... as ... with:`` instead of duplicating it.
+        folder=PARAMETER_SWEEP_FOLDER,
+        figure_config=lambda wildcards: (
+            f"conf/figures/specification_curve_{wildcards.sweep_group}.yaml"
+        ),
+
+    log:
+        f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/specification_curve.log",
+
+    shell:
+        """
+        {PYTHON} scripts/plot_sweep_figure.py \
+            hydra.run.dir={params.folder}/{wildcards.sweep_group} \
+            figure_config={params.figure_config} \
+            sweep_table={input.sweep_table} \
+            > {log} 2>&1
+        """
+
+
 rule all_chapter_3:
     """Everything chapter 3 needs: the artifacts, every figure, and the sweep."""
 
@@ -658,4 +857,22 @@ rule all_chapter_3:
         expand(
             f"{GM_SWEEP_FOLDER}/rsw_correlations_{{gm_set}}.pdf",
             gm_set=GM_SETS,
+        ),
+        # Paragraph 4: every parameter combination of both sweep groups, the
+        # comparison table per group, and the specification curve per group.
+        # The specifications are expanded per group, because each group has its
+        # own list; a single expand() cannot vary two wildcards together.
+        [
+            f"{PARAMETER_SWEEP_FOLDER}/{group}/{index}/estimation_output.tudat"
+            for group in SWEEP_GROUPS
+            for index in SWEEP_PARAMSPACES[group].instance_patterns
+        ],
+        expand(
+            f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/{{sweep_group}}_sweep_comparison_{{style}}.tex",
+            sweep_group=SWEEP_GROUPS,
+            style=TABLE_STYLES,
+        ),
+        expand(
+            f"{PARAMETER_SWEEP_FOLDER}/{{sweep_group}}/specification_curve_{{sweep_group}}.pdf",
+            sweep_group=SWEEP_GROUPS,
         ),

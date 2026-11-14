@@ -30,6 +30,15 @@ from .residual_summary import (
     ResidualSummary,
     SourceResidualSummary,
 )
+from .sweep_comparison import (
+    COMPARISON_COLUMNS,
+    SweepComparisonTable,
+    build_sweep_frame,
+    read_convergence,
+    specification_cells,
+    specification_columns,
+    summarise_fit,
+)
 from .view import TableView
 from .weight_summary import WeightSummary, coordinate_axis_labels
 
@@ -55,4 +64,11 @@ __all__ = [
     "ObservatoryResidualSummary",
     "WeightSummary",
     "coordinate_axis_labels",
+    "SweepComparisonTable",
+    "COMPARISON_COLUMNS",
+    "build_sweep_frame",
+    "read_convergence",
+    "specification_cells",
+    "specification_columns",
+    "summarise_fit",
 ]

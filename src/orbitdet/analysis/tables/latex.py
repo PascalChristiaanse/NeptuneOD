@@ -70,12 +70,38 @@ def _text(value: object) -> str:
     return escape_latex(str(value))
 
 
+def _toggle(value: object) -> str:
+    """Render a boolean truth-table cell as a check mark or a dash."""
+    if isinstance(value, str):
+        return r"\checkmark" if value.lower() in ("true", "1", "yes") else "--"
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "--"
+    return r"\checkmark" if bool(value) else "--"
+
+
+def _integer(value: object) -> str:
+    """Render a count, with a dash for a missing value.
+
+    A column that is missing for some rows is stored as float by pandas, so a
+    plain ``"d"`` format would raise on the NaN.  This formatter accepts both
+    and renders the gap as ``--``.
+    """
+    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+        return "--"
+    return str(int(value))
+
+
 #: Formatters a config can name by string, for cases a ``format()`` spec cannot
 #: express.  ``"math"`` is the useful one: a parameter column holding ``v_x``
 #: becomes ``$v_x$`` without the producer having to store LaTeX in the dataframe.
+#: ``"toggle"`` renders truth-table cells, where a false toggle is a dash rather
+#: than the word ``False``.  ``"int"`` renders a count column that may carry a
+#: missing value.
 NAMED_FORMATS: dict[str, Callable[[object], str]] = {
     "math": _math,
     "text": _text,
+    "toggle": _toggle,
+    "int": _integer,
 }
 
 

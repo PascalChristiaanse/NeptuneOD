@@ -102,12 +102,13 @@ class TestPerParameterApriori:
         assert np.diag(m)[6] == pytest.approx(1.0 / 2.0**2)
 
     def test_vector_apriori_sets_each_scalar(self):
+        # The pole block is two scalars, [alpha_0, delta_0].
         cfg = _cfg(
-            {"initial_state": True, "neptune_j2_j4": {"apriori": [1.0e-5, 2.0e-5]}},
+            {"initial_state": True, "iau_rotation_model_pole": {"apriori": [1.0e-5, 2.0e-5]}},
             apriori={"position": 100.0e3, "velocity": 1.0},
         )
         ids = get_additional_parameter_identifiers(cfg)
-        fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2_j4"], 2)])
+        fake = FakeParameterSet([(_STATE_ID, 6), (ids["iau_rotation_model_pole"], 2)])
         m = get_apriori_covariance_matrix(cfg, fake)
         diag = np.diag(m)
         assert diag[6] == pytest.approx(1.0 / (1.0e-5) ** 2)
@@ -133,11 +134,11 @@ class TestPerParameterApriori:
 
     def test_wrong_length_apriori_raises(self):
         cfg = _cfg(
-            {"initial_state": True, "neptune_j2_j4": {"apriori": [1.0, 2.0, 3.0]}},
+            {"initial_state": True, "neptune_j2": {"apriori": [1.0, 2.0, 3.0]}},
             apriori={"position": 100.0e3, "velocity": 1.0},
         )
         ids = get_additional_parameter_identifiers(cfg)
-        fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2_j4"], 2)])
+        fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2"], 1)])
         with pytest.raises(ValueError, match="provides 3 sigma values but its parameter block"):
             get_apriori_covariance_matrix(cfg, fake)
 
@@ -145,14 +146,26 @@ class TestPerParameterApriori:
 class TestBlockSizesFromParameterSet:
     """The builder must trust the parameter set's block sizes, not the config."""
 
+    def test_combined_harmonics_block_uses_two_sigmas(self):
+        cfg = _cfg(
+            {"initial_state": True, "neptune_j2_j4": {"apriori": [1.0e-8, 2.0e-9]}},
+            apriori={"position": 100.0e3, "velocity": 1.0},
+        )
+        ids = get_additional_parameter_identifiers(cfg)
+        fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2_j4"], 2)])
+        diag = np.diag(get_apriori_covariance_matrix(cfg, fake))
+        np.testing.assert_allclose(diag[6:], [1.0 / 1.0e-8**2, 1.0 / 2.0e-9**2])
+
     def test_libration_block_size_respected(self):
         cfg = _cfg(
-            {"initial_state": True, "iau_rotation_model_pole_librations": True},
+            {"initial_state": True, "iau_rotation_model_pole_librations_order2": True},
             apriori={"position": 100.0e3, "velocity": 1.0},
         )
         ids = get_additional_parameter_identifiers(cfg)
         # Real libration block is 4 scalars (2 amplitudes x 2 frequencies).
-        fake = FakeParameterSet([(_STATE_ID, 6), (ids["iau_rotation_model_pole_librations"], 4)])
+        fake = FakeParameterSet(
+            [(_STATE_ID, 6), (ids["iau_rotation_model_pole_librations_order2"], 4)]
+        )
         m = get_apriori_covariance_matrix(cfg, fake)
         assert m.shape == (10, 10)
 

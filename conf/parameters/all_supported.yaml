@@ -1,6 +1,11 @@
 # @package _global_
 
 # Estimation settings
+#
+# Every key the estimator understands, for reference.  ``neptune_j2``,
+# ``neptune_j4`` and ``neptune_j2_j4`` share a TudatPy parameter identifier, as
+# do the two libration orders, so at most one of each group may be enabled at a
+# time.  Use ``neptune_j2_j4`` to estimate both harmonic coefficients together.
 estimation:
   max_iterations: 5
   max_iterations_without_improvement: 3
@@ -10,5 +15,8 @@ estimation:
     triton_GM: True
     iau_rotation_model_pole: True
     iau_rotation_model_pole_rate: True
-    iau_rotation_model_pole_librations: True
+    iau_rotation_model_pole_librations_order1: False
+    iau_rotation_model_pole_librations_order2: True
+    neptune_j2: False
+    neptune_j4: False
     neptune_j2_j4: False

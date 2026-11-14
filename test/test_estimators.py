@@ -104,7 +104,7 @@ class TestIterParameterEntries:
                 "neptune_GM": False,
                 "triton_GM": {"value": 1.0},
                 "iau_rotation_model_pole": {"apriori": [1e-6, 1e-6]},
-                "neptune_j2_j4": {"enabled": False},
+                "neptune_j2": {"enabled": False},
             }
         )
         entries = dict(iter_parameter_entries(cfg))
@@ -113,7 +113,7 @@ class TestIterParameterEntries:
             "neptune_GM": False,
             "triton_GM": True,
             "iau_rotation_model_pole": True,
-            "neptune_j2_j4": False,
+            "neptune_j2": False,
         }
 
 
@@ -136,6 +136,63 @@ class TestGetAdditionalParameterIdentifiers:
         identifier = _identifiers(cfg)["neptune_GM"]
         assert isinstance(identifier, tuple)
         assert {identifier: "ok"}[identifier] == "ok"
+
+    @pytest.mark.parametrize(
+        "key",
+        ["neptune_j2", "neptune_j4", "neptune_j2_j4"],
+    )
+    def test_harmonic_keys_are_recognised(self, key):
+        cfg = _cfg_with_state(**{key: True})
+        assert set(_identifiers(cfg)) == {key}
+
+    def test_harmonic_keys_share_one_identifier(self):
+        # TudatPy identifies a spherical-harmonic block by body and coefficient
+        # type, not by which degrees it holds, so all three keys collide.
+        identifiers = {
+            key: _identifiers(_cfg_with_state(**{key: True}))[key]
+            for key in ("neptune_j2", "neptune_j4", "neptune_j2_j4")
+        }
+        assert len(set(identifiers.values())) == 1
+
+    @pytest.mark.parametrize(
+        ("keys", "match"),
+        [
+            ({"neptune_j2": True, "neptune_j4": True}, "neptune_j2_j4"),
+            ({"neptune_j2_j4": True, "neptune_j2": True}, "neptune_j2_j4"),
+            (
+                {
+                    "iau_rotation_model_pole_librations_order1": True,
+                    "iau_rotation_model_pole_librations_order2": True,
+                },
+                "exactly one",
+            ),
+        ],
+    )
+    def test_shared_identifier_collisions_raise(self, keys, match):
+        cfg = _cfg_with_state(**keys)
+        with pytest.raises(ValueError, match=match):
+            _identifiers(cfg)
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "iau_rotation_model_pole_librations_order1",
+            "iau_rotation_model_pole_librations_order2",
+        ],
+    )
+    def test_libration_orders_are_recognised(self, key):
+        cfg = _cfg_with_state(**{key: True})
+        assert set(_identifiers(cfg)) == {key}
+
+    def test_libration_orders_share_one_identifier(self):
+        identifiers = {
+            key: _identifiers(_cfg_with_state(**{key: True}))[key]
+            for key in (
+                "iau_rotation_model_pole_librations_order1",
+                "iau_rotation_model_pole_librations_order2",
+            )
+        }
+        assert len(set(identifiers.values())) == 1
 
 
 class TestParameterBlockLayout:
@@ -164,11 +221,24 @@ class TestParameterBlockLayout:
     def test_sizes_come_from_parameter_set_not_config(self):
         # The libration block is 4 scalars (2 amplitudes x 2 frequencies); the
         # layout must report whatever the set says, never a hard-coded size.
-        cfg = _cfg_with_state(iau_rotation_model_pole_librations=True)
+        cfg = _cfg_with_state(iau_rotation_model_pole_librations_order2=True)
         ids = _identifiers(cfg)
-        fake = FakeParameterSet([(_STATE_ID, 6), (ids["iau_rotation_model_pole_librations"], 4)])
+        fake = FakeParameterSet(
+            [(_STATE_ID, 6), (ids["iau_rotation_model_pole_librations_order2"], 4)]
+        )
         layout = get_parameter_block_layout(cfg, fake)
         assert layout[1].size == 4
+
+    def test_combined_harmonics_block_layout(self):
+        # The combined J2+J4 key builds one two-scalar block [C20, C40].
+        cfg = _cfg_with_state(neptune_j2_j4=True)
+        ids = _identifiers(cfg)
+        fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2_j4"], 2)])
+        layout = get_parameter_block_layout(cfg, fake)
+        assert layout == [
+            ParameterBlock(key="initial_state", start=0, size=6),
+            ParameterBlock(key="neptune_j2_j4", start=6, size=2),
+        ]
 
     def test_unmapped_identifier_raises(self):
         cfg = _cfg_with_state(neptune_GM=True)
@@ -197,17 +267,33 @@ class TestApplyConfiguredParameterValues:
         np.testing.assert_allclose(gm.get_parameter_value(), [[6.9e6]])
 
     def test_sets_vector_parameter_with_list(self):
+        # The pole block is two scalars, [alpha_0, delta_0].
         cfg = _cfg(
             {
                 "initial_state": True,
-                "neptune_j2_j4": {"value": [1e-4, 2e-5]},
+                "iau_rotation_model_pole": {"value": [1e-4, 2e-5]},
+            }
+        )
+        ids = _identifiers(cfg)
+        fake = FakeParameterSet([(_STATE_ID, 6), (ids["iau_rotation_model_pole"], 2)])
+        apply_configured_parameter_values(cfg, fake)
+        pole = fake.parameters_for_parameter_type(ids["iau_rotation_model_pole"])[0]
+        np.testing.assert_allclose(pole.get_parameter_value().ravel(), [1e-4, 2e-5])
+
+    def test_sets_combined_harmonics_with_list(self):
+        # The combined J2+J4 block is two scalars, [C20, C40].
+        cfg = _cfg(
+            {
+                "initial_state": True,
+                "neptune_j2_j4": {"value": [-2.0e-4, -6.0e-6]},
             }
         )
         ids = _identifiers(cfg)
         fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2_j4"], 2)])
-        apply_configured_parameter_values(cfg, fake)
-        sh = fake.parameters_for_parameter_type(ids["neptune_j2_j4"])[0]
-        np.testing.assert_allclose(sh.get_parameter_value().ravel(), [1e-4, 2e-5])
+        applied = apply_configured_parameter_values(cfg, fake)
+        assert applied == ["neptune_j2_j4"]
+        harmonics = fake.parameters_for_parameter_type(ids["neptune_j2_j4"])[0]
+        np.testing.assert_allclose(harmonics.get_parameter_value().ravel(), [-2.0e-4, -6.0e-6])
 
     def test_sets_initial_state(self):
         cfg = _cfg({"initial_state": {"value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}})
@@ -223,9 +309,11 @@ class TestApplyConfiguredParameterValues:
         assert apply_configured_parameter_values(cfg, fake) == []
 
     def test_wrong_size_raises(self):
-        cfg = _cfg({"initial_state": True, "neptune_j2_j4": {"value": [1e-4, 2e-5, 3e-6]}})
+        cfg = _cfg(
+            {"initial_state": True, "iau_rotation_model_pole": {"value": [1e-4, 2e-5, 3e-6]}}
+        )
         ids = _identifiers(cfg)
-        fake = FakeParameterSet([(_STATE_ID, 6), (ids["neptune_j2_j4"], 2)])
+        fake = FakeParameterSet([(_STATE_ID, 6), (ids["iau_rotation_model_pole"], 2)])
         with pytest.raises(ValueError, match="has 3 entries but its parameter block has size 2"):
             apply_configured_parameter_values(cfg, fake)
 

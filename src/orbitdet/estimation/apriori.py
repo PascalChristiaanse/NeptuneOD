@@ -25,7 +25,7 @@ def _extract_per_parameter_apriori(cfg: DictConfig) -> dict[str, list[float]]:
 
     Handles the mapping form, e.g.
     ``initial_state: {apriori: [1.0e7, 1.0e2]}`` or
-    ``neptune_j2_j4: {apriori: [1e-8, 1e-9]}``.
+    ``neptune_j2: {apriori: [1e-8]}``.
     """
     per_param: dict[str, list[float]] = {}
     for key, _enabled in iter_parameter_entries(cfg):
@@ -137,7 +137,7 @@ def get_apriori_covariance_matrix(
 
       - The per-parameter ``apriori`` list of the mapping-form config entry, e.g.
         ``initial_state: {apriori: [sigma_pos, sigma_vel]}`` or
-        ``neptune_j2_j4: {apriori: [sigma_c20, sigma_c40]}``.
+        ``neptune_j2: {apriori: [sigma_c20]}``.
       - The global ``cfg.estimation.apriori`` entry ``<parameter_key>: sigma``
         (broadcast over the block). For the initial state the global
         ``position`` / ``velocity`` entries are used.

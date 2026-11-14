@@ -15,4 +15,4 @@ estimation:
   parameters_to_estimate:
     initial_state: true
     iau_rotation_model_pole: true
-    iau_rotation_model_pole_librations: true
+    iau_rotation_model_pole_librations_order2: true
